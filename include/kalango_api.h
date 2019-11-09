@@ -15,64 +15,72 @@
 #include <irq.h>
 
 /**
- * @fn
- * @brief
- * @param
- * @return
- * @note
+ *  This is the kalang API file, here is a glue file of all
+ *  subsystems of kalango RTOS found in a single place, 
+ *  your application should call those functions to interact
+ *  with kalango kernel instead calling directly a particular
+ *  subsystem function.
+ *  
+ *  Some definition regard of types, can be found on kernel_types.h
+ *  file, the other headers are intended to kernel internal use.
+ */
+
+/**
+ * @fn Kalango_CoreStart
+ * @brief Starts the kalango kernel and core system
+ * @return never returns
+ * @note calling this function multiple times result in immediate return
  */ 
 static inline KernelResult Kalango_CoreStart() {
     return CoreStart();
 }
 
 /**
- * @fn
- * @brief
- * @param
- * @return
- * @note
+ * @fn Kalango_GetTicksPerSecond
+ * @brief Get current ticks per second
+ * @return Ticks per second
+ * @note This function depends on kernel configuration
  */ 
 static inline uint32_t Kalango_GetTicksPerSecond() {
     return GetTicksPerSecond();
 }
 
 /**
- * @fn
- * @brief
- * @param
- * @return
- * @note
+ * @fn Kalango_GetCurrentTicks
+ * @brief Return the current elapsed ticks since kernel started
+ * @return value of ticks after the kernel started
  */ 
 static inline uint32_t Kalango_GetCurrentTicks() {
     return GetCurrentTicks();
 }
 
 /**
- * @fn
- * @brief
- * @param
- * @return
- * @note
+ * @fn Kalango_Sleep
+ * @brief Put current thread to sleep
+ * @param ticks - ticks to keep current thread in sleep
+ * @return kSuccess when task wakes up
  */ 
 static inline KernelResult Kalango_Sleep(uint32_t ticks) {
     return Sleep(ticks);
 }
 
 /**
- * @fn
- * @brief
- * @param
- * @return
- * @note
+ * @fn Kalango_TaskCreate
+ * @brief Creates a new task and put it into the ready list
+ * @param settings - structure that contains initial settings of task
+ * @return a unique task_id on succesful creation
+ * @note if the created task has the highest priority, it will put in execution
+ *       instead of placed only on ready list;
+ * @note refer TaskSettings contents on kernel_types.h
  */ 
 static inline TaskId Kalango_TaskCreate(TaskSettings *settings) {
     return TaskCreate(settings);
 }
 
 /**
- * @fn
- * @brief
- * @param
+ * @fn Kalango_TaskSuspend
+ * @brief Suspends the execution of an task
+ * @param 
  * @return
  * @note
  */ 
@@ -81,7 +89,7 @@ static inline KernelResult Kalango_TaskSuspend(TaskId task_id) {
 }
 
 /**
- * @fn
+ * @fn Kalango_TaskResume
  * @brief
  * @param
  * @return
@@ -92,7 +100,7 @@ static inline KernelResult Kalango_TaskResume(TaskId task_id) {
 }
 
 /**
- * @fn
+ * @fn Kalango_TaskDelete
  * @brief
  * @param
  * @return
@@ -103,7 +111,7 @@ static inline KernelResult Kalango_TaskDelete(TaskId task_id) {
 }
 
 /**
- * @fn
+ * @fn Kalango_TaskSetPriority
  * @brief
  * @param
  * @return
@@ -115,7 +123,7 @@ static inline uint32_t Kalango_TaskSetPriority(TaskId task_id,
 }
 
 /**
- * @fn
+ * @fn Kalango_TaskGetPriority
  * @brief
  * @param
  * @return
@@ -126,7 +134,7 @@ static inline uint32_t Kalango_TaskGetPriority(TaskId task_id) {
 }
 
 /**
- * @fn
+ * @fn Kalango_TaskYield
  * @brief
  * @param
  * @return
@@ -138,7 +146,7 @@ static inline KernelResult Kalango_TaskYield() {
 
 
 /**
- * @fn
+ * @fn Kalango_SemaphoreCreate
  * @brief
  * @param
  * @return
@@ -150,7 +158,7 @@ static inline SemaphoreId Kalango_SemaphoreCreate(uint32_t initial,
 }
 
 /**
- * @fn
+ * @fn Kalango_SemaphoreTake
  * @brief
  * @param
  * @return
@@ -162,7 +170,7 @@ static inline KernelResult Kalango_SemaphoreTake(SemaphoreId semaphore,
 }
 
 /**
- * @fn
+ * @fn Kalango_SemaphoreGive
  * @brief
  * @param
  * @return
@@ -174,7 +182,7 @@ static inline KernelResult Kalango_SemaphoreGive(SemaphoreId semaphore,
 }
 
 /**
- * @fn
+ * @fn Kalango_SemaphoreDelete
  * @brief
  * @param
  * @return
@@ -186,7 +194,7 @@ static inline KernelResult Kalango_SemaphoreDelete (SemaphoreId semaphore) {
 
 
 /**
- * @fn
+ * @fn Kalango_MutexCreate
  * @brief
  * @param
  * @return
@@ -197,7 +205,7 @@ static inline MutexId Kalango_MutexCreate() {
 }
 
 /**
- * @fn
+ * @fn Kalango_MutexTryLock
  * @brief
  * @param
  * @return
@@ -208,7 +216,7 @@ static inline KernelResult Kalango_MutexTryLock(MutexId mutex) {
 }
 
 /**
- * @fn
+ * @fn Kalango_MutexLock
  * @brief
  * @param
  * @return
@@ -219,7 +227,7 @@ static inline KernelResult Kalango_MutexLock(MutexId mutex, uint32_t timeout) {
 }
 
 /**
- * @fn
+ * @fn Kalango_MutexUnlock
  * @brief
  * @param
  * @return
@@ -230,7 +238,7 @@ static inline KernelResult Kalango_MutexUnlock(MutexId mutex) {
 }
 
 /**
- * @fn
+ * @fn Kalango_MutexDelete
  * @brief
  * @param
  * @return
@@ -242,7 +250,7 @@ static inline KernelResult Kalango_MutexDelete(MutexId mutex) {
 
 
 /**
- * @fn
+ * @fn Kalango_QueueCreate
  * @brief
  * @param
  * @return
@@ -255,7 +263,7 @@ static inline QueueId Kalango_QueueCreate(uint32_t noof_slots,
 }
 
 /**
- * @fn
+ * @fn Kalango_QueueInsert
  * @brief
  * @param
  * @return
@@ -269,7 +277,7 @@ static inline KernelResult Kalango_QueueInsert(QueueId queue,
 }
 
 /**
- * @fn
+ * @fn Kalango_QueuePeek
  * @brief
  * @param
  * @return
@@ -283,7 +291,7 @@ static inline KernelResult Kalango_QueuePeek(QueueId queue,
 }
 
 /**
- * @fn
+ * @fn Kalango_QueueRemove
  * @brief
  * @param
  * @return
@@ -297,7 +305,7 @@ static inline KernelResult Kalango_QueueRemove(QueueId queue,
 }
 
 /**
- * @fn
+ * @fn Kalango_QueueDelete
  * @brief
  * @param
  * @return
@@ -308,7 +316,7 @@ static inline KernelResult Kalango_QueueDelete(QueueId queue) {
 }
 
 /**
- * @fn
+ * @fn Kalango_TimerCreate
  * @brief
  * @param
  * @return
@@ -321,7 +329,7 @@ static inline TimerId Kalango_TimerCreate(TimerCallback callback,
 }
 
 /**
- * @fn
+ * @fn Kalango_TimerStart
  * @brief
  * @param
  * @return
@@ -332,7 +340,7 @@ static inline KernelResult Kalango_TimerStart(TimerId timer) {
 }
 
 /**
- * @fn
+ * @fn Kalango_TimerStop
  * @brief
  * @param
  * @return
@@ -343,7 +351,7 @@ static inline KernelResult Kalango_TimerStop(TimerId timer) {
 }
 
 /**
- * @fn
+ * @fn Kalango_TimerSetValues
  * @brief
  * @param
  * @return
@@ -356,7 +364,7 @@ static inline KernelResult Kalango_TimerSetValues(TimerId timer,
 }
 
 /**
- * @fn
+ * @fn Kalango_TimerDelete
  * @brief
  * @param
  * @return
@@ -367,30 +375,79 @@ static inline KernelResult Kalango_TimerDelete(TimerId timer) {
 }
 
 
+/**
+ * @fn Kalango_IrqEnable
+ * @brief
+ * @param
+ * @return
+ * @note
+ */ 
 static inline KernelResult Kalango_IrqEnable() {
     return IrqEnable();
 }
 
+/**
+ * @fn Kalango_IrqDisable
+ * @brief
+ * @param
+ * @return
+ * @note
+ */ 
 static inline KernelResult Kalango_IrqDisable() {
     return IrqDisable();
 }
 
+/**
+ * @fn Kalango_IrqInstallHandler
+ * @brief
+ * @param
+ * @return
+ * @note
+ */ 
 static inline KernelResult Kalango_IrqInstallHandler(uint32_t handler, int32_t irq_number, uint32_t priority) {
     return IrqInstallHandler(handler, irq_number, priority);
 }
 
+/**
+ * @fn Kalango_IrqEnableHandler
+ * @brief
+ * @param
+ * @return
+ * @note
+ */ 
 static inline KernelResult Kalango_IrqEnableHandler(int32_t irq_number) {
     return IrqEnableHandler(irq_number);
 }
 
+/**
+ * @fn Kalango_IrqDisableHandler
+ * @brief
+ * @param
+ * @return
+ * @note
+ */ 
 static inline KernelResult Kalango_IrqDisableHandler(int32_t irq_number) {
     return IrqDisableHandler(irq_number);
 }
 
+/**
+ * @fn Kalango_IrqEnter
+ * @brief
+ * @param
+ * @return
+ * @note
+ */ 
 static inline KernelResult Kalango_IrqEnter() {
     return IrqEnter();
 }
 
+/**
+ * @fn Kalango_IrqLeave
+ * @brief
+ * @param
+ * @return
+ * @note
+ */ 
 static inline KernelResult Kalango_IrqLeave() {
     return IrqLeave();
 }

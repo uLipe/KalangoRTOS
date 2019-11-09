@@ -50,7 +50,7 @@ KernelResult TaskSuspend(TaskId task_id) {
     TaskControBlock *task = (TaskControBlock *)task_id;
     CoreSchedulingSuspend();
 
-    if(task->state) {
+    if(task->state & TASK_STATE_SUPENDED) {
         CoreSchedulingResume();
         return kErrorTaskAlreadySuspended;
     }
