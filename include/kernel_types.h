@@ -47,6 +47,7 @@ typedef enum {
     kStatusSemaphoreUnavailable,
     kErrorTaskAlreadySuspended,
     kErrorTaskAlreadyResumed,
+    kErrorInvalidMutexOwner,
 }KernelResult;
 
 typedef void (*TimerCallback) (void *user_data);

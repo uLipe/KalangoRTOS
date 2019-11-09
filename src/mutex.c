@@ -16,6 +16,7 @@ MutexId MutexCreate(){
     mutex->old_priority = 0;
     mutex->owned = false;
     mutex->recursive_taking_count = 0;
+    mutex->owner;
     
     KernelResult r = CoreInitializeTaskList(&mutex->pending_tasks);
     if(r != kSuccess) {
@@ -50,7 +51,8 @@ KernelResult MutexTryLock(MutexId mutex)  {
         m->recursive_taking_count++;
 
     TaskControBlock *task = CoreGetCurrentTask();
-    
+    m->owner = task;
+
     //Raise priority
     if(TaskGetPriority(task) < CONFIG_MUTEX_CEIL_PRIORITY) {
         m->old_priority = TaskSetPriority(task, CONFIG_MUTEX_CEIL_PRIORITY);
@@ -79,7 +81,8 @@ KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
             m->recursive_taking_count++;
 
         TaskControBlock *task = CoreGetCurrentTask();
-        
+        m->owner = task;
+
         //Raise priority
         if(TaskGetPriority((TaskId)task) < CONFIG_MUTEX_CEIL_PRIORITY) {
             m->old_priority = TaskSetPriority((TaskId)task, CONFIG_MUTEX_CEIL_PRIORITY);
@@ -118,6 +121,10 @@ KernelResult MutexUnlock(MutexId mutex) {
     CoreSchedulingSuspend();
     TaskControBlock *current = CoreGetCurrentTask();
 
+    if(current != (TaskControBlock *)m->owner) {
+        return kErrorInvalidMutexOwner;
+    }
+
     if(m->recursive_taking_count) {
         IrqDisable();
         m->recursive_taking_count--;
@@ -133,6 +140,7 @@ KernelResult MutexUnlock(MutexId mutex) {
    if(NothingToSched(&m->pending_tasks)) {
         IrqDisable();
         m->owned = false;
+        m->owner = NULL;
         IrqEnable();
 
         m->old_priority = TaskSetPriority((TaskId)current, m->old_priority);
@@ -141,6 +149,7 @@ KernelResult MutexUnlock(MutexId mutex) {
     }
 
     TaskControBlock *task = ScheduleTaskSet(&m->pending_tasks);
+    m->owner = task;
 
     //Bumps the priority of next pending task:
     if(TaskGetPriority((TaskId)task) < CONFIG_MUTEX_CEIL_PRIORITY) {
