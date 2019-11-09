@@ -24,7 +24,7 @@ target_includes += [
 ]
 
 kernel_sources += files(
-   kalango_path + '/src/kalango.c',
+   kalango_path + '/src/kalango_sources.c',
 )
 
 arch_sources += files(
@@ -90,7 +90,7 @@ exe = executable(artifacts[0], artifacts[1],
                  build_by_default: true)
 
 run_target('hex', command: [objcopy, ['-Obinary', exe.full_path(),
-           exe.full_path() + '.bin']], depends: exe)
+           exe.full_path() + '.hex']], depends: exe)
 run_target('size', command: [size, exe.full_path(), '-B'], depends: exe)
 
 if meson.is_cross_build()
