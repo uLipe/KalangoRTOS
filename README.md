@@ -9,7 +9,7 @@ figure here.
 - Real time preemptive scheduler;
 - Fast and predictable execution time context switching;
 - Supports up to 32 priority levels;
-- Cooperative kernel policy with same priority threads;
+- round-robin policy with same priority threads;
 - Soft timers;
 - Counting Semaphores;
 - Binary Semaphores;
