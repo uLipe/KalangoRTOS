@@ -4,6 +4,7 @@
 #include "mutex.c"
 #include "queue.c"
 #include "sched_fifo.c"
+#include "sched_round_robin.c"
 #include "semaphore.c"
 #include "task.c"
 #include "timer.c"

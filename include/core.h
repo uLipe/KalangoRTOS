@@ -12,6 +12,7 @@ KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, TaskPr
 KernelResult CoreMakeTaskReady(TaskControBlock * task);
 KernelResult CoreMakeAllTasksReady(TaskPriorityList *tasks);
 KernelResult CheckReschedule();
+KernelResult CoreManageRoundRobin();
 KernelResult CoreInitializeTaskList(TaskPriorityList *list);
 TaskControBlock * CoreGetCurrentTask();
 TaskControBlock * CoreTaskSwitch();

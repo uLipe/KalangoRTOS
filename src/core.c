@@ -62,6 +62,10 @@ TaskControBlock * CoreTaskSwitch() {
     return next_task;
 }
 
+KernelResult CoreManageRoundRobin() {
+    return SchedulerDoRoundRobin(&ready_tasks_list);
+}
+
 KernelResult CheckReschedule() {
 
     CoreSchedulingResume();
@@ -149,9 +153,17 @@ void CoreSetRunning() {
 }
 
 KernelResult CoreSchedulingSuspend() {
-    return SchedulerLock(&ready_tasks_list);
+    if(IsInsideIsr()) {
+        return kSuccess;
+    } else {
+        return SchedulerLock(&ready_tasks_list);
+    }
 }
 
 KernelResult CoreSchedulingResume() {
-    return SchedulerUnlock(&ready_tasks_list);
+    if(IsInsideIsr()) {
+        return kSuccess;
+    } else {
+        return SchedulerUnlock(&ready_tasks_list);
+    }
 }
