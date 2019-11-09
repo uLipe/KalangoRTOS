@@ -33,6 +33,11 @@ such CMSIS and NRFx;
 - No delta list for O(1) tick handling, timer callbacks are deffered from ISR;
 
 # Getting started:
+- First get this respository and all the submodules:
+ ```
+ $ git clone --recursive https://github.com/uLipe/Kalango
+ ```
+
 - The best way to get started is to using one of sample projects provided under examples folder:
  ```
  $ cd Kalango/examples/nrf52_examples
