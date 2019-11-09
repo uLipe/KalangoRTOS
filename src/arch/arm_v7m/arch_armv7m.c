@@ -170,7 +170,7 @@ typedef struct {
 #endif
 
 static void SpuriousIsr(void) {
-    while(1);
+    __asm volatile("  bkpt 0 \n");
 }
 
 static void ClockIsr(void) {
