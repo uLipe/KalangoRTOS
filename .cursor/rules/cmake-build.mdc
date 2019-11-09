@@ -1,0 +1,26 @@
+---
+description: CMake and build system conventions
+globs: "**/CMakeLists.txt,**/*.cmake"
+alwaysApply: false
+---
+
+# CMake Conventions
+
+## General
+- Specify `cmake_minimum_required(VERSION 3.20)` or higher
+- Use modern CMake: `target_*` commands over global `include_directories`/`add_definitions`
+- Prefer imported/aliased targets over raw library names
+
+## Zephyr Projects
+- `find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})` before `project()`
+- Add sources with `target_sources(app PRIVATE ...)`
+- For dual-image builds, embed remote firmware via `ExternalProject_Add` + `generate_inc_file_for_target`
+
+## ESP-IDF Projects
+- Include `$ENV{IDF_PATH}/tools/cmake/project.cmake` before `project()`
+- Components use `idf_component_register()` — not raw `add_library`
+
+## Style
+- Use lowercase cmake commands (`add_library`, not `ADD_LIBRARY`)
+- Quote all variable expansions in conditionals: `if("${VAR}" STREQUAL "value")`
+- Group logically: options, dependencies, sources, target properties

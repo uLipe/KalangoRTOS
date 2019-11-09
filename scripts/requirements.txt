@@ -1,0 +1,1 @@
+# KalangoRTOS test/example scripts use the Python standard library only.

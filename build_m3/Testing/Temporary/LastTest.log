@@ -1,0 +1,115 @@
+Start testing: Jun 22 00:25 -03
+----------------------------------------------------------
+1/2 Testing: kalango_test_cortexm3
+1/2 Test: kalango_test_cortexm3
+Command: "/home/ulipe/fun/KalangoRTOS/scripts/run_tests.py" "--elf" "/home/ulipe/fun/KalangoRTOS/build_m3/tests/kalango_test_cortexm3.elf"
+Directory: /home/ulipe/fun/KalangoRTOS/build_m3/tests
+"kalango_test_cortexm3" start time: Jun 22 00:25 -03
+Output:
+----------------------------------------------------------
+Running kalango_test_cortexm3.elf on lm3s6965evb (/usr/bin/qemu-system-arm)
+Timer with period zero, disabling
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:9:test_core_ticks_increment:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:10:test_core_heap_reports_free_bytes:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:11:test_core_current_task_not_null:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:19:test_task_create_returns_valid_id:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:20:test_task_yield_runs_other_task:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:21:test_task_suspend_and_resume:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:22:test_task_set_get_priority:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:23:test_task_delete_defers_cleanup:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:9:test_semaphore_create_take_give:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:10:test_semaphore_no_wait_unavailable:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:11:test_semaphore_timeout:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:12:test_semaphore_limit_cap:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:41:test_mutex_trylock_and_unlock:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:42:test_mutex_blocks_second_task:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:43:test_mutex_wrong_owner_unlock:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:13:test_queue_insert_remove:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:14:test_queue_peek:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:15:test_queue_full_no_wait:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:16:test_queue_empty_no_wait:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:17:test_timer_one_shot:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:18:test_timer_periodic:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:19:test_timer_stop:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:48:test_sched_higher_priority_preempts:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:49:test_sched_round_robin_same_priority:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:20:test_isr_semaphore_give:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:9:test_edge_null_task_suspend:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:10:test_edge_sleep_zero:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:11:test_edge_semaphore_null:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:157:test_softirq_trigger_calls_handler:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:158:test_softirq_handler_receives_data:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:159:test_softirq_invalid_vector_rejected:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:160:test_softirq_multiple_vectors_dispatched:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:161:test_softirq_no_handler_no_crash:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:162:test_softirq_same_vector_coalesces:PASS
+
+-----------------------
+34 Tests 0 Failures 0 Ignored 
+OK
+kalango_test_cortexm3.elf: PASS
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"kalango_test_cortexm3" end time: Jun 22 00:25 -03
+"kalango_test_cortexm3" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/2 Testing: kalango_test_cortexm4f
+2/2 Test: kalango_test_cortexm4f
+Command: "/home/ulipe/fun/KalangoRTOS/scripts/run_tests.py" "--elf" "/home/ulipe/fun/KalangoRTOS/build_m3/tests/kalango_test_cortexm4f.elf"
+Directory: /home/ulipe/fun/KalangoRTOS/build_m3/tests
+"kalango_test_cortexm4f" start time: Jun 22 00:25 -03
+Output:
+----------------------------------------------------------
+Running kalango_test_cortexm4f.elf on netduinoplus2 (/usr/bin/qemu-system-arm)
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:9:test_core_ticks_increment:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:10:test_core_heap_reports_free_bytes:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:11:test_core_current_task_not_null:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:19:test_task_create_returns_valid_id:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:20:test_task_yield_runs_other_task:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:21:test_task_suspend_and_resume:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:22:test_task_set_get_priority:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:23:test_task_delete_defers_cleanup:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:9:test_semaphore_create_take_give:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:10:test_semaphore_no_wait_unavailable:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:11:test_semaphore_timeout:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:12:test_semaphore_limit_cap:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:41:test_mutex_trylock_and_unlock:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:42:test_mutex_blocks_second_task:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:43:test_mutex_wrong_owner_unlock:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:13:test_queue_insert_remove:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:14:test_queue_peek:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:15:test_queue_full_no_wait:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:16:test_queue_empty_no_wait:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:17:test_timer_one_shot:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:18:test_timer_periodic:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:19:test_timer_stop:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:48:test_sched_higher_priority_preempts:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:49:test_sched_round_robin_same_priority:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:20:test_isr_semaphore_give:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:9:test_edge_null_task_suspend:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:10:test_edge_sleep_zero:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:11:test_edge_semaphore_null:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:34:test_fpu_context_switch:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:157:test_softirq_trigger_calls_handler:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:158:test_softirq_handler_receives_data:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:159:test_softirq_invalid_vector_rejected:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:160:test_softirq_multiple_vectors_dispatched:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:161:test_softirq_no_handler_no_crash:PASS
+/home/ulipe/fun/KalangoRTOS/tests/framework/test_main.c:162:test_softirq_same_vector_coalesces:PASS
+
+-----------------------
+35 Tests 0 Failures 0 Ignored 
+OK
+kalango_test_cortexm4f.elf: PASS
+<end of output>
+Test time =   0.49 sec
+----------------------------------------------------------
+Test Passed.
+"kalango_test_cortexm4f" end time: Jun 22 00:25 -03
+"kalango_test_cortexm4f" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jun 22 00:25 -03
