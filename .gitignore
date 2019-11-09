@@ -1,0 +1,9 @@
+/.vscode/
+*.o
+*.hex
+*.elf
+*.su
+*.d
+*.bin
+/Debug/
+/Release/
