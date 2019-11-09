@@ -1,0 +1,4 @@
+[submodule "ext/nrfx"]
+	path = ext/nrfx
+	url = https://github.com/uLipe/nrfx.git
+	branch = master
