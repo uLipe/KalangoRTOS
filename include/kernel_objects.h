@@ -43,6 +43,7 @@ typedef struct {
 
 typedef struct {
     bool owned;
+    void *owner;
     uint32_t recursive_taking_count;
     uint32_t old_priority;
     TaskPriorityList pending_tasks;
