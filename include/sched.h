@@ -12,3 +12,4 @@ void SchedulerInitTaskPriorityList(TaskPriorityList *list);
 bool NothingToSched(TaskPriorityList *list);
 KernelResult SchedulerSetPriority(TaskPriorityList *list, uint32_t priority);
 KernelResult SchedulerResetPriority(TaskPriorityList *list, uint32_t priority);
+KernelResult SchedulerDoRoundRobin(TaskPriorityList *list);

@@ -54,7 +54,10 @@ KernelResult ClockStep (uint32_t ticks) {
         return kErrorInvalidKernelState;
     }
 
-    ASSERT_KERNEL(IsInsideIsr(), kErrorTimeout);
+    ASSERT_KERNEL(IsInsideIsr(), kErrorInvalidKernelState);
+
+    CoreManageRoundRobin();
+
     sys_dlist_t expired_list;
     sys_dnode_t *next = sys_dlist_peek_head(&timeout_list);
 
