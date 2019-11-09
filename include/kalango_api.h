@@ -2,6 +2,16 @@
  *  The  Kalango project, a always experimental RTOS
  */
 #pragma once
+/**
+ *  This is the kalang API file, here is a glue file of all
+ *  subsystems of kalango RTOS to be found in a single place, 
+ *  your application should call those functions to interact
+ *  with kalango kernel instead calling directly a particular
+ *  subsystem function.
+ *  
+ *  Some definition regarding of types, can be found on kernel_types.h
+ *  file, the other headers are intended to kernel internal use.
+ */
 
 #include <kernel_types.h>
 #include <core.h>
@@ -13,17 +23,6 @@
 #include <timer.h>
 #include <mutex.h>
 #include <irq.h>
-
-/**
- *  This is the kalang API file, here is a glue file of all
- *  subsystems of kalango RTOS found in a single place, 
- *  your application should call those functions to interact
- *  with kalango kernel instead calling directly a particular
- *  subsystem function.
- *  
- *  Some definition regard of types, can be found on kernel_types.h
- *  file, the other headers are intended to kernel internal use.
- */
 
 /**
  * @fn Kalango_CoreStart
