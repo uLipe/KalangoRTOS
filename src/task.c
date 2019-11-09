@@ -85,7 +85,8 @@ KernelResult TaskDelete(TaskId task_id) {
 }
 
 uint32_t TaskSetPriority(TaskId task_id, uint32_t new_priority) {
-    ASSERT_PARAM(task_id);
+    ASSERT(task_id, 0xFFFFFFFF);
+    ASSERT(new_priority < CONFIG_PRIORITY_LEVELS, 0xFFFFFFFF);
 
     TaskControBlock *task = (TaskControBlock *)task_id;
     CoreSchedulingSuspend();
