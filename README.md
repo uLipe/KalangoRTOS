@@ -29,7 +29,6 @@ figure here.
 - No C++ support;
 - It was designed to take advantage of exisiting manufacturers microcontroller abstraction libraries
 such CMSIS and NRFx;
-- No Round-Robin scheduler (yet);
 - Documentation is in development (the code was written to be expressive as possible);
 - No delta list for O(1) tick handling, timer callbacks are deffered from ISR;
 
