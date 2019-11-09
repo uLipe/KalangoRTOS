@@ -1,10 +1,13 @@
-/.vscode/
+.vscode
 *.o
 *.hex
 *.elf
 *.su
 *.d
 *.bin
-/Debug/
-/Release/
-/build/
+Debug
+Release
+build
+*ninja*
+*.build
+*.ninja_log

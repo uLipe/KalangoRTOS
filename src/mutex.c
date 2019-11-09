@@ -16,7 +16,7 @@ MutexId MutexCreate(){
     mutex->old_priority = 0;
     mutex->owned = false;
     mutex->recursive_taking_count = 0;
-    mutex->owner;
+    mutex->owner = NULL;
     
     KernelResult r = CoreInitializeTaskList(&mutex->pending_tasks);
     if(r != kSuccess) {
