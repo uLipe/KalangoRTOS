@@ -25,14 +25,6 @@ target_includes += [
 
 kernel_sources += files(
    kalango_path + '/src/kalango.c',
-#   kalango_path + '/src/core.c',
-#   kalango_path + '/src/mutex.c',
-#   kalango_path + '/src/object_pool.c',
-#   kalango_path + '/src/queue.c',
-#   kalango_path + '/src/sched_fifo.c',
-#   kalango_path + '/src/semaphore.c',
-#   kalango_path + '/src/task.c',
-#   kalango_path + '/src/timer.c',
 )
 
 arch_sources += files(
