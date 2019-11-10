@@ -19,17 +19,33 @@ KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, TaskPr
     if(kobject_pending_list) {
         IrqDisable();
         sys_dlist_append(&kobject_pending_list->task_list[task->priority], &task->pending_node);
+        SchedulerSetPriority(kobject_pending_list, task->priority);
         IrqEnable();
     }
     return kSuccess;
 }
 
+KernelResult CoreUnpendNextTask(TaskPriorityList *kobject_pending_list) {
+    ASSERT_PARAM(kobject_pending_list);
+
+    TaskControBlock *task = ScheduleTaskSet(kobject_pending_list);
+
+    RemoveTimeout(&task->timeout);
+
+    if(task) {
+        IrqDisable();
+        sys_dlist_remove(&task->pending_node);
+        SchedulerResetPriority(kobject_pending_list, task->priority);
+        IrqEnable();
+
+        return (CoreMakeTaskReady(task));
+    } else {
+        return kErrorNothingToSchedule;
+    }
+}
+
 KernelResult CoreMakeTaskReady(TaskControBlock * task) {
     ASSERT_PARAM(task);
-
-    IrqDisable();
-    sys_dlist_remove(&task->pending_node);
-    IrqEnable();
 
     task->state = TASK_STATE_READY;
 
@@ -44,16 +60,10 @@ KernelResult CoreMakeTaskReady(TaskControBlock * task) {
 KernelResult CoreMakeAllTasksReady(TaskPriorityList *tasks) {
     ASSERT_PARAM(tasks);
 
-    for(uint32_t i =0 ; i < CONFIG_PRIORITY_LEVELS; i++) {
-        while(!sys_dlist_is_empty(&tasks->task_list[i])) {
-            sys_dnode_t *node = sys_dlist_peek_head(&tasks->task_list[i]);
-            TaskControBlock *task = CONTAINER_OF(node, TaskControBlock, pending_node);
-            CoreMakeTaskReady(task);
-        }
-
-        SchedulerResetPriority(tasks, i);
+    while(!NothingToSched(tasks)) {
+        CoreUnpendNextTask(tasks);
     }
-
+ 
     return kSuccess;
 }
 

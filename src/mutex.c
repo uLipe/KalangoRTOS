@@ -162,8 +162,7 @@ KernelResult MutexUnlock(MutexId mutex) {
     if(m->recursive_taking_count < 0xFFFFFFFF)
         m->recursive_taking_count++;
 
-    RemoveTimeout(&task->timeout);
-    CoreMakeTaskReady(task);
+    CoreUnpendNextTask(&m->pending_tasks);
     m->old_priority = TaskSetPriority((TaskId)current, m->old_priority);
 
     return CheckReschedule();

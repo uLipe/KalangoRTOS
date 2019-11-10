@@ -78,9 +78,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
             return kSuccess;
         } else {
 
-            TaskControBlock *task = ScheduleTaskSet(&q->reader_tasks_pending);
-            RemoveTimeout(&task->timeout);
-            CoreMakeTaskReady(task);
+            CoreUnpendNextTask(&q->reader_tasks_pending);
             return CheckReschedule();
         }
     }
@@ -206,9 +204,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
             return kSuccess;
         } else {
 
-            TaskControBlock *task = ScheduleTaskSet(&q->writer_tasks_pending);
-            RemoveTimeout(&task->timeout);
-            CoreMakeTaskReady(task);
+            CoreUnpendNextTask(&q->writer_tasks_pending);
             return CheckReschedule();
         }
 

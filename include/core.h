@@ -9,6 +9,7 @@
 KernelResult CoreInit();
 KernelResult CoreStart();
 KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, TaskPriorityList *kobject_pending_list);
+KernelResult CoreUnpendNextTask(TaskPriorityList *kobject_pending_list);
 KernelResult CoreMakeTaskReady(TaskControBlock * task);
 KernelResult CoreMakeAllTasksReady(TaskPriorityList *tasks);
 KernelResult CheckReschedule();
