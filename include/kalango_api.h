@@ -58,6 +58,8 @@ static inline uint32_t Kalango_GetCurrentTicks() {
  * @brief Put current thread to sleep
  * @param ticks - ticks to keep current thread in sleep
  * @return kSuccess when task wakes up
+ * @note calling this function from a ISR results in immediate
+ *      return and error
  */ 
 static inline KernelResult Kalango_Sleep(uint32_t ticks) {
     return Sleep(ticks);
@@ -71,6 +73,8 @@ static inline KernelResult Kalango_Sleep(uint32_t ticks) {
  * @note if the created task has the highest priority, it will put in execution
  *       instead of placed only on ready list;
  * @note refer TaskSettings contents on kernel_types.h
+ * @note calling this function from a ISR results in immediate
+ *      return and error 
  */ 
 static inline TaskId Kalango_TaskCreate(TaskSettings *settings) {
     return TaskCreate(settings);
@@ -84,6 +88,8 @@ static inline TaskId Kalango_TaskCreate(TaskSettings *settings) {
  * @note Suspension does not support nesting, that is it, 
  *       if this function suspend a already suspended task it will 
  *       return error
+ * @note calling this function from a ISR results in immediate
+ *      return and error
  */ 
 static inline KernelResult Kalango_TaskSuspend(TaskId task_id) {
     return TaskSuspend(task_id);
@@ -108,6 +114,8 @@ static inline KernelResult Kalango_TaskResume(TaskId task_id) {
  * @note this function actually does not delete a task, it simply put that 
  *      on a not runnable state, then only calling task create can put it
  *      again on execution.
+ * @note calling this function from a ISR results in immediate
+ *      return and error
  */ 
 static inline KernelResult Kalango_TaskDelete(TaskId task_id) {
     return TaskDelete(task_id);
@@ -143,6 +151,8 @@ static inline uint32_t Kalango_TaskGetPriority(TaskId task_id) {
  * @return kSuccess on succesful yielding
  * @note The yield will only occur if there are, at least 2 tasks of same priority
  *      on the ready list, otherwise calling this function will be ignored
+ * @note calling this function from a ISR results in immediate
+ *      return and error 
  */ 
 static inline KernelResult Kalango_TaskYield() {
     return TaskYield();
@@ -172,6 +182,8 @@ static inline SemaphoreId Kalango_SemaphoreCreate(uint32_t initial,
  * @note passing KERNEL_WAIT_FOREVER as timeout will make the task block until semaphore
  *      make it available
  * @note passing KERNEL_NO_WAIT as timeout causes immediate return if semaphore is not available
+ * @note calling this function from a ISR results in immediate
+ *      return and error
  */ 
 static inline KernelResult Kalango_SemaphoreTake(SemaphoreId semaphore, 
                                                 uint32_t timeout) {
@@ -198,6 +210,8 @@ static inline KernelResult Kalango_SemaphoreGive(SemaphoreId semaphore,
  * @param semaphore - id of semaphore to be deleted
  * @return kSuccess on succesful deletion
  * @note Deleting a semaphore will put all the waiting tasks for it in a ready state
+ * @note calling this function from a ISR results in immediate
+ *      return and error
  */ 
 static inline KernelResult Kalango_SemaphoreDelete (SemaphoreId semaphore) {
     return SemaphoreDelete(semaphore);
@@ -221,6 +235,8 @@ static inline MutexId Kalango_MutexCreate() {
  * @return kSuccess on mutex locked
  * @note on fail to acquire a mutex this function will return
  *      immediately
+ * @note calling this function from a ISR results in immediate
+ *      return and error
  */ 
 static inline KernelResult Kalango_MutexTryLock(MutexId mutex) {
     return MutexTryLock(mutex);
@@ -238,6 +254,8 @@ static inline KernelResult Kalango_MutexTryLock(MutexId mutex) {
  * @note Mutexes prevent deadlock by being recursive, if a particular task lock a mutex by
  *      multiple times it will nested, mutexes need to be unlocked by the same amount to 
  *      be actually freed.
+ * @note calling this function from a ISR results in immediate
+ *      return and error
  */ 
 static inline KernelResult Kalango_MutexLock(MutexId mutex, uint32_t timeout) {
     return MutexLock(mutex, timeout);
@@ -251,6 +269,8 @@ static inline KernelResult Kalango_MutexLock(MutexId mutex, uint32_t timeout) {
  * @note Only the mutex owner can unlock the mutex
  * @note Unlock a recursively locked mutex will return kErrorMutexALready taken
  *      until all recursive lockings will be undone
+ * @note calling this function from a ISR results in immediate
+ *      return and error
  */ 
 static inline KernelResult Kalango_MutexUnlock(MutexId mutex) {
     return MutexUnlock(mutex);
@@ -262,6 +282,8 @@ static inline KernelResult Kalango_MutexUnlock(MutexId mutex) {
  * @param mutex - id of desired mutex
  * @return kSucess on succesful deletion
  * @note Deleting a mutex will put all the waiting tasks for it on ready list
+ * @note calling this function from a ISR results in immediate
+ *      return and error
  */ 
 static inline KernelResult Kalango_MutexDelete(MutexId mutex) {
     return MutexDelete(mutex);
@@ -300,6 +322,9 @@ static inline QueueId Kalango_QueueCreate(uint32_t noof_slots,
  * @note passing KERNEL_WAIT_FOREVER as timeout will make the task block until 
  *        a slot becomes it available
  * @note passing KERNEL_NO_WAIT as timeout causes immediate return if queue is full
+ * @note calling this function from a ISR is only allowed when passing
+ *      KERNEL_NO_WAIT as timeout parameter, other cases return immediately
+ *      with error. 
  */ 
 static inline KernelResult Kalango_QueueInsert(QueueId queue, 
                                             void *data, 
@@ -321,6 +346,9 @@ static inline KernelResult Kalango_QueueInsert(QueueId queue,
  * @note passing KERNEL_WAIT_FOREVER as timeout will make the task block until 
  *        a slot becomes it available
  * @note passing KERNEL_NO_WAIT as timeout causes immediate return if queue is empty
+ * @note calling this function from a ISR is only allowed when passing
+ *      KERNEL_NO_WAIT as timeout parameter, other cases return immediately
+ *      with error.
  */ 
 static inline KernelResult Kalango_QueuePeek(QueueId queue, 
                                             void *data, 
@@ -341,6 +369,9 @@ static inline KernelResult Kalango_QueuePeek(QueueId queue,
  * @note passing KERNEL_WAIT_FOREVER as timeout will make the task block until 
  *        a slot becomes it available
  * @note passing KERNEL_NO_WAIT as timeout causes immediate return if queue is empty
+ * @note calling this function from a ISR is only allowed when passing
+ *      KERNEL_NO_WAIT as timeout parameter, other cases return immediately
+ *      with error. 
  */ 
 static inline KernelResult Kalango_QueueRemove(QueueId queue, 
                                             void *data, 
@@ -356,6 +387,8 @@ static inline KernelResult Kalango_QueueRemove(QueueId queue,
  * @return kSuccess on succesful deletion
  * @note Deleting a queue will put all waiting tasks on ready list, no valid data will
  *      be inserted or received
+ * @note calling this function from a ISR results in immediate
+ *      return and error
  */ 
 static inline KernelResult Kalango_QueueDelete(QueueId queue) {
     return QueueDelete(queue);

@@ -172,6 +172,8 @@ KernelResult MutexUnlock(MutexId mutex) {
 
 KernelResult MutexDelete(MutexId mutex) {
     ASSERT_PARAM(mutex);
+    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
+    
     Mutex *m = (Mutex *)mutex;
 
     CoreSchedulingSuspend();
