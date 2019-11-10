@@ -87,7 +87,16 @@ KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
         IrqEnable();
 
         CoreUnpendNextTask(&s->pending_tasks);
-        return CheckReschedule();
+
+        //Not need to reeschedule a new unpended task in a ISR,
+        //it will be done a single time after all ISRs
+        //get processed 
+        if(IsInsideIsr()) {
+            CoreSchedulingResume();
+            return kSuccess;
+        } else {
+            return CheckReschedule();
+        }
     }
 }
 

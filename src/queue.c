@@ -79,7 +79,17 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
         } else {
 
             CoreUnpendNextTask(&q->reader_tasks_pending);
-            return CheckReschedule();
+
+            //Not need to reeschedule a new unpended task in a ISR,
+            //it will be done a single time after all ISRs
+            //get processed 
+            if(IsInsideIsr()) {
+                CoreSchedulingResume();
+                return kSuccess;
+            } else {
+                return CheckReschedule();
+            }
+
         }
     }
 
@@ -205,7 +215,16 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
         } else {
 
             CoreUnpendNextTask(&q->writer_tasks_pending);
-            return CheckReschedule();
+            
+            //Not need to reeschedule a new unpended task in a ISR,
+            //it will be done a single time after all ISRs
+            //get processed 
+            if(IsInsideIsr()) {
+                CoreSchedulingResume();
+                return kSuccess;
+            } else {
+                return CheckReschedule();
+            }
         }
 
     }

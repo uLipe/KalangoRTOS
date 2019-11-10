@@ -163,17 +163,9 @@ void CoreSetRunning() {
 }
 
 KernelResult CoreSchedulingSuspend() {
-    if(IsInsideIsr()) {
-        return kSuccess;
-    } else {
-        return SchedulerLock(&ready_tasks_list);
-    }
+    return SchedulerLock(&ready_tasks_list);
 }
 
 KernelResult CoreSchedulingResume() {
-    if(IsInsideIsr()) {
-        return kSuccess;
-    } else {
-        return SchedulerUnlock(&ready_tasks_list);
-    }
+    return SchedulerUnlock(&ready_tasks_list);
 }

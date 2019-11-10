@@ -71,7 +71,16 @@ KernelResult TaskResume(TaskId task_id) {
     }
 
     CoreMakeTaskReady(task);
-    return (CheckReschedule());
+
+    //Not need to reeschedule a new unpended task in a ISR,
+    //it will be done a single time after all ISRs
+    //get processed 
+    if(IsInsideIsr()) {
+        CoreSchedulingResume();
+        return kSuccess;
+    } else {
+        return CheckReschedule();
+    }
 }
 
 KernelResult TaskDelete(TaskId task_id) {
@@ -104,8 +113,16 @@ uint32_t TaskSetPriority(TaskId task_id, uint32_t new_priority) {
         CoreMakeTaskReady(task);
     }
 
-    CheckReschedule();
-    return (old_prio);
+    //Not need to reeschedule a new unpended task in a ISR,
+    //it will be done a single time after all ISRs
+    //get processed 
+    if(IsInsideIsr()) {
+        CoreSchedulingResume();
+        return (old_prio);
+    } else {
+        CheckReschedule();
+        return (old_prio);
+    }
 }
 
 uint32_t TaskGetPriority(TaskId task_id) {
@@ -116,6 +133,8 @@ uint32_t TaskGetPriority(TaskId task_id) {
 }
 
 KernelResult TaskYield() {
+    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
+
     TaskControBlock *task = CoreGetCurrentTask();
     CoreMakeTaskPending(task, 0, NULL);
     CoreMakeTaskReady(task);
