@@ -143,8 +143,8 @@ KernelResult MutexUnlock(MutexId mutex) {
         m->owner = NULL;
         IrqEnable();
 
-        m->old_priority = TaskSetPriority((TaskId)current, m->old_priority);
         CoreSchedulingResume();
+        m->old_priority = TaskSetPriority((TaskId)current, m->old_priority);
         return kSuccess;
     }
 
