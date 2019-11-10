@@ -97,9 +97,10 @@ uint32_t TaskSetPriority(TaskId task_id, uint32_t new_priority) {
     task->priority = new_priority;
     IrqEnable();
 
-    if(!task->state) {
+    if(task->state == TASK_STATE_READY) {
         //Force ready task to be moved to correct place on ready queue;
         //Suspended task will be moved once the pending condition terminates
+        CoreMakeTaskPending(task, 0, NULL);
         CoreMakeTaskReady(task);
     }
 
@@ -116,6 +117,7 @@ uint32_t TaskGetPriority(TaskId task_id) {
 
 KernelResult TaskYield() {
     TaskControBlock *task = CoreGetCurrentTask();
+    CoreMakeTaskPending(task, 0, NULL);
     CoreMakeTaskReady(task);
     CheckReschedule();
     return (kSuccess);

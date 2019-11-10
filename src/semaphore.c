@@ -82,14 +82,11 @@ KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
         CoreSchedulingResume();
         return kSuccess;
     } else {
-        
-        TaskControBlock *task = ScheduleTaskSet(&s->pending_tasks);
-        RemoveTimeout(&task->timeout);
-        CoreMakeTaskReady(task);
         IrqDisable();
         s->count--;
         IrqEnable();
 
+        CoreUnpendNextTask(&s->pending_tasks);
         return CheckReschedule();
     }
 }
