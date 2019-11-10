@@ -116,6 +116,8 @@ KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
 
 KernelResult MutexUnlock(MutexId mutex) {
     ASSERT_PARAM(mutex);
+    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
+
     Mutex *m = (Mutex *)mutex;
 
     CoreSchedulingSuspend();
