@@ -276,6 +276,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
 
 KernelResult QueueDelete(QueueId queue) {
     ASSERT_PARAM(queue);
+    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
 
     Queue *q = (Queue *)queue;
 

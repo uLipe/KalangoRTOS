@@ -102,6 +102,7 @@ KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
 
 KernelResult SemaphoreDelete (SemaphoreId semaphore) {
     ASSERT_PARAM(semaphore);
+    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
     Semaphore * s = (Semaphore *)semaphore;
 
     CoreSchedulingSuspend();
