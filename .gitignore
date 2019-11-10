@@ -1,12 +1,6 @@
-.vscode/
+.vscode
 *.o
 *.hex
 *.elf
-*.su
-*.d
 *.bin
-/Debug/
-/Release/
-/build/
-*.build
-*.ninja_log
+examples/nrf52_examples/build/*
