@@ -6,7 +6,7 @@ objcopy = find_program('arm-none-eabi-objcopy')
 
 cputype = 'cortex-m4'
 cpudefine = 'nrf52'
-kalango_path = '../..'
+kalango_path = '../../..'
 
 kernel_sources =  []
 arch_sources = []
@@ -19,7 +19,7 @@ target_includes += [
    include_directories(kalango_path + '/include'),
    include_directories(kalango_path + '/ext/cmsis'),
    include_directories(kalango_path + '/examples/kernel_examples'),
-   include_directories('mdk'),
+   include_directories('../mdk'),
    include_directories('config'),
 ]
 
@@ -33,12 +33,12 @@ arch_sources += files(
 )
 
 nrf52_sources += files(
-   'common_src/gcc_startup_nrf52833.S',
-   'common_src/system_nrf52833.c',
+   '../common_src/gcc_startup_nrf52833.S',
+   '../common_src/system_nrf52833.c',
 )
 
 app_sources += files(
-   'blink/main.c',
+   'main.c',
    kalango_path + '/examples/kernel_examples/task_sample.c',
    kalango_path + '/examples/kernel_examples/mutex_sample.c',
    kalango_path + '/examples/kernel_examples/queue_sample.c',
@@ -56,7 +56,7 @@ cargs =  [
    '-mabi=aapcs',
    '-Wall', 
    '-Werror',
-   '-O0', 
+   '-O3', 
    '-g3',
    '-mfloat-abi=hard',
    '-mfpu=fpv4-sp-d16',
@@ -70,7 +70,7 @@ cargs =  [
 linkargs =  [
    '-mthumb',
    '-mabi=aapcs',
-   '-T' + meson.current_source_dir() + '/ldscripts/nrf52832_xxaa.ld',
+   '-T' + meson.current_source_dir() + '/../ldscripts/nrf52832_xxaa.ld',
    '-mcpu=cortex-m4',
    '-mfloat-abi=hard',
    '-mfpu=fpv4-sp-d16',

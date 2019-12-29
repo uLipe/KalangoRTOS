@@ -400,6 +400,7 @@ static inline KernelResult Kalango_QueueDelete(QueueId queue) {
  * @param callback - function invoked by timer on expiration
  * @param expiry_time - ticks to count before throw the callback
  * @param  period_time - if not 0 defines ticks to periodically throw the callback
+ * @param  user_data - pointer to a user defined data if will passed to callback as param
  * @return A unique id bonded to the created timer
  * @note after created the timer is not running yet.
  * @note callbacks thrown by timers actually executes on ISR context so
@@ -407,8 +408,9 @@ static inline KernelResult Kalango_QueueDelete(QueueId queue) {
  */ 
 static inline TimerId Kalango_TimerCreate(TimerCallback callback, 
                                         uint32_t expiry_time, 
-                                        uint32_t period_time) {
-    return TimerCreate(callback, expiry_time, period_time);
+                                        uint32_t period_time,
+                                        void* user_data) {
+    return TimerCreate(callback, expiry_time, period_time, user_data);
 }
 
 /**

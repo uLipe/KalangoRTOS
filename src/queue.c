@@ -56,7 +56,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
 
     if(!q->full) {
 
-        uint32_t write_loc = q->tail;
+        uint32_t write_loc = q->tail * q->slot_size;
         
         q->empty = false;
         memcpy(&q->buffer[write_loc], data, data_size);
@@ -66,8 +66,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
             q->available_slots--;
         IrqEnable();
 
-        write_loc = ((write_loc + 1) % (q->noof_slots)) * q->slot_size;
-        q->tail = write_loc;
+        q->tail = ((q->tail + 1) % (q->noof_slots));
 
         if(!q->available_slots){
             q->full = true;
@@ -114,7 +113,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
         CoreSchedulingResume();
         return kErrorTimeout;
     } else {
-        uint32_t write_loc = q->tail;
+        uint32_t write_loc = q->tail * q->slot_size;
         
         q->empty = false;
         memcpy(&q->buffer[write_loc], data, data_size);
@@ -124,8 +123,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
             q->available_slots--;
         IrqEnable();
 
-        write_loc = ((write_loc + 1) % (q->noof_slots)) * q->slot_size;
-        q->tail = write_loc;
+        q->tail = ((q->tail + 1) % (q->noof_slots));
 
         if(!q->available_slots){
             q->full = true;
@@ -146,7 +144,7 @@ KernelResult QueuePeek(QueueId queue, void *data, uint32_t *data_size, uint32_t 
     CoreSchedulingSuspend();
     
     if(!q->empty) {
-        uint32_t read_loc = q->head;
+        uint32_t read_loc = q->head * q->slot_size;
         memcpy(data, &q->buffer[read_loc], q->slot_size);
         CoreSchedulingResume();
         return kSuccess;
@@ -191,12 +189,12 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
     CoreSchedulingSuspend();
 
     if(!q->empty) {
-        uint32_t read_loc = q->head;
+        uint32_t read_loc = q->head * q->slot_size;
         
         q->full = false;
         memcpy(data, &q->buffer[read_loc], q->slot_size);
 
-        read_loc = ((read_loc + 1) % q->slot_size) * q->slot_size;
+        q->head = ((q->head + 1) % q->slot_size);
 
         IrqDisable();
         if(q->available_slots < 0xFFFFFFFF)
@@ -251,12 +249,12 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
         return kErrorTimeout;
     } else {
 
-        uint32_t read_loc = q->head;
+        uint32_t read_loc = q->head * q->slot_size;
         
         q->full = false;
         memcpy(data, &q->buffer[read_loc], q->slot_size);
 
-        read_loc = ((read_loc + 1) % q->slot_size) * q->slot_size;
+        read_loc = ((read_loc + 1) % q->slot_size);
 
         IrqDisable();
         if(q->available_slots < 0xFFFFFFFF)
