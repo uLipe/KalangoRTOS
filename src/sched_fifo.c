@@ -2,7 +2,12 @@
 
 
 bool IsSchedulerLocked(TaskPriorityList *taskset) {
-    return ((taskset->lock_level == 0) ? false : true);
+
+    IrqDisable();
+    bool result = ((taskset->lock_level == 0) ? false : true); 
+    IrqEnable();
+
+    return result;
 }
 
 KernelResult SchedulerLock(TaskPriorityList *taskset) {
@@ -35,29 +40,40 @@ TaskControBlock *ScheduleTaskSet(TaskPriorityList *taskset) {
         return NULL;
     } 
 
+    IrqDisable();
+
     uint8_t top_priority = (31 - ArchCountLeadZeros(taskset->ready_task_bitmap));
     sys_dnode_t *node = NULL;
     TaskControBlock *top_priority_task = NULL;
 
-    IrqDisable();
     node = sys_dlist_peek_head(&taskset->task_list[top_priority]);
+    top_priority_task = CONTAINER_OF(node, TaskControBlock, ready_node);
+
     IrqEnable();
 
-    top_priority_task = CONTAINER_OF(node, TaskControBlock, ready_node);
     return (top_priority_task);
 }
 
 void SchedulerInitTaskPriorityList(TaskPriorityList *list) {
+    IrqDisable();
+    
     for(uint32_t i = 0; i < CONFIG_PRIORITY_LEVELS; i++) {
         sys_dlist_init(&list->task_list[i]);
     }
     list->ready_task_bitmap = 0;
     list->lock_level = 0;
+
+    IrqEnable();
 }
 
 bool NothingToSched(TaskPriorityList *list) {
     ASSERT_PARAM(list);
-    return (list->ready_task_bitmap == 0 ? true : false );
+
+    IrqDisable();
+    bool result =  (list->ready_task_bitmap == 0 ? true : false );
+    IrqEnable();
+
+    return result;
 }
 
 KernelResult SchedulerSetPriority(TaskPriorityList *list, uint32_t priority) {
@@ -65,14 +81,9 @@ KernelResult SchedulerSetPriority(TaskPriorityList *list, uint32_t priority) {
     ASSERT_PARAM(priority < CONFIG_PRIORITY_LEVELS);
 
     IrqDisable();
-    if(!sys_dlist_is_empty(&list->task_list[priority])) {
-        list->ready_task_bitmap |= (1 << priority);
-        IrqEnable();
-        return kSuccess;
-    } else {
-        IrqEnable();
-        return kErrorBufferEmpty;
-    }
+    list->ready_task_bitmap |= (1 << priority);
+    IrqEnable();
+    return kSuccess;
 }
 
 KernelResult SchedulerResetPriority(TaskPriorityList *list, uint32_t priority) {

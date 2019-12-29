@@ -32,14 +32,11 @@ KernelResult SemaphoreTake(SemaphoreId semaphore, uint32_t timeout) {
     ASSERT_PARAM(semaphore);
     ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
 
+    CoreSchedulingSuspend();
     Semaphore * s = (Semaphore *)semaphore;
 
-    CoreSchedulingSuspend();
     if(s->count) {
-        IrqDisable();
         s->count--;
-        IrqEnable();
-
         CoreSchedulingResume();
         return kSuccess;
     }
@@ -49,11 +46,9 @@ KernelResult SemaphoreTake(SemaphoreId semaphore, uint32_t timeout) {
         CoreMakeTaskPending(task, TASK_STATE_PEND_SEMAPHORE, &s->pending_tasks);
         AddTimeout(&task->timeout, timeout, NULL, NULL, true, &s->pending_tasks);
         CheckReschedule();
-        CoreSchedulingSuspend();
 
         //Still locked or expired:
         if(task->timeout.expired) {
-            CoreSchedulingResume();
             return kErrorTimeout;
         }
         return kSuccess;
@@ -68,29 +63,23 @@ KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
     ASSERT_PARAM(semaphore);
     ASSERT_PARAM(count);
 
+    CoreSchedulingSuspend();
     Semaphore * s = (Semaphore *)semaphore;
 
-    CoreSchedulingSuspend();
-
-    IrqDisable();
     s->count += count;
     (s->count > s->limit) ? s->count = s->limit : s->count;
-    IrqEnable();
-
 
     if(NothingToSched(&s->pending_tasks)) {
         CoreSchedulingResume();
         return kSuccess;
     } else {
-        IrqDisable();
-        s->count--;
-        IrqEnable();
+        
+        if(s->count > 0) {
+            s->count--;
+        }
 
         CoreUnpendNextTask(&s->pending_tasks);
-
-        //Not need to reeschedule a new unpended task in a ISR,
-        //it will be done a single time after all ISRs
-        //get processed 
+ 
         if(IsInsideIsr()) {
             CoreSchedulingResume();
             return kSuccess;

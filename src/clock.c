@@ -67,7 +67,11 @@ KernelResult ClockStep (uint32_t ticks) {
     while(next) {
         Timeout *timeout = CONTAINER_OF(next, Timeout, timed_node);
         if(timeout->next_wakeup_tick <= tick_counter) {
+            next = sys_dlist_peek_next(&timeout_list, next);           
+
             timeout->expired = true;
+            sys_dlist_remove(&timeout->timed_node);
+
             if(!timeout->is_task) {
                 sys_dlist_prepend(&expired_list, &timeout->timed_node);
             } else {
@@ -77,15 +81,10 @@ KernelResult ClockStep (uint32_t ticks) {
                 }
                 CoreMakeTaskReady(timed_out);
             }
-            next = sys_dlist_peek_next(&timeout_list, next);
-            sys_dlist_remove(&timeout->timed_node);
-
-            
         } else {
             next = sys_dlist_peek_next(&timeout_list, next);
         }
     }
-    
 
 #if CONFIG_NOOF_TIMERS > 0
     if(!sys_dlist_is_empty(&expired_list)) {
@@ -105,6 +104,10 @@ KernelResult AddTimeout(Timeout *timeout,
     ASSERT_PARAM(timeout);
     ASSERT_PARAM(value);
     
+    if(value == KERNEL_WAIT_FOREVER){
+        return kSuccess;
+    }
+
     timeout->is_task = is_task;
     timeout->next_wakeup_tick = tick_counter + value;
     timeout->timeout_callback = timeout_callback;

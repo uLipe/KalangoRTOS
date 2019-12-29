@@ -10,86 +10,35 @@ static uint32_t isr_vectors[CONFIG_PLATFORM_NUMBER_OF_IRQS] __attribute__((align
 static TaskId task_idle_id;
 
 typedef struct {
-
-#ifdef CONFIG_HAS_FLOAT
-    uint32_t has_fpu_context;
-#endif
-
-	uint32_t r4;
-	uint32_t r5;
-	uint32_t r6;
-	uint32_t r7;
-	uint32_t r8;
-	uint32_t r9;
-	uint32_t r10;
-    uint32_t r11;
-
-#ifdef CONFIG_HAS_FLOAT
-	uint32_t s16;
-	uint32_t s17;
-	uint32_t s18;
-	uint32_t s19;
-	uint32_t s20;
-	uint32_t s21;
-	uint32_t s22;
-	uint32_t s23;
-	uint32_t s24;
-	uint32_t s25;
-	uint32_t s26;
-	uint32_t s27;
-	uint32_t s28;
-	uint32_t s29;
-	uint32_t s30;
-	uint32_t s31;
-#endif
-
-    uint32_t r0;
-    uint32_t r1;
-    uint32_t r2;
-    uint32_t r3;
-    uint32_t r12;
-    uint32_t lr;
-    uint32_t pc;
-    uint32_t xpsr;
-
-#ifdef CONFIG_HAS_FLOAT
-	uint32_t s0;
-	uint32_t s1;
-	uint32_t s2;
-	uint32_t s3;
-	uint32_t s4;
-	uint32_t s5;
-	uint32_t s6;
-	uint32_t s7;
-	uint32_t s8;
-	uint32_t s9;
-	uint32_t s10;
-	uint32_t s11;
-	uint32_t s12;
-	uint32_t s13;
-	uint32_t s14;
-	uint32_t s15;
-	uint32_t fpcsr;
-    uint32_t fp_reserved;
-#endif
-
-}ArmCortexStackFrame;
-
-
-typedef struct {
-
 #ifdef CONFIG_HAS_FLOAT
     uint32_t has_fpu_context;
 #endif
     uint32_t r4;
-	uint32_t r5;
-	uint32_t r6;
-	uint32_t r7;
-	uint32_t r8;
-	uint32_t r9;
-	uint32_t r10;
+    uint32_t r5;
+    uint32_t r6;
+    uint32_t r7;
+    uint32_t r8;
+    uint32_t r9;
+    uint32_t r10;
     uint32_t r11;
-
+#ifdef CONFIG_HAS_FLOAT
+    uint32_t s16;
+    uint32_t s17;
+    uint32_t s18;
+    uint32_t s19;
+    uint32_t s20;
+    uint32_t s21;
+    uint32_t s22;
+    uint32_t s23;
+    uint32_t s24;
+    uint32_t s25;
+    uint32_t s26;
+    uint32_t s27;
+    uint32_t s28;
+    uint32_t s29;
+    uint32_t s30;
+    uint32_t s31;
+#endif
     uint32_t r0;
     uint32_t r1;
     uint32_t r2;
@@ -98,7 +47,48 @@ typedef struct {
     uint32_t lr;
     uint32_t pc;
     uint32_t xpsr;
+#ifdef CONFIG_HAS_FLOAT
+    uint32_t s0;
+    uint32_t s1;
+    uint32_t s2;
+    uint32_t s3;
+    uint32_t s4;
+    uint32_t s5;
+    uint32_t s6;
+    uint32_t s7;
+    uint32_t s8;
+    uint32_t s9;
+    uint32_t s10;
+    uint32_t s11;
+    uint32_t s12;
+    uint32_t s13;
+    uint32_t s14;
+    uint32_t s15;
+    uint32_t fpcsr;
+    uint32_t fp_reserved;
+#endif
+}ArmCortexStackFrame;
 
+typedef struct {
+#ifdef CONFIG_HAS_FLOAT
+    uint32_t has_fpu_context;
+#endif
+    uint32_t r4;
+    uint32_t r5;
+    uint32_t r6;
+    uint32_t r7;
+    uint32_t r8;
+    uint32_t r9;
+    uint32_t r10;
+    uint32_t r11;
+    uint32_t r0;
+    uint32_t r1;
+    uint32_t r2;
+    uint32_t r3;
+    uint32_t r12;
+    uint32_t lr;
+    uint32_t pc;
+    uint32_t xpsr;
 }ArmCortexStackFrameInitial;
 
 #if defined(CONFIG_ARCH_ARM_V7M_VARIANT_M3)
@@ -200,9 +190,8 @@ KernelResult ArchInitializeSpecifics() {
 #endif
     
     SCB->CCR |= 0x200;
-
     IrqInstallHandler((uint32_t)(&DoStartKernel), SVCall_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 8);
-    IrqInstallHandler((uint32_t)(&ClockIsr), SysTick_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 4);
+    IrqInstallHandler((uint32_t)(&ClockIsr), SysTick_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 8);
     IrqInstallHandler((uint32_t)(&DoContextSwitch), PendSV_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 1);
     SysTick_Config(CONFIG_PLATFORM_SYS_CLOCK_HZ/CONFIG_TICKS_PER_SEC);
 
@@ -239,9 +228,9 @@ KernelResult ArchNewTask(TaskControBlock *task, uint8_t *stack_base, uint32_t st
 
     IrqDisable();
 
-    uint8_t *aligned_stack  = (stack_base + stack_size);
+    //Stack must be aligned to to 8-byte boundary
+    uint8_t *aligned_stack  = (uint8_t *)((uint32_t)(stack_base + stack_size - 1) & ~0x07);
     aligned_stack -= sizeof(ArmCortexStackFrameInitial);
-
     ArmCortexStackFrameInitial *frame = (ArmCortexStackFrameInitial *)(aligned_stack);
 
     frame->r0 = (uint32_t)task->arg1;
@@ -252,7 +241,6 @@ KernelResult ArchNewTask(TaskControBlock *task, uint8_t *stack_base, uint32_t st
 #if CONFIG_HAS_FLOAT 
     frame->has_fpu_context = 0;
 #endif    
-
     frame->r1 = 0xAAAAAAAA;
     frame->r2 = 0xAAAAAAAA;
     frame->r3 = 0xAAAAAAAA;
@@ -264,11 +252,9 @@ KernelResult ArchNewTask(TaskControBlock *task, uint8_t *stack_base, uint32_t st
     frame->r9 = 0xAAAAAAAA;
     frame->r10 = 0xAAAAAAAA;
     frame->r11 = 0xAAAAAAAA;
-
     task->stackpointer = aligned_stack;
-
+    
     IrqEnable();
-
     return kSuccess;
 }
 

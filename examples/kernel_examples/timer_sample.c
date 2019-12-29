@@ -10,7 +10,7 @@ struct UserData {
 static struct UserData user_data;
 
 static void OnTimerExpire(void *arg) {
-    struct UserData *data = CONTAINER_OF(arg, struct UserData, timer);
+    struct UserData *data = arg;
     Kalango_SemaphoreGive(data->sync, 1);
     (void)data->timer;
 }
@@ -18,7 +18,7 @@ static void OnTimerExpire(void *arg) {
 static void DemoTask1(void *arg) {
     uint32_t ticks = 0;
     user_data.sync = Kalango_SemaphoreCreate(0, 1);
-    user_data.timer = Kalango_TimerCreate(OnTimerExpire, 500, 500);
+    user_data.timer = Kalango_TimerCreate(OnTimerExpire, 500, 500, &user_data);
     
     Kalango_TimerStart(user_data.timer);
     for(;;) {

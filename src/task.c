@@ -27,8 +27,6 @@ TaskId TaskCreate(TaskSettings *settings) {
     task->arg1 = settings->arg;
     task->stackpointer = settings->stack_area;
     task->stack_size = settings->stack_size;
-
-    task->asserted_signals = 0;
     task->state = 0;
     
     KernelResult r = ArchNewTask(task, task->stackpointer, task->stack_size);
@@ -100,16 +98,12 @@ uint32_t TaskSetPriority(TaskId task_id, uint32_t new_priority) {
     TaskControBlock *task = (TaskControBlock *)task_id;
     CoreSchedulingSuspend();
 
-    uint32_t old_prio = task->priority;
-    
-    IrqDisable();
-    task->priority = new_priority;
-    IrqEnable();
-
+    uint32_t old_prio = task->priority;    
     if(task->state == TASK_STATE_READY) {
         //Force ready task to be moved to correct place on ready queue;
         //Suspended task will be moved once the pending condition terminates
-        CoreMakeTaskPending(task, 0, NULL);
+        CoreMakeTaskPending(task, TASK_STATE_SUPENDED, NULL);
+        task->priority = new_priority;
         CoreMakeTaskReady(task);
     }
 

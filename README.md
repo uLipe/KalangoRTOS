@@ -23,14 +23,14 @@ figure here.
 - Samples included for popular boards;
 
 # Limitations:
-- Not fully (yet) tested, please keep in mind this is an experimental project;
+- Please keep in mind this is an experimental project;
 - Intended to support popular 32bit microcontrollers, no plan to support 8-bit platforms;
 - Most of the code are written with GCC or CLang in mind;
 - No C++ support;
 - It was designed to take advantage of exisiting manufacturers microcontroller abstraction libraries
 such CMSIS and NRFx;
 - Documentation is in development (the code was written to be expressive as possible);
-- No delta list for O(1) tick handling, timer callbacks are deffered from ISR;
+- Timer callbacks are deffered from ISR;
 
 # Getting started:
 - First get this respository and all the submodules:
@@ -40,7 +40,7 @@ such CMSIS and NRFx;
 
 - The best way to get started is to using one of sample projects provided under examples folder:
  ```
- $ cd Kalango/examples/nrf52_examples
+ $ cd Kalango/examples/nrf52_examples/blink
  ```
  - To play with the demos you will need the meson build system;
  - The meson.build file by default will build the blink demo, you can add your own code and modify it;

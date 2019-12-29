@@ -1,7 +1,7 @@
 #include <timer.h>
 #if CONFIG_NOOF_TIMERS > 0
 
-TimerId TimerCreate(TimerCallback callback, uint32_t expiry_time, uint32_t period_time) {
+TimerId TimerCreate(TimerCallback callback, uint32_t expiry_time, uint32_t period_time, void *user_data) {
     ASSERT_KERNEL(callback, NULL);
     ASSERT_KERNEL(expiry_time, NULL);
 
@@ -17,7 +17,8 @@ TimerId TimerCreate(TimerCallback callback, uint32_t expiry_time, uint32_t perio
     timer->expired=false;
     timer->running=false;
     timer->expiry_time = expiry_time;
-    
+    timer->user_data = user_data;
+
     if(period_time) {
         timer->period_time = period_time;
         timer->periodic = true;
@@ -38,7 +39,7 @@ KernelResult TimerStart(TimerId timer) {
     KernelResult result = RemoveTimeout(&t->timeout);
     
     if(result == kSuccess) {
-        result = AddTimeout(&t->timeout, t->expiry_time, t->callback, t, false, NULL);    
+        result = AddTimeout(&t->timeout, t->expiry_time, t->callback, t->user_data, false, NULL);    
         if(result == kSuccess) {
             t->expired = false;
             t->running = true;

@@ -42,10 +42,7 @@ KernelResult MutexTryLock(MutexId mutex)  {
         return kStatusMutexAlreadyTaken;
     }
 
-
-    IrqDisable();
     m->owned = true;
-    IrqEnable();
 
     if(m->recursive_taking_count < 0xFFFFFFFF)
         m->recursive_taking_count++;
@@ -73,9 +70,7 @@ KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
     CoreSchedulingSuspend();
 
     if(!m->owned) {
-        IrqDisable();
         m->owned = true;
-        IrqEnable();
 
         if(m->recursive_taking_count < 0xFFFFFFFF)
             m->recursive_taking_count++;
@@ -90,7 +85,8 @@ KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
             //Dont bump the priority if it already higher than mutex priority
             m->old_priority = TaskGetPriority((TaskId)task);
         }
-        return kSuccess;
+
+        return CheckReschedule();
     }   
 
     if(timeout != KERNEL_NO_WAIT) {
@@ -98,16 +94,13 @@ KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
         CoreMakeTaskPending(task, TASK_STATE_PEND_MUTEX, &m->pending_tasks);
         AddTimeout(&task->timeout, timeout, NULL, NULL, true, &m->pending_tasks);
         CheckReschedule();
-        CoreSchedulingSuspend();
 
         //Still locked?
         if(task->timeout.expired) {
-            CoreSchedulingResume();
             return kErrorTimeout;
         } else {
             return kSuccess;
         }
-
     } else {
         CoreSchedulingResume();
         return kStatusMutexAlreadyTaken;
@@ -124,13 +117,12 @@ KernelResult MutexUnlock(MutexId mutex) {
     TaskControBlock *current = CoreGetCurrentTask();
 
     if(current != (TaskControBlock *)m->owner) {
+        CoreSchedulingResume();
         return kErrorInvalidMutexOwner;
     }
 
     if(m->recursive_taking_count) {
-        IrqDisable();
         m->recursive_taking_count--;
-        IrqEnable();
     }
 
     if(m->recursive_taking_count != 0) {
@@ -140,13 +132,12 @@ KernelResult MutexUnlock(MutexId mutex) {
 
  
    if(NothingToSched(&m->pending_tasks)) {
-        IrqDisable();
         m->owned = false;
         m->owner = NULL;
-        IrqEnable();
 
-        CoreSchedulingResume();
         m->old_priority = TaskSetPriority((TaskId)current, m->old_priority);
+        CheckReschedule();
+
         return kSuccess;
     }
 

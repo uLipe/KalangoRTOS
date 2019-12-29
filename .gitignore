@@ -3,4 +3,4 @@
 *.hex
 *.elf
 *.bin
-examples/nrf52_examples/build/*
+build

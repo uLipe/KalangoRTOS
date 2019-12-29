@@ -22,17 +22,11 @@ typedef struct {
     void (*entry_point) (void *);
     void *arg1;
     uint32_t priority;
-    uint32_t pending_signals;
-    uint32_t asserted_signals;
     uint32_t state;
-    sys_dnode_t ready_node;
-    sys_dnode_t pending_node;
-    sys_dnode_t installed_node;
-    sys_dnode_t deinstall_node;
     Timeout timeout;
+    sys_dnode_t ready_node;
     sys_dnode_t pool_node;
 } TaskControBlock;
-
 
 typedef struct {
     uint32_t count;
