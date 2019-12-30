@@ -1,5 +1,5 @@
 #include <semaphore.h>
-#if CONFIG_NOOF_SEMAPHORES > 0
+#if CONFIG_ENABLE_SEMAPHORES > 0
 
 SemaphoreId SemaphoreCreate(uint32_t initial, uint32_t limit) {
     ASSERT_KERNEL(limit, NULL);

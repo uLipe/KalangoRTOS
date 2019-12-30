@@ -55,7 +55,6 @@ KernelResult FreeTaskObject(TaskControBlock *self) {
     return kSuccess;
 }
 
-#if CONFIG_NOOF_SEMAPHORES > 0
 Semaphore *AllocateSemaphoreObject() {
 
     Semaphore *semaphore = NULL;
@@ -68,9 +67,7 @@ KernelResult FreeSemaphoreObject(Semaphore *self) {
     FreeKernelBlock(&block->pool_node);
     return kSuccess;
 }
-#endif
 
-#if CONFIG_NOOF_MUTEXES > 0 
 Mutex *AllocateMutexObject() {
 
     Mutex *mutex = NULL;
@@ -83,9 +80,7 @@ KernelResult FreeMutexObject(Mutex *self) {
     FreeKernelBlock(&block->pool_node);
     return kSuccess;
 }
-#endif
 
-#if CONFIG_NOOF_TIMERS > 0
 Timer *AllocateTimerObject() {
 
     Timer *timer = NULL;
@@ -99,9 +94,7 @@ KernelResult FreeTimerObject(Timer *self) {
     FreeKernelBlock(&block->pool_node);
     return kSuccess;
 }
-#endif
 
-#if CONFIG_NOOF_QUEUES > 0
 Queue *AllocateQueueObject() {
 
     Queue *queue = NULL;
@@ -115,4 +108,3 @@ KernelResult FreeQueueObject(Queue *self) {
     FreeKernelBlock(&block->pool_node);
     return kSuccess;
 }
-#endif

@@ -3,7 +3,7 @@
 static sys_dlist_t timeout_list = SYS_DLIST_STATIC_INIT(&timeout_list);
 static uint32_t tick_counter = 0;
 
-#if CONFIG_NOOF_TIMERS > 0
+#if CONFIG_ENABLE_TIMERS > 0
 static KernelResult HandleExpiredTimers(sys_dlist_t *expired_list) {
 
     sys_dnode_t *next = sys_dlist_peek_head(expired_list);
@@ -86,7 +86,7 @@ KernelResult ClockStep (uint32_t ticks) {
         }
     }
 
-#if CONFIG_NOOF_TIMERS > 0
+#if CONFIG_ENABLE_TIMERS > 0
     if(!sys_dlist_is_empty(&expired_list)) {
         return HandleExpiredTimers(&expired_list);
     }
