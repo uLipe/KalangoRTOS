@@ -130,7 +130,7 @@ KernelResult TaskYield() {
     ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
 
     TaskControBlock *task = CoreGetCurrentTask();
-    CoreMakeTaskPending(task, 0, NULL);
+    CoreMakeTaskPending(task, TASK_STATE_SUPENDED, NULL);
     CoreMakeTaskReady(task);
     CheckReschedule();
     return (kSuccess);
