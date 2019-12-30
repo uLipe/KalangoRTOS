@@ -18,6 +18,7 @@ target_includes = []
 target_includes += [
    include_directories(kalango_path + '/include'),
    include_directories(kalango_path + '/ext/cmsis'),
+   include_directories(kalango_path + '/ext/nrfx'),
    include_directories(kalango_path + '/examples/kernel_examples'),
    include_directories('../mdk'),
    include_directories('config'),
