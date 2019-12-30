@@ -1,9 +1,5 @@
 #include <task.h>
 
-#if CONFIG_NOOF_TASKS < 2 
-    #error "The kernel needs at least 1 user plus 1 kernel tcbs, check config file"
-#endif    
-
 TaskId TaskCreate(TaskSettings *settings) {
     ASSERT_KERNEL(settings, NULL);
     ASSERT_KERNEL(settings->function,NULL);
