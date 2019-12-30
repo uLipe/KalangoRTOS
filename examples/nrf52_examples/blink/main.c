@@ -1,6 +1,6 @@
 #include <kalango_api.h>
 #include <kernel_samples.h>
-#include <nrf.h>
+#include <nrfx.h>
 
 #define LED1_PIN 0x02
 #define LED2_PIN 0x03
