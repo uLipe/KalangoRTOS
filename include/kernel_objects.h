@@ -1,5 +1,9 @@
 #pragma once 
 
+#ifndef CONFIG_KERNEL_BLOCKS
+#define CONFIG_KERNEL_BLOCKS 16
+#endif
+
 typedef struct {
     sys_dlist_t task_list[CONFIG_PRIORITY_LEVELS];
     uint32_t ready_task_bitmap;
@@ -25,14 +29,12 @@ typedef struct {
     uint32_t state;
     Timeout timeout;
     sys_dnode_t ready_node;
-    sys_dnode_t pool_node;
 } TaskControBlock;
 
 typedef struct {
     uint32_t count;
     uint32_t limit;
     TaskPriorityList pending_tasks;
-    sys_dnode_t pool_node;
 }Semaphore;
 
 typedef struct {
@@ -41,7 +43,6 @@ typedef struct {
     uint32_t recursive_taking_count;
     uint32_t old_priority;
     TaskPriorityList pending_tasks;
-    sys_dnode_t pool_node;
 }Mutex;
 
 typedef struct {
@@ -53,7 +54,6 @@ typedef struct {
     uint32_t expiry_time;
     uint32_t period_time;
     Timeout timeout;
-    sys_dnode_t pool_node;
 }Timer;
 
 typedef struct {
@@ -67,5 +67,4 @@ typedef struct {
     bool empty;
     TaskPriorityList writer_tasks_pending;
     TaskPriorityList reader_tasks_pending;
-    sys_dnode_t pool_node;
 } Queue;

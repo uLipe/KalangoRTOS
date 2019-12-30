@@ -160,7 +160,9 @@ typedef struct {
 #endif
 
 static void SpuriousIsr(void) {
+#ifdef CONFIG_DEBUG_KERNEL    
     __asm volatile("  bkpt 0 \n");
+#endif    
 }
 
 static void ClockIsr(void) {
