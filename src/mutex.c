@@ -1,6 +1,6 @@
 #include <mutex.h>
 
-#if CONFIG_NOOF_MUTEXES > 0
+#if CONFIG_ENABLE_MUTEXES > 0
 
 MutexId MutexCreate(){
 

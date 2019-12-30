@@ -1,5 +1,5 @@
 #include <queue.h>
-#if CONFIG_NOOF_QUEUES > 0
+#if CONFIG_ENABLE_QUEUES > 0
 
 QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size, uint8_t *buffer) {
     ASSERT_KERNEL(noof_slots, NULL);

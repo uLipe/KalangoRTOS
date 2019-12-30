@@ -2,11 +2,11 @@
 
 #define CONFIG_TICKS_PER_SEC                1000
 
-#define CONFIG_NOOF_TASKS                   1
-#define CONFIG_NOOF_SEMAPHORES              1
-#define CONFIG_NOOF_MUTEXES                 1
-#define CONFIG_NOOF_QUEUES                  1
-#define CONFIG_NOOF_TIMERS                  1
+#define CONFIG_ENABLE_TASKS                   1
+#define CONFIG_ENABLE_SEMAPHORES              1
+#define CONFIG_ENABLE_MUTEXES                 1
+#define CONFIG_ENABLE_QUEUES                  1
+#define CONFIG_ENABLE_TIMERS                  1
 
 #define CONFIG_KERNEL_BLOCKS                64
 

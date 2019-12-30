@@ -1,5 +1,5 @@
 #include <timer.h>
-#if CONFIG_NOOF_TIMERS > 0
+#if CONFIG_ENABLE_TIMERS > 0
 
 TimerId TimerCreate(TimerCallback callback, uint32_t expiry_time, uint32_t period_time, void *user_data) {
     ASSERT_KERNEL(callback, NULL);
