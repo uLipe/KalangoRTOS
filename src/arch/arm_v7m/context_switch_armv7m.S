@@ -1,5 +1,3 @@
-#include "../../../include/kernel_types.h"
-
 #if defined(CONFIG_ARCH_ARM_V7M)
 
         .thumb

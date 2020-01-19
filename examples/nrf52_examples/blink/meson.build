@@ -6,23 +6,36 @@ objcopy = find_program('arm-none-eabi-objcopy')
 
 cputype = 'cortex-m4'
 cpudefine = 'nrf52'
+
 kalango_path = '../../..'
-
-kernel_sources =  []
+kernel_sources = []
 arch_sources = []
-nrf52_sources =  []
-app_sources =  []
-
 target_includes = []
+log_sources = []
+lib_sources = []
 
 target_includes += [
    include_directories(kalango_path + '/include'),
    include_directories(kalango_path + '/ext/cmsis'),
    include_directories(kalango_path + '/ext/nrfx'),
+   include_directories(kalango_path + '/ext/printf'), 
+   include_directories(kalango_path + '/ext/segger'),
+   include_directories(kalango_path + '/ext/segger/rtt'),
+   include_directories(kalango_path + '/ext/segger/systemview'),
    include_directories(kalango_path + '/examples/kernel_examples'),
-   include_directories('../mdk'),
-   include_directories('config'),
 ]
+
+log_sources += files(
+   kalango_path + '/ext/segger/rtt/SEGGER_RTT.c',
+   kalango_path + '/ext/segger/rtt/SEGGER_RTT.c',
+   kalango_path + '/ext/segger/systemview/SEGGER_SYSVIEW.c',
+   kalango_path + '/ext/segger/systemview/SEGGER_SYSVIEW.c',
+   kalango_path + '/ext/printf/printf.c',
+)
+
+lib_sources += files(
+   kalango_path + '/lib/print_out.c',
+)
 
 kernel_sources += files(
    kalango_path + '/src/kalango_sources.c',
@@ -33,6 +46,16 @@ arch_sources += files(
    kalango_path + '/src/arch/arm_v7m/context_switch_armv7m.S',
 )
 
+kalango_srcs = kernel_sources + arch_sources + lib_sources + log_sources
+
+nrf52_sources =  []
+app_sources =  []
+
+target_includes += [
+   include_directories('../mdk'),
+   include_directories('config'),
+]
+
 nrf52_sources += files(
    '../common_src/gcc_startup_nrf52833.S',
    '../common_src/system_nrf52833.c',
@@ -40,16 +63,12 @@ nrf52_sources += files(
 
 app_sources += files(
    'main.c',
-   kalango_path + '/examples/kernel_examples/task_sample.c',
-   kalango_path + '/examples/kernel_examples/mutex_sample.c',
-   kalango_path + '/examples/kernel_examples/queue_sample.c',
-   kalango_path + '/examples/kernel_examples/semaphore_sample.c',
-   kalango_path + '/examples/kernel_examples/timer_sample.c',
 )
 
-srcs = kernel_sources + arch_sources + nrf52_sources + app_sources
+srcs = kalango_srcs + app_sources + nrf52_sources
 
 cargs =  [
+   '-includekalango_config.h',
    '-DNRF52',
    '-DNRF52832_XXAA',
    '-mcpu=cortex-m4',
@@ -57,7 +76,7 @@ cargs =  [
    '-mabi=aapcs',
    '-Wall', 
    '-Werror',
-   '-O3', 
+   '-O0', 
    '-g3',
    '-mfloat-abi=hard',
    '-mfpu=fpv4-sp-d16',

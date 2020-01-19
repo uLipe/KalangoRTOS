@@ -54,6 +54,15 @@ static inline uint32_t Kalango_GetCurrentTicks() {
 }
 
 /**
+ * @fn Kalango_GetCurrentTaskId
+ * @brief Return the Id of current executing task
+ * @return Id of the current task
+ */ 
+static inline TaskId Kalango_GetCurrentTaskId() {
+    return ((TaskId) CoreGetCurrentTask());
+}
+
+/**
  * @fn Kalango_Sleep
  * @brief Put current thread to sleep
  * @param ticks - ticks to keep current thread in sleep
