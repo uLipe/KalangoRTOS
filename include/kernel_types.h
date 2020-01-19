@@ -1,8 +1,5 @@
 #pragma once
 
-#include <kalango_config.h>
-
-#ifndef __ASSEMBLER__
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -79,4 +76,3 @@ typedef struct {
 #endif
 
 #define ASSERT_PARAM(x)     ASSERT_KERNEL(x, kErrorInvalidParam)
-#endif
