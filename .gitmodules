@@ -2,3 +2,8 @@
 	path = ext/nrfx
 	url = https://github.com/uLipe/nrfx.git
 	branch = master
+
+[submodule "ext/printf"]
+	path = ext/printf
+	url = https://github.com/uLipe/printf
+	branch = master
