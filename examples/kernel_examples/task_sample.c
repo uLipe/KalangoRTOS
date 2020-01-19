@@ -1,7 +1,5 @@
 #include "kernel_samples.h"
 
-static uint8_t stack_1[256];
-static uint8_t stack_2[256];
 static TaskId task_a; 
 static TaskId task_b; 
 
@@ -29,7 +27,6 @@ int TaskSample (void) {
     settings.arg = NULL;
     settings.function = DemoTask1;
     settings.priority = 8;
-    settings.stack_area = stack_1;
     settings.stack_size = 512;
 
     task_a = Kalango_TaskCreate(&settings);
@@ -37,7 +34,6 @@ int TaskSample (void) {
     settings.arg = NULL;
     settings.function = DemoTask2;
     settings.priority = 4;
-    settings.stack_area = stack_2;
     settings.stack_size = 512;
 
     task_b = Kalango_TaskCreate(&settings);

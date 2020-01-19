@@ -1,110 +1,99 @@
 #include <object_pool.h>
+#include <tlsf.h>
 
-#if CONFIG_KERNEL_BLOCKS < 1
-    #error "Kernel needs at least a single memory block"
+#ifndef CONFIG_KERNEL_HEAP_SIZE
+#warning "Heap size was not defined, defaulting to 4096 bytes"
+#define CONFIG_KERNEL_HEAP_SIZE 4096
 #endif
 
-typedef struct {
-    uint8_t block[sizeof(Queue)];
-    sys_dnode_t pool_node;
-}KernelBlock;
-
-static sys_dlist_t kernel_blocks_free = SYS_DLIST_STATIC_INIT(&kernel_blocks_free);
-static KernelBlock kernel_blocks[CONFIG_KERNEL_BLOCKS + 1];
-static bool pools_initialized = false;
+static uint8_t kernel_heap[(CONFIG_KERNEL_HEAP_SIZE + sizeof(control_t) + ALIGN_SIZE) & ~(ALIGN_SIZE - 1)];
+static tlsf_t  kernel_tlsf;
 
 KernelResult InitializeObjectPools() {
-    if(pools_initialized)
+    IrqDisable();
+    kernel_tlsf = tlsf_create_with_pool(&kernel_heap, sizeof(kernel_heap));
+    IrqEnable();
+
+    if(kernel_tlsf) {
         return kSuccess;
-
-    pools_initialized = true;
-
-    for(uint32_t i = 0; i < CONFIG_KERNEL_BLOCKS + 1; i++) {
-        sys_dlist_append(&kernel_blocks_free, &kernel_blocks[i].pool_node);
+    } else  {
+        return kErrorNotEnoughKernelMemory;
     }
+}
 
+static void *KMalloc(uint32_t size) {
+    IrqDisable();
+    void *result = tlsf_malloc(kernel_tlsf, size);
+    IrqEnable();
+
+    return result;
+}
+
+static void KFree(void *memory) {
+    IrqDisable();
+    tlsf_free(kernel_tlsf, memory);
+    IrqEnable();
+}
+
+uint8_t *AllocateRawBuffer(uint32_t size) {
+    return ((uint8_t *)KMalloc(size)); 
+}
+
+KernelResult FreeRawBuffer(uint8_t *self) {
+    KFree(self);
     return kSuccess;
 }
 
-static sys_dnode_t *AllocateKernelBlock() {
-    if(sys_dlist_is_empty(&kernel_blocks_free)){
-        return NULL;
-    }
-
-    sys_dnode_t *head = sys_dlist_peek_head(&kernel_blocks_free);
-    sys_dlist_remove(head);
-
-    return(head);
-}
-
-static void FreeKernelBlock(sys_dnode_t *pool_node) {
-    if(pool_node) {
-        sys_dlist_append(&kernel_blocks_free, pool_node);
-    }
-}
 
 TaskControBlock *AllocateTaskObject() {
-    TaskControBlock *task = NULL;
-    task = (TaskControBlock *)CONTAINER_OF(AllocateKernelBlock(), KernelBlock, pool_node);
+    TaskControBlock *task = KMalloc(sizeof(TaskControBlock));
     return (task);
 }
 
 KernelResult FreeTaskObject(TaskControBlock *self) {
-    KernelBlock *block = (KernelBlock *)self; 
-    FreeKernelBlock(&block->pool_node);
+    KFree(self);
     return kSuccess;
 }
 
 Semaphore *AllocateSemaphoreObject() {
 
-    Semaphore *semaphore = NULL;
-    semaphore = (Semaphore *)CONTAINER_OF(AllocateKernelBlock(), KernelBlock, pool_node);
+    Semaphore *semaphore = KMalloc(sizeof(Semaphore));
     return (semaphore);
 }
 
 KernelResult FreeSemaphoreObject(Semaphore *self) {
-    KernelBlock *block = (KernelBlock *)self; 
-    FreeKernelBlock(&block->pool_node);
+    KFree(self);
     return kSuccess;
 }
 
 Mutex *AllocateMutexObject() {
 
-    Mutex *mutex = NULL;
-    mutex = (Mutex *)CONTAINER_OF(AllocateKernelBlock(), KernelBlock, pool_node);
+    Mutex *mutex = KMalloc(sizeof(Mutex));
     return (mutex);
 }
 
 KernelResult FreeMutexObject(Mutex *self) {
-    KernelBlock *block = (KernelBlock *)self; 
-    FreeKernelBlock(&block->pool_node);
+    KFree(self);
     return kSuccess;
 }
 
 Timer *AllocateTimerObject() {
 
-    Timer *timer = NULL;
-    timer = (Timer *)CONTAINER_OF(AllocateKernelBlock(), KernelBlock, pool_node);
+    Timer *timer = KMalloc(sizeof(Timer));
     return (timer);
-
 }
 
 KernelResult FreeTimerObject(Timer *self) {
-    KernelBlock *block = (KernelBlock *)self; 
-    FreeKernelBlock(&block->pool_node);
+    KFree(self);
     return kSuccess;
 }
 
 Queue *AllocateQueueObject() {
-
-    Queue *queue = NULL;
-    queue = (Queue *)CONTAINER_OF(AllocateKernelBlock(), KernelBlock, pool_node);
+    Queue *queue = KMalloc(sizeof(Queue));
     return (queue);
-
 }
 
 KernelResult FreeQueueObject(Queue *self) {
-    KernelBlock *block = (KernelBlock *)self; 
-    FreeKernelBlock(&block->pool_node);
+    KFree(self);
     return kSuccess;
 }

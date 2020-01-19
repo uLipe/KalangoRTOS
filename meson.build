@@ -10,8 +10,10 @@ target_includes += [
    include_directories(kalango_path + '/ext/cmsis'),
    include_directories(kalango_path + '/ext/nrfx'),
    include_directories(kalango_path + '/ext/printf'), 
+   include_directories(kalango_path + '/ext/segger'),
    include_directories(kalango_path + '/ext/segger/rtt'),
    include_directories(kalango_path + '/ext/segger/systemview'),
+   include_directories(kalango_path + '/lib'),
    include_directories(kalango_path + '/examples/kernel_examples'),
 ]
 
@@ -25,6 +27,7 @@ log_sources += files(
 
 lib_sources += files(
    kalango_path + '/lib/print_out.c',
+   kalango_path + '/lib/tlsf.c',
 )
 
 kernel_sources += files(

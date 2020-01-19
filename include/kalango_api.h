@@ -304,7 +304,6 @@ static inline KernelResult Kalango_MutexDelete(MutexId mutex) {
  * @brief Created a message queue
  * @param noof_slots - number of slots of this queue
  * @param slot_size - the size of each slot of message queue
- * @param buffer - user allocated area where slots will be put
  * @return A unique id bonded to created queue
  * @note slot_size is in bytes
  * @note the user allocated buffer should have a size in bytes equal to:
@@ -312,9 +311,8 @@ static inline KernelResult Kalango_MutexDelete(MutexId mutex) {
  *      in crashes when queue starts to became full
  */ 
 static inline QueueId Kalango_QueueCreate(uint32_t noof_slots, 
-                                        uint32_t slot_size, 
-                                        uint8_t *buffer) {
-    return QueueCreate(noof_slots, slot_size, buffer);
+                                        uint32_t slot_size) {
+    return QueueCreate(noof_slots, slot_size);
 }
 
 /**

@@ -1,10 +1,9 @@
 #include <queue.h>
 #if CONFIG_ENABLE_QUEUES > 0
 
-QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size, uint8_t *buffer) {
+QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size) {
     ASSERT_KERNEL(noof_slots, NULL);
     ASSERT_KERNEL(slot_size, NULL);
-    ASSERT_KERNEL(buffer, NULL);
 
     CoreInit();
     CoreSchedulingSuspend();
@@ -18,14 +17,21 @@ QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size, uint8_t *buffer) {
     queue->empty = true;
     queue->noof_slots = noof_slots;
     queue->slot_size = slot_size;
-    queue->buffer = buffer;
     queue->full = false;
     queue->head = 0;
     queue->tail = 0;
     queue->available_slots = noof_slots;
 
+    queue->buffer = AllocateRawBuffer(noof_slots * slot_size);
+    if(!queue->buffer) {
+        FreeQueueObject(queue);
+        CoreSchedulingResume();
+        return NULL;
+    }
+
     KernelResult r = CoreInitializeTaskList(&queue->reader_tasks_pending);
     if(r != kSuccess) {
+        FreeRawBuffer(queue->buffer);
         FreeQueueObject(queue);
         CoreSchedulingResume();
         return NULL;
@@ -33,6 +39,7 @@ QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size, uint8_t *buffer) {
     
     r = CoreInitializeTaskList(&queue->writer_tasks_pending);
     if(r != kSuccess) {
+        FreeRawBuffer(queue->buffer);
         FreeQueueObject(queue);
         CoreSchedulingResume();
         return NULL;

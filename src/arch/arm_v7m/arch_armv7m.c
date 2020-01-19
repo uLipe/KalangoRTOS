@@ -4,7 +4,6 @@
 
 static uint32_t irq_nest_level = 0;
 static uint32_t irq_lock_level = 0;
-static uint8_t  idle_stack[CONFIG_IDLE_TASK_STACK_SIZE];
 uint32_t isr_stack[CONFIG_ISR_STACK_SIZE/4] __attribute__((aligned(8)));
 static uint32_t isr_vectors[CONFIG_PLATFORM_NUMBER_OF_IRQS] __attribute__((aligned(0x200)));
 static TaskId task_idle_id;
@@ -201,8 +200,7 @@ KernelResult ArchInitializeSpecifics() {
     settings.arg = NULL;
     settings.function = ArchIdleTask;
     settings.priority = 0;
-    settings.stack_area = idle_stack;
-    settings.stack_size = sizeof(idle_stack);
+    settings.stack_size = CONFIG_IDLE_TASK_STACK_SIZE;
     task_idle_id = TaskCreate(&settings);
 
     return kSuccess;

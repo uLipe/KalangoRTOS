@@ -4,9 +4,6 @@
 #define MESSAGE_SIZE        sizeof(MESSAGE_STRING)
 #define QUEUE_NOOF_SLOTS    1     
 
-static uint8_t stack_1[256];
-static uint8_t stack_2[256];
-static uint8_t queue_buffer[QUEUE_NOOF_SLOTS * MESSAGE_SIZE];
 QueueId queue;
 
 static void DemoTask1(void *arg) {
@@ -41,7 +38,6 @@ int QueueSample (void) {
     settings.arg = NULL;
     settings.function = DemoTask1;
     settings.priority = 8;
-    settings.stack_area = stack_1;
     settings.stack_size = 256;
 
     TaskId task_a = Kalango_TaskCreate(&settings);
@@ -50,7 +46,6 @@ int QueueSample (void) {
     settings.arg = NULL;
     settings.function = DemoTask2;
     settings.priority = 4;
-    settings.stack_area = stack_2;
     settings.stack_size = 256;
 
     TaskId task_b = Kalango_TaskCreate(&settings);
