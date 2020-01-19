@@ -1,7 +1,5 @@
 #include "kernel_samples.h"
 
-static uint8_t stack_1[256];
-
 struct UserData {
     SemaphoreId sync;
     TimerId timer;

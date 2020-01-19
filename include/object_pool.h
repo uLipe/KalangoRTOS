@@ -6,6 +6,9 @@
 
 KernelResult InitializeObjectPools();
 
+uint8_t *AllocateRawBuffer(uint32_t size);
+KernelResult FreeRawBuffer(uint8_t *self);
+
 TaskControBlock *AllocateTaskObject();
 KernelResult FreeTaskObject(TaskControBlock *self);
 

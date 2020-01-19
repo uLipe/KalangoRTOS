@@ -8,9 +8,6 @@
 #define LED2_PIN 0x03
 #define LED3_PIN 0x04
 
-static uint8_t blink1_stack[2048];
-static uint8_t blink2_stack[2048];
-static uint8_t blink3_stack[2048];
 const char * const colors[5] = {
     NULL,
     NULL,
@@ -41,7 +38,6 @@ int main(void) {
     settings.arg = (void *)LED1_PIN;
     settings.function = (TaskFunction)BlinkTask;
     settings.priority = 8;
-    settings.stack_area = blink1_stack;
     settings.stack_size = 2048;
 
     Kalango_TaskCreate(&settings);
@@ -49,7 +45,6 @@ int main(void) {
     settings.arg = (void *)LED2_PIN;
     settings.function = (TaskFunction)BlinkTask;
     settings.priority = 4;
-    settings.stack_area = blink2_stack;
     settings.stack_size = 2048;
 
     Kalango_TaskCreate(&settings);
@@ -57,7 +52,6 @@ int main(void) {
     settings.arg = (void *)LED3_PIN;
     settings.function = (TaskFunction)BlinkTask;
     settings.priority = 7;
-    settings.stack_area = blink3_stack;
     settings.stack_size = 2048;
 
     Kalango_TaskCreate(&settings);

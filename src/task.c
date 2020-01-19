@@ -3,7 +3,6 @@
 TaskId TaskCreate(TaskSettings *settings) {
     ASSERT_KERNEL(settings, NULL);
     ASSERT_KERNEL(settings->function,NULL);
-    ASSERT_KERNEL(settings->stack_area, NULL);
     ASSERT_KERNEL(settings->stack_size, NULL);
     ASSERT_KERNEL(settings->priority <= CONFIG_PRIORITY_LEVELS, NULL);
     ASSERT_KERNEL(settings->priority >= 0, NULL);
@@ -21,12 +20,19 @@ TaskId TaskCreate(TaskSettings *settings) {
     task->entry_point = settings->function;
     task->priority = settings->priority;
     task->arg1 = settings->arg;
-    task->stackpointer = settings->stack_area;
     task->stack_size = settings->stack_size;
     task->state = 0;
-    
+
+    task->stackpointer = AllocateRawBuffer(settings->stack_size);
+    if(!task->stackpointer) {
+        FreeTaskObject(task);
+        CoreSchedulingResume();
+        return NULL;   
+    }
+
     KernelResult r = ArchNewTask(task, task->stackpointer, task->stack_size);
     if(r != kSuccess) {
+        FreeRawBuffer(task->stackpointer);
         FreeTaskObject(task);
         CoreSchedulingResume();
         return NULL;

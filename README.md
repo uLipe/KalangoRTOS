@@ -19,8 +19,9 @@ figure here.
 - Interrupt management (Register, Enable and Disable);
 - Scalable, user can configure how much kernel objects application need;
 - Unlimited kernel objects and threads(limited by processor memory);
+- O(1) TLSF memory allocator,leave kernel to manage its memory;
 - Written in C with less possible assembly paths (just on context switching);
-- Samples included for popular boards;
+- Samples will be included for popular boards;
 
 # Limitations:
 - Please keep in mind this is an experimental project;

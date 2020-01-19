@@ -60,7 +60,6 @@ typedef void (*TaskFunction) (void *arg);
 
 typedef struct {
     uint32_t priority;
-    uint8_t  *stack_area;
     uint32_t stack_size;
     TaskFunction function;
     void *arg;
