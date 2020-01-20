@@ -288,6 +288,7 @@ KernelResult QueueDelete(QueueId queue) {
     CoreSchedulingSuspend();
     CoreMakeAllTasksReady(&q->writer_tasks_pending);
     CoreMakeAllTasksReady(&q->reader_tasks_pending);
+    FreeRawBuffer(q->buffer);
     FreeQueueObject(q);
 
     return  CheckReschedule();

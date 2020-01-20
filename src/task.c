@@ -90,6 +90,7 @@ KernelResult TaskDelete(TaskId task_id) {
     CoreSchedulingSuspend();
 
     CoreMakeTaskPending(task, TASK_STATE_TERMINATED, NULL);
+    
     return (CheckReschedule());
 }
 

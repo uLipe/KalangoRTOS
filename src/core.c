@@ -5,6 +5,27 @@ static TaskControBlock *next_task = NULL;
 static TaskPriorityList ready_tasks_list;
 static bool initialized = false;
 static bool is_running = false;
+static TaskId task_idle_id;
+static sys_dlist_t tasks_waiting_to_delete = SYS_DLIST_STATIC_INIT(&tasks_waiting_to_delete);
+
+static void IdleTask(void *unused) {
+    (void)unused;
+
+    for(;;) {
+        //Delete tasks waiting to termination:
+        sys_dnode_t *task_node = sys_dlist_peek_head(&tasks_waiting_to_delete);
+        if(task_node) {
+            TaskControBlock *task = CONTAINER_OF(task_node, TaskControBlock, ready_node);
+
+            IrqDisable();
+            sys_dlist_remove(&task->ready_node);
+            IrqEnable();
+
+            FreeRawBuffer(task->stackpointer);
+            FreeTaskObject(task);
+        }
+    }
+}
 
 KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, TaskPriorityList *kobject_pending_list) {
     ASSERT_PARAM(task);
@@ -19,6 +40,10 @@ KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, TaskPr
     if(kobject_pending_list) {
         sys_dlist_append(&kobject_pending_list->task_list[task->priority], &task->ready_node);
         SchedulerSetPriority(kobject_pending_list, task->priority);
+    }
+
+    if(reason & TASK_STATE_TERMINATED) {
+        sys_dlist_append(&tasks_waiting_to_delete, &task->ready_node);
     }
 
     IrqEnable();
@@ -142,7 +167,16 @@ KernelResult CoreStart() {
 #endif 
    
     ArchInitializeSpecifics();
+
+    TaskSettings settings;
+    settings.arg = NULL;
+    settings.function = IdleTask;
+    settings.priority = 0;
+    settings.stack_size = CONFIG_IDLE_TASK_STACK_SIZE;
+    task_idle_id = TaskCreate(&settings);
     
+    ASSERT_KERNEL(task_idle_id != NULL, kErrorInvalidParam);
+
     next_task = ScheduleTaskSet(&ready_tasks_list);
     ASSERT_KERNEL(next_task, kErrorInvalidKernelState);
     

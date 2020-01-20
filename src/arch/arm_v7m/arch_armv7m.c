@@ -6,7 +6,7 @@ static uint32_t irq_nest_level = 0;
 static uint32_t irq_lock_level = 0;
 uint32_t isr_stack[CONFIG_ISR_STACK_SIZE/4] __attribute__((aligned(8)));
 static uint32_t isr_vectors[CONFIG_PLATFORM_NUMBER_OF_IRQS] __attribute__((aligned(0x200)));
-static TaskId task_idle_id;
+
 
 typedef struct {
 #ifdef CONFIG_HAS_FLOAT
@@ -170,11 +170,6 @@ static void ClockIsr(void) {
     IrqLeave();
 }
 
-static void ArchIdleTask(void *arg) {
-    (void)arg;
-    for(;;);
-}
-
 KernelResult ArchInitializeSpecifics() {
     extern void DoContextSwitch(void);
     extern void DoStartKernel(void);
@@ -195,13 +190,6 @@ KernelResult ArchInitializeSpecifics() {
     IrqInstallHandler((uint32_t)(&ClockIsr), SysTick_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 8);
     IrqInstallHandler((uint32_t)(&DoContextSwitch), PendSV_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 1);
     SysTick_Config(CONFIG_PLATFORM_SYS_CLOCK_HZ/CONFIG_TICKS_PER_SEC);
-
-    TaskSettings settings;
-    settings.arg = NULL;
-    settings.function = ArchIdleTask;
-    settings.priority = 0;
-    settings.stack_size = CONFIG_IDLE_TASK_STACK_SIZE;
-    task_idle_id = TaskCreate(&settings);
 
     return kSuccess;
 }

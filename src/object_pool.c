@@ -28,7 +28,7 @@ static void *KMalloc(uint32_t size) {
     IrqEnable();
 
     if(result) {
-        kernel_heap_free_bytes -= size;
+        kernel_heap_free_bytes -= tlsf_block_size(result); 
     }
 
     return result;
