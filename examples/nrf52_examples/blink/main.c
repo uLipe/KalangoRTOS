@@ -25,8 +25,8 @@ static void BlinkTask(uint32_t led_arg) {
 
     for(;;) {
         Kalango_Sleep(200);
-        printf("%s Ticks: %d ::: Kalango thread 0x%p is blinking led: %d \n\n",
-                colors[led_arg], Kalango_GetCurrentTicks(), Kalango_GetCurrentTaskId(), led_arg);
+        printf("%s Ticks: %d ::: Heap free: %d ::: Kalango thread 0x%p is blinking led: %d \n\n",
+                colors[led_arg], Kalango_GetCurrentTicks(), GetKernelFreeBytesOnHeap(), Kalango_GetCurrentTaskId(), led_arg);
         NRF_P0->OUT ^= 1UL << led_arg;;
     }
 }

@@ -7,7 +7,8 @@
 #endif
 
 static uint8_t kernel_heap[(CONFIG_KERNEL_HEAP_SIZE + sizeof(control_t) + ALIGN_SIZE) & ~(ALIGN_SIZE - 1)];
-static tlsf_t  kernel_tlsf;
+static tlsf_t  kernel_tlsf = NULL;
+static uint32_t kernel_heap_free_bytes = CONFIG_KERNEL_HEAP_SIZE;
 
 KernelResult InitializeObjectPools() {
     IrqDisable();
@@ -26,13 +27,30 @@ static void *KMalloc(uint32_t size) {
     void *result = tlsf_malloc(kernel_tlsf, size);
     IrqEnable();
 
+    if(result) {
+        kernel_heap_free_bytes -= size;
+    }
+
     return result;
 }
 
 static void KFree(void *memory) {
     IrqDisable();
+
+    if(memory) {
+        kernel_heap_free_bytes += tlsf_block_size(memory);   
+    }
+
     tlsf_free(kernel_tlsf, memory);
     IrqEnable();
+}
+
+uint32_t GetKernelFreeBytesOnHeap() {
+    if(!kernel_tlsf) {
+        return 0;
+    } else {
+        return kernel_heap_free_bytes;
+    }
 }
 
 uint8_t *AllocateRawBuffer(uint32_t size) {
