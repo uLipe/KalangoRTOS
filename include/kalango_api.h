@@ -23,6 +23,7 @@
 #include <timer.h>
 #include <mutex.h>
 #include <irq.h>
+#include <object_pool.h>
 
 /**
  * @fn Kalango_CoreStart
@@ -60,6 +61,15 @@ static inline uint32_t Kalango_GetCurrentTicks() {
  */ 
 static inline TaskId Kalango_GetCurrentTaskId() {
     return ((TaskId) CoreGetCurrentTask());
+}
+
+/**
+ * @fn Kalango_GetHeapFreeBytes
+ * @brief Return how much free bytes from kernel heap
+ * @return free space in bytes
+ */ 
+static inline uint32_t Kalango_GetHeapFreeBytes() {
+    return GetKernelFreeBytesOnHeap();
 }
 
 /**

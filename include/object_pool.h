@@ -4,6 +4,8 @@
 #include <list.h>
 #include <irq.h>
 
+uint32_t GetKernelFreeBytesOnHeap();
+
 KernelResult InitializeObjectPools();
 
 uint8_t *AllocateRawBuffer(uint32_t size);
