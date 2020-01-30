@@ -52,6 +52,13 @@ QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size) {
 KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t timeout) {
     ASSERT_PARAM(queue);
     ASSERT_PARAM(data);
+    
+    //If called from ISR, requires a IRQ safe block
+    if(ArchInIsr()) {
+        if(!ArchGetIsrNesting()){
+            return kErrorInvalidKernelState;
+        } 
+    }
 
     Queue *q = (Queue *)queue;
     CoreSchedulingSuspend();
@@ -68,10 +75,10 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
         q->empty = false;
         memcpy(&q->buffer[write_loc], data, data_size);
 
-        IrqDisable();
+        ArchCriticalSectionEnter();
         if(q->available_slots)
             q->available_slots--;
-        IrqEnable();
+        ArchCriticalSectionExit();
 
         q->tail = ((q->tail + 1) % (q->noof_slots));
 
@@ -89,7 +96,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
             //Not need to reeschedule a new unpended task in a ISR,
             //it will be done a single time after all ISRs
             //get processed 
-            if(IsInsideIsr()) {
+            if(ArchInIsr()) {
                 CoreSchedulingResume();
                 return kSuccess;
             } else {
@@ -104,7 +111,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
         return kErrorBufferFull;
     }
 
-    if(IsInsideIsr()) {
+    if(ArchInIsr()) {
         CoreSchedulingResume();
         return kErrorInsideIsr;
     }
@@ -125,10 +132,10 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
         q->empty = false;
         memcpy(&q->buffer[write_loc], data, data_size);
 
-        IrqDisable();
+        ArchCriticalSectionEnter();
         if(q->available_slots)
             q->available_slots--;
-        IrqEnable();
+        ArchCriticalSectionExit();
 
         q->tail = ((q->tail + 1) % (q->noof_slots));
 
@@ -145,6 +152,13 @@ KernelResult QueuePeek(QueueId queue, void *data, uint32_t *data_size, uint32_t 
     ASSERT_PARAM(queue);
     ASSERT_PARAM(data);
     (void)data_size;
+
+    //If called from ISR, requires a IRQ safe block
+    if(ArchInIsr()) {
+        if(!ArchGetIsrNesting()){
+            return kErrorInvalidKernelState;
+        } 
+    }
 
     Queue *q = (Queue*)queue;
 
@@ -163,7 +177,7 @@ KernelResult QueuePeek(QueueId queue, void *data, uint32_t *data_size, uint32_t 
         return kErrorBufferEmpty;
     }
 
-    if(IsInsideIsr()) {
+    if(ArchInIsr()) {
         CoreSchedulingResume();
         return kErrorInsideIsr;
     }
@@ -191,6 +205,13 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
     ASSERT_PARAM(data);
     (void)data_size;
 
+    //If called from ISR, requires a IRQ safe block
+    if(ArchInIsr()) {
+        if(!ArchGetIsrNesting()){
+            return kErrorInvalidKernelState;
+        } 
+    }
+
     Queue *q = (Queue*)queue;
 
     CoreSchedulingSuspend();
@@ -203,11 +224,11 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
 
         q->head = ((q->head + 1) % q->slot_size);
 
-        IrqDisable();
+        ArchCriticalSectionEnter();
         if(q->available_slots < 0xFFFFFFFF)
             q->available_slots++;
         q->head = read_loc;
-        IrqEnable();
+        ArchCriticalSectionExit();
      
         if(q->available_slots >= q->noof_slots) {
             q->available_slots = q->noof_slots;
@@ -224,7 +245,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
             //Not need to reeschedule a new unpended task in a ISR,
             //it will be done a single time after all ISRs
             //get processed 
-            if(IsInsideIsr()) {
+            if(ArchInIsr()) {
                 CoreSchedulingResume();
                 return kSuccess;
             } else {
@@ -239,7 +260,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
         return kErrorBufferEmpty;
     }
 
-    if(IsInsideIsr()) {
+    if(ArchInIsr()) {
         CoreSchedulingResume();
         return kErrorInsideIsr;
     }
@@ -263,11 +284,11 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
 
         read_loc = ((read_loc + 1) % q->slot_size);
 
-        IrqDisable();
+        ArchCriticalSectionEnter();
         if(q->available_slots < 0xFFFFFFFF)
             q->available_slots++;
         q->head = read_loc;
-        IrqEnable();
+        ArchCriticalSectionExit();
      
         if(q->available_slots >= q->noof_slots) {
             q->available_slots = q->noof_slots;
@@ -281,7 +302,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
 
 KernelResult QueueDelete(QueueId queue) {
     ASSERT_PARAM(queue);
-    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
+    ASSERT_KERNEL(!ArchInIsr(), kErrorInsideIsr);
 
     Queue *q = (Queue *)queue;
 

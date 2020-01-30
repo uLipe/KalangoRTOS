@@ -54,7 +54,7 @@ KernelResult ClockStep (uint32_t ticks) {
         return kErrorInvalidKernelState;
     }
 
-    ASSERT_KERNEL(IsInsideIsr(), kErrorInvalidKernelState);
+    ASSERT_KERNEL(ArchInIsr(), kErrorInvalidKernelState);
 
     CoreManageRoundRobin();
 
@@ -117,9 +117,9 @@ KernelResult AddTimeout(Timeout *timeout,
         timeout->bonded_list = optional_list_to_bind;
     }
 
-    IrqDisable();
+    ArchCriticalSectionEnter();
     sys_dlist_append(&timeout_list, &timeout->timed_node);
-    IrqEnable();
+    ArchCriticalSectionExit();
 
     return kSuccess;
 }
@@ -127,9 +127,9 @@ KernelResult AddTimeout(Timeout *timeout,
 KernelResult RemoveTimeout(Timeout *timeout) {
     ASSERT_PARAM(timeout);
 
-    IrqDisable();
+    ArchCriticalSectionEnter();
     sys_dlist_remove(&timeout->timed_node);
-    IrqEnable();
+    ArchCriticalSectionExit();
 
     return kSuccess;
 }

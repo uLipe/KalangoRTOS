@@ -5,7 +5,7 @@ KernelResult SchedulerDoRoundRobin(TaskPriorityList *list) {
 
     uint8_t top_priority = (31 - ArchCountLeadZeros(list->ready_task_bitmap));
     
-    IrqDisable();
+    ArchCriticalSectionEnter();
     sys_dnode_t *current_head = sys_dlist_peek_head(&list->task_list[top_priority]);
     sys_dnode_t *next = sys_dlist_peek_next(&list->task_list[top_priority], current_head);
 
@@ -18,6 +18,6 @@ KernelResult SchedulerDoRoundRobin(TaskPriorityList *list) {
         sys_dlist_append(&list->task_list[top_priority], current_head);
     }
 
-    IrqEnable();
+    ArchCriticalSectionExit();
     return kSuccess;
 }

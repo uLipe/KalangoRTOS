@@ -50,7 +50,7 @@ enum tlsf_public
 	** values require more memory in the control structure. Values of
 	** 4 or 5 are typical.
 	*/
-	SL_INDEX_COUNT_LOG2 = 5,
+	SL_INDEX_COUNT_LOG2 = 4,
 };
 
 /* Private constants: do not modify. */
@@ -71,7 +71,7 @@ enum tlsf_private
 	** blocks below that size into the 0th first-level list.
 	*/
 
-	FL_INDEX_MAX = 24, //handle up to 8MB of Heap, acceptable to microcontrollers
+	FL_INDEX_MAX = 20, //handle up to 1MB of Heap, acceptable to microcontrollers
 	SL_INDEX_COUNT = (1 << SL_INDEX_COUNT_LOG2),
 	FL_INDEX_SHIFT = (SL_INDEX_COUNT_LOG2 + ALIGN_SIZE_LOG2),
 	FL_INDEX_COUNT = (FL_INDEX_MAX - FL_INDEX_SHIFT + 1),

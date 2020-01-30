@@ -2,7 +2,6 @@
 
 #include <kernel_types.h>
 #include <list.h>
-#include <irq.h>
 
 uint32_t GetKernelFreeBytesOnHeap();
 

@@ -30,7 +30,7 @@ SemaphoreId SemaphoreCreate(uint32_t initial, uint32_t limit) {
 
 KernelResult SemaphoreTake(SemaphoreId semaphore, uint32_t timeout) {
     ASSERT_PARAM(semaphore);
-    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
+    ASSERT_KERNEL(!ArchInIsr(), kErrorInsideIsr);
 
     CoreSchedulingSuspend();
     Semaphore * s = (Semaphore *)semaphore;
@@ -63,6 +63,13 @@ KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
     ASSERT_PARAM(semaphore);
     ASSERT_PARAM(count);
 
+        //If called from ISR, requires a IRQ safe block
+    if(ArchInIsr()) {
+        if(!ArchGetIsrNesting()){
+            return kErrorInvalidKernelState;
+        } 
+    }
+
     CoreSchedulingSuspend();
     Semaphore * s = (Semaphore *)semaphore;
 
@@ -80,7 +87,7 @@ KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
 
         CoreUnpendNextTask(&s->pending_tasks);
  
-        if(IsInsideIsr()) {
+        if(ArchInIsr()) {
             CoreSchedulingResume();
             return kSuccess;
         } else {
@@ -91,7 +98,7 @@ KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
 
 KernelResult SemaphoreDelete (SemaphoreId semaphore) {
     ASSERT_PARAM(semaphore);
-    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
+    ASSERT_KERNEL(!ArchInIsr(), kErrorInsideIsr);
     Semaphore * s = (Semaphore *)semaphore;
 
     CoreSchedulingSuspend();
