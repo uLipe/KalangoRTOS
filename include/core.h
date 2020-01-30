@@ -3,7 +3,6 @@
 #include <kernel_types.h>
 #include <sched.h>
 #include <arch.h>
-#include <irq.h>
 #include <platform.h>
 
 KernelResult CoreInit();

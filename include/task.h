@@ -4,7 +4,6 @@
 #include <core.h>
 #include <sched.h>
 #include <clock.h>
-#include <irq.h>
 #include <object_pool.h>
 
 TaskId TaskCreate(TaskSettings *settings);

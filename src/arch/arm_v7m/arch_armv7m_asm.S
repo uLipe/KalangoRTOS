@@ -7,13 +7,13 @@
         .extern isr_stack
         .extern CoreTaskSwitch
         .extern CoreSetRunning
-        .global DoContextSwitch
-        .global DoStartKernel
+        .global SVC_Handler
+        .global PendSV_Handler
         .section .text
 
 /* void DoStartKernel (void) */
         .thumb_func
-DoStartKernel:
+SVC_Handler:
         ldr r0, =isr_stack
         movs r1, #CONFIG_ISR_STACK_SIZE 
         adds r0, r0, r1, lsl #2        
@@ -43,7 +43,7 @@ DoStartKernel:
 
 /* void DoContextSwitch (void) */
         .thumb_func
-DoContextSwitch:
+PendSV_Handler:
 
         /* disable interrupts during context switch */
         mrs r2, PRIMASK

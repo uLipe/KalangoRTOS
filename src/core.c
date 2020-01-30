@@ -17,9 +17,9 @@ static void IdleTask(void *unused) {
         if(task_node) {
             TaskControBlock *task = CONTAINER_OF(task_node, TaskControBlock, ready_node);
 
-            IrqDisable();
+            ArchCriticalSectionEnter();
             sys_dlist_remove(&task->ready_node);
-            IrqEnable();
+            ArchCriticalSectionExit();
 
             FreeRawBuffer(task->stackpointer);
             FreeTaskObject(task);
@@ -31,7 +31,7 @@ KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, TaskPr
     ASSERT_PARAM(task);
     ASSERT_PARAM(reason);
 
-    IrqDisable();
+    ArchCriticalSectionEnter();
     sys_dlist_remove(&task->ready_node);
     SchedulerResetPriority(&ready_tasks_list, task->priority);
 
@@ -46,7 +46,7 @@ KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, TaskPr
         sys_dlist_append(&tasks_waiting_to_delete, &task->ready_node);
     }
 
-    IrqEnable();
+    ArchCriticalSectionExit();
     return kSuccess;
 }
 
@@ -56,11 +56,11 @@ KernelResult CoreUnpendNextTask(TaskPriorityList *kobject_pending_list) {
     TaskControBlock *task = ScheduleTaskSet(kobject_pending_list);
 
     if(task) {
-        IrqDisable();
+        ArchCriticalSectionEnter();
         RemoveTimeout(&task->timeout);
         sys_dlist_remove(&task->ready_node);
         SchedulerResetPriority(kobject_pending_list, task->priority);
-        IrqEnable();
+        ArchCriticalSectionExit();
 
         return (CoreMakeTaskReady(task));
     } else {
@@ -71,13 +71,13 @@ KernelResult CoreUnpendNextTask(TaskPriorityList *kobject_pending_list) {
 KernelResult CoreMakeTaskReady(TaskControBlock * task) {
     ASSERT_PARAM(task);
 
-    IrqDisable();
+    ArchCriticalSectionEnter();
 
     task->state = TASK_STATE_READY;
     sys_dlist_append(&ready_tasks_list.task_list[task->priority], &task->ready_node);
     SchedulerSetPriority(&ready_tasks_list, task->priority);
 
-    IrqEnable();
+    ArchCriticalSectionExit();
 
     return kSuccess;
 }
@@ -85,13 +85,13 @@ KernelResult CoreMakeTaskReady(TaskControBlock * task) {
 KernelResult CoreMakeAllTasksReady(TaskPriorityList *tasks) {
     ASSERT_PARAM(tasks);
 
-    IrqDisable();
+    ArchCriticalSectionEnter();
 
     while(!NothingToSched(tasks)) {
         CoreUnpendNextTask(tasks);
     }
  
-    IrqEnable();
+    ArchCriticalSectionExit();
 
     return kSuccess;
 }
@@ -119,12 +119,7 @@ KernelResult CheckReschedule() {
 
     //Shall we switch the context?:
     if(next_task != current && (is_running)) {
-
-        if(IsInsideIsr()) {
-            return ArchSwitchFromInterrupt();
-        } else {
-            return ArchSwitchFromTask();
-        }
+        return ArchYield();
     }
     return kSuccess;
 }
@@ -145,11 +140,11 @@ KernelResult CoreInit() {
         return kSuccess;
     }
 
-    IrqDisable();
+    ArchCriticalSectionEnter();
     initialized = true;
     InitializeObjectPools();
     CoreInitializeTaskList(&ready_tasks_list);
-    IrqEnable();
+    ArchCriticalSectionExit();
     return kSuccess;
 }
 
@@ -158,7 +153,7 @@ KernelResult CoreStart() {
         return kSuccess;
     }
 
-    IrqDisable();
+    ArchCriticalSectionEnter();
 
     CoreInit();
 
@@ -181,7 +176,7 @@ KernelResult CoreStart() {
     ASSERT_KERNEL(next_task, kErrorInvalidKernelState);
     
     current = next_task;
-    IrqEnable();
+    ArchCriticalSectionExit();
     ArchStartKernel();
 
     return kSuccess;
@@ -193,7 +188,7 @@ bool IsCoreRunning() {
 
 void CoreSetRunning() {
     
-    if(!IsInsideIsr()) {
+    if(!ArchInIsr()) {
         return;
     }
 

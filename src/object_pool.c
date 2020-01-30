@@ -11,9 +11,9 @@ static tlsf_t  kernel_tlsf = NULL;
 static uint32_t kernel_heap_free_bytes = CONFIG_KERNEL_HEAP_SIZE;
 
 KernelResult InitializeObjectPools() {
-    IrqDisable();
+    ArchCriticalSectionEnter();
     kernel_tlsf = tlsf_create_with_pool(&kernel_heap, sizeof(kernel_heap));
-    IrqEnable();
+    ArchCriticalSectionExit();
 
     if(kernel_tlsf) {
         return kSuccess;
@@ -23,9 +23,9 @@ KernelResult InitializeObjectPools() {
 }
 
 static void *KMalloc(uint32_t size) {
-    IrqDisable();
+    ArchCriticalSectionEnter();
     void *result = tlsf_malloc(kernel_tlsf, size);
-    IrqEnable();
+    ArchCriticalSectionExit();
 
     if(result) {
         kernel_heap_free_bytes -= tlsf_block_size(result); 
@@ -35,14 +35,14 @@ static void *KMalloc(uint32_t size) {
 }
 
 static void KFree(void *memory) {
-    IrqDisable();
+    ArchCriticalSectionEnter();
 
     if(memory) {
         kernel_heap_free_bytes += tlsf_block_size(memory);   
     }
 
     tlsf_free(kernel_tlsf, memory);
-    IrqEnable();
+    ArchCriticalSectionExit();
 }
 
 uint32_t GetKernelFreeBytesOnHeap() {

@@ -2,7 +2,6 @@
 
 #include <kernel_types.h>
 #include <arch.h>
-#include <irq.h>
 
 bool IsSchedulerLocked(TaskPriorityList *taskset);
 KernelResult SchedulerLock(TaskPriorityList *taskset);

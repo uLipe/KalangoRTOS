@@ -6,7 +6,6 @@
 #include <clock.h>
 #include <object_pool.h>
 #include <task.h>
-#include <irq.h>
 
 MutexId MutexCreate();
 KernelResult MutexTryLock(MutexId mutex);

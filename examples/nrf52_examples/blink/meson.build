@@ -45,7 +45,7 @@ kernel_sources += files(
 
 arch_sources += files(
    kalango_path + '/src/arch/arm_v7m/arch_armv7m.c',
-   kalango_path + '/src/arch/arm_v7m/context_switch_armv7m.S',
+   kalango_path + '/src/arch/arm_v7m/arch_armv7m_asm.S',
 )
 
 kalango_srcs = kernel_sources + arch_sources + lib_sources + log_sources

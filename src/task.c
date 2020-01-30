@@ -47,6 +47,13 @@ TaskId TaskCreate(TaskSettings *settings) {
 KernelResult TaskSuspend(TaskId task_id) {
     ASSERT_PARAM(task_id);
 
+    //If called from ISR, requires a IRQ safe block
+    if(ArchInIsr()) {
+        if(!ArchGetIsrNesting()){
+            return kErrorInvalidKernelState;
+        } 
+    }
+
     TaskControBlock *task = (TaskControBlock *)task_id;
     CoreSchedulingSuspend();
 
@@ -62,6 +69,13 @@ KernelResult TaskSuspend(TaskId task_id) {
 KernelResult TaskResume(TaskId task_id) {
     ASSERT_PARAM(task_id);
 
+        //If called from ISR, requires a IRQ safe block
+    if(ArchInIsr()) {
+        if(!ArchGetIsrNesting()){
+            return kErrorInvalidKernelState;
+        } 
+    }
+
     TaskControBlock *task = (TaskControBlock *)task_id;
     CoreSchedulingSuspend();
 
@@ -75,7 +89,7 @@ KernelResult TaskResume(TaskId task_id) {
     //Not need to reeschedule a new unpended task in a ISR,
     //it will be done a single time after all ISRs
     //get processed 
-    if(IsInsideIsr()) {
+    if(ArchInIsr()) {
         CoreSchedulingResume();
         return kSuccess;
     } else {
@@ -98,6 +112,13 @@ uint32_t TaskSetPriority(TaskId task_id, uint32_t new_priority) {
     ASSERT_KERNEL(task_id, 0xFFFFFFFF);
     ASSERT_KERNEL(new_priority < CONFIG_PRIORITY_LEVELS, 0xFFFFFFFF);
 
+    //If called from ISR, requires a IRQ safe block
+    if(ArchInIsr()) {
+        if(!ArchGetIsrNesting()){
+            return kErrorInvalidKernelState;
+        } 
+    }
+
     TaskControBlock *task = (TaskControBlock *)task_id;
     CoreSchedulingSuspend();
 
@@ -113,7 +134,7 @@ uint32_t TaskSetPriority(TaskId task_id, uint32_t new_priority) {
     //Not need to reeschedule a new unpended task in a ISR,
     //it will be done a single time after all ISRs
     //get processed 
-    if(IsInsideIsr()) {
+    if(ArchInIsr()) {
         CoreSchedulingResume();
         return (old_prio);
     } else {
@@ -130,7 +151,7 @@ uint32_t TaskGetPriority(TaskId task_id) {
 }
 
 KernelResult TaskYield() {
-    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
+    ASSERT_KERNEL(!ArchInIsr(), kErrorInsideIsr);
 
     TaskControBlock *task = CoreGetCurrentTask();
     CoreMakeTaskPending(task, TASK_STATE_SUPENDED, NULL);

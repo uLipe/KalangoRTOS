@@ -4,9 +4,8 @@
 
 static uint32_t irq_nest_level = 0;
 static uint32_t irq_lock_level = 0;
+static uint32_t irq_saved_level = 0;
 uint32_t isr_stack[CONFIG_ISR_STACK_SIZE/4] __attribute__((aligned(8)));
-static uint32_t isr_vectors[CONFIG_PLATFORM_NUMBER_OF_IRQS] __attribute__((aligned(0x200)));
-
 
 typedef struct {
 #ifdef CONFIG_HAS_FLOAT
@@ -158,37 +157,27 @@ typedef struct {
     #error "arch: unknown cortex M variant, check conf file"
 #endif
 
-static void SpuriousIsr(void) {
-#ifdef CONFIG_DEBUG_KERNEL    
-    __asm volatile("  bkpt 0 \n");
-#endif    
-}
-
-static void ClockIsr(void) {
-    IrqEnter();
+void SysTick_Handler(void) {
+    ArchIsrEnter();
     ClockStep(1);
-    IrqLeave();
+    ArchIsrLeave();
 }
 
 KernelResult ArchInitializeSpecifics() {
-    extern void DoContextSwitch(void);
-    extern void DoStartKernel(void);
-
-    for (uint32_t i = 0; i < CONFIG_PLATFORM_NUMBER_OF_IRQS; i++) {
-        isr_vectors[i] = (uint32_t)&SpuriousIsr;
-    }
-
-    SCB->VTOR = (uint32_t)(&isr_vectors);
 
 #ifdef CONFIG_HAS_FLOAT
     SCB->CPACR |= ((3UL << 10*2) | (3UL << 11*2));  
     FPU->FPCCR = ( 0x3UL << 30UL );        
 #endif
     
+    //Align stack to 8-byte boundary:
     SCB->CCR |= 0x200;
-    IrqInstallHandler((uint32_t)(&DoStartKernel), SVCall_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 8);
-    IrqInstallHandler((uint32_t)(&ClockIsr), SysTick_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 8);
-    IrqInstallHandler((uint32_t)(&DoContextSwitch), PendSV_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 1);
+
+    //Sets priority of interrupts used by kernel:
+    NVIC_SetPriority((IRQn_Type)SysTick_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 8);
+    NVIC_SetPriority((IRQn_Type)SVCall_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 8);
+    NVIC_SetPriority((IRQn_Type)PendSV_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 1);
+
     SysTick_Config(CONFIG_PLATFORM_SYS_CLOCK_HZ/CONFIG_TICKS_PER_SEC);
 
     return kSuccess;
@@ -199,22 +188,12 @@ KernelResult ArchStartKernel(uint32_t to) {
     return kSuccess;
 }
 
-
-KernelResult ArchSwitchFromInterrupt() {
-    return ArchSwitchFromTask();
-}
-
-KernelResult ArchSwitchFromTask() {  
-    SCB->ICSR |= (1<<28); 
-    return kSuccess;   
-}
-
 KernelResult ArchNewTask(TaskControBlock *task, uint8_t *stack_base, uint32_t stack_size) {
     ASSERT_PARAM(task);
     ASSERT_PARAM(stack_base);
     ASSERT_PARAM(stack_size);
 
-    IrqDisable();
+    ArchCriticalSectionEnter();
 
     //Stack must be aligned to to 8-byte boundary
     uint8_t *aligned_stack  = (uint8_t *)((uint32_t)(stack_base + stack_size - 1) & ~0x07);
@@ -242,57 +221,41 @@ KernelResult ArchNewTask(TaskControBlock *task, uint8_t *stack_base, uint32_t st
     frame->r11 = 0xAAAAAAAA;
     task->stackpointer = aligned_stack;
     
-    IrqEnable();
+    ArchCriticalSectionExit();
     return kSuccess;
 }
 
-KernelResult IrqEnable() {
-    if(irq_lock_level) {
-        irq_lock_level--;
-    }
-
-    if(!irq_lock_level) {
-        __enable_irq();
-    }
-
-    return kSuccess;
-}
-
-KernelResult IrqDisable() {
+KernelResult ArchCriticalSectionEnter() {
     if(irq_lock_level < 0xFFFFFFFF) {
         irq_lock_level++;
     }
 
     if(irq_lock_level == 1) {
+        irq_saved_level = __get_PRIMASK();
         __disable_irq();
     }
 
     return kSuccess;
 }
 
-KernelResult IrqInstallHandler(uint32_t handler, int32_t irq_number, uint32_t priority) {
-    ASSERT_PARAM(handler);
-    ASSERT_PARAM(irq_number < CONFIG_PLATFORM_NUMBER_OF_IRQS);
-    ASSERT_PARAM(priority < CONFIG_IRQ_PRIORITY_LEVELS);
+KernelResult ArchCriticalSectionExit() {
+    if(irq_lock_level) {
+        irq_lock_level--;
+    }
 
-    isr_vectors[irq_number + 16] = handler;
-    NVIC_SetPriority((IRQn_Type)irq_number, priority);
-    return kSuccess; 
-}
+    if(!irq_lock_level) {
+        __set_PRIMASK(irq_saved_level);
+    }
 
-KernelResult IrqEnableHandler(int32_t irq_number) {
-    ASSERT_PARAM(irq_number < CONFIG_PLATFORM_NUMBER_OF_IRQS);
-    NVIC_EnableIRQ((IRQn_Type)irq_number);
     return kSuccess;
 }
 
-KernelResult IrqDisableHandler(int32_t irq_number) {
-    ASSERT_PARAM(irq_number < CONFIG_PLATFORM_NUMBER_OF_IRQS);
-    NVIC_DisableIRQ((IRQn_Type)irq_number);
-    return kSuccess;
+KernelResult ArchYield() {
+    SCB->ICSR |= (1<<28); 
+    return kSuccess;   
 }
 
-KernelResult IrqEnter() {
+KernelResult ArchIsrEnter() {
     if(irq_nest_level < 0xFFFFFFFF) {
         irq_nest_level++;
     }
@@ -300,7 +263,7 @@ KernelResult IrqEnter() {
     return kSuccess;
 }
 
-KernelResult IrqLeave() {
+KernelResult ArchIsrLeave() {
     if(irq_nest_level) {
         irq_nest_level--;
     }
@@ -312,7 +275,11 @@ KernelResult IrqLeave() {
     return kSuccess;
 }
 
-bool IsInsideIsr() {
+uint32_t ArchGetIsrNesting() {
+    return irq_nest_level;
+}
+
+bool ArchInIsr() {
     return ((__get_IPSR() != 0) ? true : false);
 }
 

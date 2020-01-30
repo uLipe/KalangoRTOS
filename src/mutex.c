@@ -31,7 +31,7 @@ MutexId MutexCreate(){
 
 KernelResult MutexTryLock(MutexId mutex)  {
     ASSERT_PARAM(mutex);
-    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
+    ASSERT_KERNEL(!ArchInIsr(), kErrorInsideIsr);
 
     Mutex *m = (Mutex *)mutex;
 
@@ -63,7 +63,7 @@ KernelResult MutexTryLock(MutexId mutex)  {
 
 KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
     ASSERT_PARAM(mutex);
-    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
+    ASSERT_KERNEL(!ArchInIsr(), kErrorInsideIsr);
 
     Mutex *m = (Mutex *)mutex;
 
@@ -109,7 +109,7 @@ KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
 
 KernelResult MutexUnlock(MutexId mutex) {
     ASSERT_PARAM(mutex);
-    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
+    ASSERT_KERNEL(!ArchInIsr(), kErrorInsideIsr);
 
     Mutex *m = (Mutex *)mutex;
 
@@ -163,7 +163,7 @@ KernelResult MutexUnlock(MutexId mutex) {
 
 KernelResult MutexDelete(MutexId mutex) {
     ASSERT_PARAM(mutex);
-    ASSERT_KERNEL(!IsInsideIsr(), kErrorInsideIsr);
+    ASSERT_KERNEL(!ArchInIsr(), kErrorInsideIsr);
     
     Mutex *m = (Mutex *)mutex;
 

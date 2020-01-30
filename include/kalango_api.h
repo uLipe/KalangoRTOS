@@ -22,7 +22,6 @@
 #include <sched.h>
 #include <timer.h>
 #include <mutex.h>
-#include <irq.h>
 #include <object_pool.h>
 
 /**
@@ -483,64 +482,27 @@ static inline KernelResult Kalango_TimerDelete(TimerId timer) {
 
 
 /**
- * @fn Kalango_IrqEnable
+ * @fn Kalango_CriticalEnter
  * @brief Globally enables the cpu interrups
  * @return always success
  * @note If IrqDisable was called recursively before by multiple times
  *      this function should be called by the same amount to actually
  *      enables the interrupts
  */ 
-static inline KernelResult Kalango_IrqEnable() {
-    return IrqEnable();
+static inline KernelResult Kalango_CriticalExit() {
+    return ArchCriticalSectionExit();
 }
 
 /**
- * @fn Kalango_IrqDisable
+ * @fn Kalango_CriticalExit
  * @brief Disables globally the CPU interrupts
  * @return Always success
  * @note Calling this function recursively will cause the irq nesting
  *      refer Kalango_IrqEnable() to know how to enable the interrupts
  *      in this case.
  */ 
-static inline KernelResult Kalango_IrqDisable() {
-    return IrqDisable();
-}
-
-/**
- * @fn Kalango_IrqInstallHandler
- * @brief Installs a ISR callback handler on a IRQ number slot
- * @param handler - address of interrupt callback handler
- * @param irq_number - number of slot to install this isr
- * @param priority - if supported by platform, the priority level off this ISR
- * @return kSuccess on succesfull instalation
- * @note installed handlers are enabled by default
- * @note priority parameter may not be supported by your platform
- * @note irq_number parameter needs to match of current platform soc
- * @note be cautious some irqs are used internally by the kernel, trying to install irq handlers on those 
- *       slots may return in error
- */ 
-static inline KernelResult Kalango_IrqInstallHandler(uint32_t handler, int32_t irq_number, uint32_t priority) {
-    return IrqInstallHandler(handler, irq_number, priority);
-}
-
-/**
- * @fn Kalango_IrqEnableHandler
- * @brief Enables a ISR on particular slot
- * @param irq_number - number of slot to enable ISR
- * @return kSuccess if enabling was succesful
- */ 
-static inline KernelResult Kalango_IrqEnableHandler(int32_t irq_number) {
-    return IrqEnableHandler(irq_number);
-}
-
-/**
- * @fn Kalango_IrqDisableHandler
- * @brief Disable ISR on a particular slot
- * @param irq_number - number of slot to disable ISR
- * @return kSuccess on succesful disabling
- */ 
-static inline KernelResult Kalango_IrqDisableHandler(int32_t irq_number) {
-    return IrqDisableHandler(irq_number);
+static inline KernelResult Kalango_CriticalEnter() {
+    return ArchCriticalSectionEnter();
 }
 
 /**
@@ -551,7 +513,7 @@ static inline KernelResult Kalango_IrqDisableHandler(int32_t irq_number) {
  *      application wants to use RTOS functions.
  */ 
 static inline KernelResult Kalango_IrqEnter() {
-    return IrqEnter();
+    return ArchIsrEnter();
 }
 
 /**
@@ -563,5 +525,5 @@ static inline KernelResult Kalango_IrqEnter() {
  *      safely
  */ 
 static inline KernelResult Kalango_IrqLeave() {
-    return IrqLeave();
+    return ArchIsrLeave();
 }

@@ -4,7 +4,6 @@
 #include <core.h>
 #include <sched.h>
 #include <clock.h>
-#include <irq.h>
 #include <object_pool.h>
 
 QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size);
