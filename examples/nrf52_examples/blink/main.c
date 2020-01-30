@@ -23,8 +23,11 @@ static void BlinkTask(uint32_t led_arg) {
           (GPIO_PIN_CNF_DIR_Output << GPIO_PIN_CNF_DIR_Pos)
         | (GPIO_PIN_CNF_INPUT_Disconnect << GPIO_PIN_CNF_PULL_Pos);
 
+
     for(;;) {
-        Kalango_Sleep(200);
+        float scale = (float)led_arg * 100.0f;
+
+        Kalango_Sleep((uint32_t)scale);
         printf("%s Ticks: %d ::: Heap free: %d ::: Kalango thread 0x%p is blinking led: %d \n\n",
                 colors[led_arg], Kalango_GetCurrentTicks(), GetKernelFreeBytesOnHeap(), Kalango_GetCurrentTaskId(), led_arg);
         NRF_P0->OUT ^= 1UL << led_arg;;

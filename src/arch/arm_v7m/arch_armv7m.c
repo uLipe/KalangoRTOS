@@ -1,4 +1,5 @@
 #include <arch.h>
+#include "arch_arm7m_defs.h"
 
 #ifdef CONFIG_ARCH_ARM_V7M
 
@@ -89,73 +90,6 @@ typedef struct {
     uint32_t xpsr;
 }ArmCortexStackFrameInitial;
 
-#if defined(CONFIG_ARCH_ARM_V7M_VARIANT_M3)
-
-    typedef enum {
-    /* -------------------  Cortex-M4 Processor Exceptions Numbers  ------------------- */
-    Reset_IRQn                    = -15,              /*!<   1  Reset Vector, invoked on Power up and warm reset                 */
-    NonMaskableInt_IRQn           = -14,              /*!<   2  Non maskable Interrupt, cannot be stopped or preempted           */
-    HardFault_IRQn                = -13,              /*!<   3  Hard Fault, all classes of Fault                                 */
-    MemoryManagement_IRQn         = -12,              /*!<   4  Memory Management, MPU mismatch, including Access Violation
-                                                            and No Match                                                          */
-    BusFault_IRQn                 = -11,              /*!<   5  Bus Fault, Pre-Fetch-, Memory Access Fault, other address/memory
-                                                            related Fault                                                         */
-    UsageFault_IRQn               = -10,              /*!<   6  Usage Fault, i.e. Undef Instruction, Illegal State Transition    */
-    SVCall_IRQn                   =  -5,              /*!<  11  System Service Call via SVC instruction                          */
-    DebugMonitor_IRQn             =  -4,              /*!<  12  Debug Monitor                                                    */
-    PendSV_IRQn                   =  -2,              /*!<  14  Pendable request for system service                              */
-    SysTick_IRQn     
-    }IRQn_Type;
-
-    #undef __CM4_REV                 
-    #undef __MPU_PRESENT                                                                     
-    #undef __NVIC_PRIO_BITS               
-    #undef __Vendor_SysTickConfig         
-    #undef __FPU_PRESENT
-
-    #define __CM4_REV                 0x0001            /*!< Cortex-M4 Core Revision                                               */
-    #define __MPU_PRESENT                  1            /*!< MPU present or not                                                    */
-    #define __NVIC_PRIO_BITS               3            /*!< Number of Bits used for Priority Levels                               */
-    #define __Vendor_SysTickConfig         0            /*!< Set to 1 if different SysTick Config is used                          */
-    #define __FPU_PRESENT                  0            /*!< FPU present or not  */ 
-    #include <core_cm3.h>
-
-#elif defined(CONFIG_ARCH_ARM_V7M_VARIANT_M4)
-
-    typedef enum {
-    /* -------------------  Cortex-M4 Processor Exceptions Numbers  ------------------- */
-    Reset_IRQn                    = -15,              /*!<   1  Reset Vector, invoked on Power up and warm reset                 */
-    NonMaskableInt_IRQn           = -14,              /*!<   2  Non maskable Interrupt, cannot be stopped or preempted           */
-    HardFault_IRQn                = -13,              /*!<   3  Hard Fault, all classes of Fault                                 */
-    MemoryManagement_IRQn         = -12,              /*!<   4  Memory Management, MPU mismatch, including Access Violation
-                                                            and No Match                                                          */
-    BusFault_IRQn                 = -11,              /*!<   5  Bus Fault, Pre-Fetch-, Memory Access Fault, other address/memory
-                                                            related Fault                                                         */
-    UsageFault_IRQn               = -10,              /*!<   6  Usage Fault, i.e. Undef Instruction, Illegal State Transition    */
-    SVCall_IRQn                   =  -5,              /*!<  11  System Service Call via SVC instruction                          */
-    DebugMonitor_IRQn             =  -4,              /*!<  12  Debug Monitor                                                    */
-    PendSV_IRQn                   =  -2,              /*!<  14  Pendable request for system service                              */
-    SysTick_IRQn     
-    }IRQn_Type;
-
-    #undef __CM4_REV                 
-    #undef __MPU_PRESENT                                                                     
-    #undef __NVIC_PRIO_BITS               
-    #undef __Vendor_SysTickConfig         
-    #undef __FPU_PRESENT
-
-    #define __CM4_REV                 0x0001            /*!< Cortex-M4 Core Revision                                               */
-    #define __MPU_PRESENT                  1            /*!< MPU present or not                                                    */
-    #define __NVIC_PRIO_BITS               3            /*!< Number of Bits used for Priority Levels                               */
-    #define __Vendor_SysTickConfig         0            /*!< Set to 1 if different SysTick Config is used                          */
-    #define __FPU_PRESENT                  1            /*!< FPU present or not  */ 
-    #include <core_cm4.h>
-
-#elif defined(CONFIG_ARCH_ARM_V7M_VARIANT_M7)
-    #error "arch: unknown cortex M variant, check conf file"
-#else
-    #error "arch: unknown cortex M variant, check conf file"
-#endif
 
 void SysTick_Handler(void) {
     ArchIsrEnter();
@@ -174,11 +108,14 @@ KernelResult ArchInitializeSpecifics() {
     SCB->CCR |= 0x200;
 
     //Sets priority of interrupts used by kernel:
-    NVIC_SetPriority((IRQn_Type)SysTick_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 8);
-    NVIC_SetPriority((IRQn_Type)SVCall_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 8);
-    NVIC_SetPriority((IRQn_Type)PendSV_IRQn, CONFIG_IRQ_PRIORITY_LEVELS - 1);
+    SCB->SHP[SHP_SVCALL_PRIO] =  0xFF -  CONFIG_IRQ_PRIORITY_LEVELS;
+	SCB->SHP[SHP_PENDSV_PRIO] =  0xFF -  (CONFIG_IRQ_PRIORITY_LEVELS - 8);
+	SCB->SHP[SHP_SYSTICK_PRIO]  = 0xFF - CONFIG_IRQ_PRIORITY_LEVELS;
 
-    SysTick_Config(CONFIG_PLATFORM_SYS_CLOCK_HZ/CONFIG_TICKS_PER_SEC);
+    //Setup systick timer to generate interrupt at tick rate:
+	SysTick->CTRL = 0x00;
+	SysTick->LOAD = CONFIG_PLATFORM_SYS_CLOCK_HZ/CONFIG_TICKS_PER_SEC;
+    SysTick->CTRL = 0x07;
 
     return kSuccess;
 }
@@ -284,7 +221,7 @@ bool ArchInIsr() {
 }
 
 uint8_t ArchCountLeadZeros(uint32_t word) {
-    return __CLZ(word);
+    return __builtin_clz(word);
 }
 
 #endif
