@@ -39,23 +39,69 @@ such CMSIS and NRFx;
  $ git clone --recursive https://github.com/uLipe/Kalango
  ```
 
-- The best way to get started is to using one of sample projects provided under examples folder:
+- On your embedded project, add <b>include</b> folder to your include search path;
+- Add <b>src</b>, desired <b>arch</b> folder and <b>lib</b> folders to search source path;
+- from confs board, take a template config and put in your project, rename it to kalango_config.h
+- add to your compiling options:
+
  ```
- $ cd Kalango/examples/nrf52_examples/blink
+ -include<path/to/kalango_config.h/file>
  ```
- - To play with the demos you will need the meson build system;
- - The meson.build file by default will build the blink demo, you can add your own code and modify it;
- - prepare the meson build:
+
+- include the kalango_api.h on your application code to use RTOS features;
+- Inside of your main function, initialize your target then run the scheduler by calling
+  <b>Kalango_CoreStart()</b> function. See example below.
+ 
  ```
- $ meson build --cross-file cross-file.txt
- ```
- - Then go to build folder and build the firmware:
- ```
- $ cd build
- $ ninja hex
- ```
- - both elf and hex files will be available inside build named with blink;
- - flash it into your chip, plug a debugger and enjoy.
+#include "kalango_api.h"
+
+static TaskId task_a; 
+static TaskId task_b; 
+
+static void DemoTask1(void *arg) {
+    uint32_t noof_wakeups = 0;
+    
+    for(;;) {
+        Kalango_Sleep(250);
+        noof_wakeups++;
+    }
+}
+
+static void DemoTask2(void *arg) {
+    uint32_t noof_wakeups = 0;
+
+    for(;;) {
+        Kalango_Sleep(25);
+        noof_wakeups++;
+    }
+}
+
+int main (void) {
+    TaskSettings settings;
+
+    settings.arg = NULL;
+    settings.function = DemoTask1;
+    settings.priority = 8;
+    settings.stack_size = 512;
+
+    task_a = Kalango_TaskCreate(&settings);
+    
+    settings.arg = NULL;
+    settings.function = DemoTask2;
+    settings.priority = 4;
+    settings.stack_size = 512;
+
+    task_b = Kalango_TaskCreate(&settings);
+
+    (void)task_a;
+    (void)task_b;
+
+    //Start scheduling!
+    Kalango_CoreStart();
+    return 0;
+}
+
+```
 
 # Support:
 - If you want some help with this work give a star and contact me: ryukokki.felipe@gmail.com

@@ -8,7 +8,7 @@
 #define CONFIG_ENABLE_QUEUES                  1
 #define CONFIG_ENABLE_TIMERS                  1
 
-#define CONFIG_KERNEL_BLOCKS                64
+#define CONFIG_KERNEL_HEAP_SIZE          16 * 1024
 
 #define CONFIG_PRIORITY_LEVELS              16
 #define CONFIG_MUTEX_CEIL_PRIORITY          (CONFIG_PRIORITY_LEVELS - 1)
@@ -23,6 +23,4 @@
 #define CONFIG_IRQ_PRIORITY_LEVELS          8
 
 #define CONFIG_PLATFORM_SYS_CLOCK_HZ     64000000
-#define CONFIG_PLATFORM_NUMBER_OF_IRQS   64
-#define CONFIG_KERNEL_HEAP_SIZE          16 * 1024
 #define CONFIG_DEBUG_KERNEL              1   
