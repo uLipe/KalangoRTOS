@@ -1,5 +1,6 @@
 #pragma once 
 
+#include <arch.h>
 #include <kernel_types.h>
 #include <list.h>
 
