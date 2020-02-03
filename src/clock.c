@@ -3,32 +3,27 @@
 static sys_dlist_t timeout_list = SYS_DLIST_STATIC_INIT(&timeout_list);
 static uint32_t tick_counter = 0;
 
-#if CONFIG_ENABLE_TIMERS > 0
-static KernelResult HandleExpiredTimers(sys_dlist_t *expired_list) {
-
-    sys_dnode_t *next = sys_dlist_peek_head(expired_list);
-
-    while(next) {
-        Timeout *timeout = CONTAINER_OF(next, Timeout, timed_node);
-        Timer *timer = CONTAINER_OF(timeout, Timer, timeout);
-
-        if(timeout->timeout_callback) {
-            timeout->timeout_callback(timeout->user_data);
-        }
-
-        if(timer->periodic) {
-            AddTimeout(&timer->timeout, timer->period_time, timer->callback, timer->user_data, false, NULL);
-        } else {
-            timer->expired = true;
-            timer->running = false;
-        }
-
-        next = sys_dlist_peek_next(expired_list, next);
+static KernelResult HandleExpiredTimers(Timeout *timeout) {
+    
+    Timer *timer = CONTAINER_OF(timeout, Timer, timeout);
+    
+    if(timeout->timeout_callback) {
+        timeout->timeout_callback(timeout->user_data);
     }
 
+    if(timer->periodic) {
+        //Periodic timer, keeps into the list but shift the expiration count:
+        timeout->next_wakeup_tick = tick_counter + timer->period_time;
+        timer->expired = false;
+        timer->running = true;
+    } else {
+        timer->expired = true;
+        timer->running = false;
+        sys_dlist_remove(&timeout->timed_node);
+    }
+    
     return kSuccess;
 }
-#endif 
 
 uint32_t GetTicksPerSecond() {
     return CONFIG_TICKS_PER_SEC;
@@ -56,41 +51,34 @@ KernelResult ClockStep (uint32_t ticks) {
 
     ASSERT_KERNEL(ArchInIsr(), kErrorInvalidKernelState);
 
-    CoreManageRoundRobin();
-
-    sys_dlist_t expired_list;
-    sys_dnode_t *next = sys_dlist_peek_head(&timeout_list);
-
-    sys_dlist_init(&expired_list);
     tick_counter += ticks;
 
-    while(next) {
+    CoreManageRoundRobin();
+    
+    sys_dnode_t *next;
+    sys_dnode_t *tmp;
+
+    SYS_DLIST_FOR_EACH_NODE_SAFE(&timeout_list, next, tmp) {
+
         Timeout *timeout = CONTAINER_OF(next, Timeout, timed_node);
-        if(timeout->next_wakeup_tick <= tick_counter) {
-            next = sys_dlist_peek_next(&timeout_list, next);           
+        if(timeout->next_wakeup_tick == tick_counter) {
 
             timeout->expired = true;
-            sys_dlist_remove(&timeout->timed_node);
 
             if(!timeout->is_task) {
-                sys_dlist_prepend(&expired_list, &timeout->timed_node);
+                HandleExpiredTimers(timeout);
             } else {
+                sys_dlist_remove(next);
+
                 TaskControBlock *timed_out = CONTAINER_OF(timeout, TaskControBlock,timeout);
                 if(timeout->bonded_list != NULL) {
                     SchedulerResetPriority(timeout->bonded_list, timed_out->priority);
                 }
                 CoreMakeTaskReady(timed_out);
             }
-        } else {
-            next = sys_dlist_peek_next(&timeout_list, next);
+
         }
     }
-
-#if CONFIG_ENABLE_TIMERS > 0
-    if(!sys_dlist_is_empty(&expired_list)) {
-        return HandleExpiredTimers(&expired_list);
-    }
-#endif
 
     return kSuccess;
 }
