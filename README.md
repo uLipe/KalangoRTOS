@@ -54,6 +54,14 @@ After that, in your executable target, just link Kalango library using regular C
 The Kalango top-level include will placed in your project and you can invoke all the Kalango related
 functions.
 
+Additionally you need to supply a kalango_config.h header file, inside of <b>confs</b> folder, there
+are some samples, just copy to your project and rename it to <b>kalango_config.h</b>, after that
+when running your project cmake command just supply the location of this file:
+
+```
+cmake <source-directory> <other-arguments> -DKALANGO_CONFIG_FILE_PATH=/path/to/kalango_config.h/file
+```
+
 # Getting started, stand-alone mode:
 - On your embedded project, add <b>include</b> folder to your include search path;
 - Add <b>src</b>, desired <b>arch</b> folder and <b>lib</b> folders to search source path;
