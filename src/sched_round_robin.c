@@ -1,5 +1,7 @@
 #include <sched.h>
 
+#if CONFIG_ENABLE_SCHED_ROUND_ROBIN
+
 KernelResult SchedulerDoRoundRobin(TaskPriorityList *list) {
     ASSERT_PARAM(list);
 
@@ -21,3 +23,5 @@ KernelResult SchedulerDoRoundRobin(TaskPriorityList *list) {
     ArchCriticalSectionExit();
     return kSuccess;
 }
+
+#endif

@@ -33,7 +33,25 @@ such CMSIS and NRFx;
 - Documentation is in development (the code was written to be expressive as possible);
 - Timer callbacks are deffered from ISR;
 
-# Getting started:
+# Getting started, using CMake:
+You can use the CMake build system to integrate the Kalango into your existing cmake project, 
+to do so just copy this folder into your project folder and in your cmake project search by this directory
+as below:
+
+```
+    add_subdirectory(Kalango)
+```
+
+After that, in your executable target, just link Kalango library using regular CMake option:
+
+```
+    target_link_libraries(<your_executable_target> KalangoRTOS <other libraries>)
+```
+
+The Kalango top-level include will placed in your project and you can invoke all the Kalango related
+functions.
+
+# Getting started, stand-alone mode:
 - First get this respository and all the submodules:
  ```
  $ git clone --recursive https://github.com/uLipe/Kalango

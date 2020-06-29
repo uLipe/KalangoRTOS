@@ -1,12 +1,14 @@
 #include <arch.h>
-#include "arch_arm7m_defs.h"
 
 #ifdef CONFIG_ARCH_ARM_V7M
+
+#include "arch_arm7m_defs.h"
 
 static uint32_t irq_nest_level = 0;
 static uint32_t irq_lock_level = 0;
 static uint32_t irq_saved_level = 0;
-uint32_t isr_stack[CONFIG_ISR_STACK_SIZE/4] __attribute__((aligned(8)));
+uint32_t isr_stack[CONFIG_ISR_STACK_SIZE/4 + 8];
+uint8_t *isr_top_of_stack;
 
 typedef struct {
 #ifdef CONFIG_HAS_FLOAT
@@ -97,6 +99,102 @@ void SysTick_Handler(void) {
     ArchIsrLeave();
 }
 
+void __attribute__((naked)) PendSV_Handler(void) {
+    asm volatile(
+        /* disable interrupts during context switch */
+        "mrs r2, PRIMASK \n\r"
+        "cpsid I \n\r"
+
+        /* Check if this is the first switch, skip register saving if does */
+        "ldr r0, =current \n\r" 
+        "ldr r0, [r0] \n\r" 
+        "mrs r1, psp \n\r"
+
+        /* push all registers to stack, incluing fp ones if needed */
+#if defined(CONFIG_HAS_FLOAT)
+        "tst lr, #0x10 \n\r"
+        "it  eq \n\r"
+        "vstmdbeq r1!, {d8 - d15} \n\r"
+#endif       
+
+        "stmfd r1!, {r4 - r11} \n\r"
+
+        /* for fp context we need to store that there are a fp active context */
+#if defined(CONFIG_HAS_FLOAT)
+        "mov r4, #0x00 \n\r"
+        "tst lr, #0x10 \n\r"
+        "it  eq \n\r"
+        "moveq r4, #0x01 \n\r"
+        "stmfd r1!, {r4} \n\r" 
+#endif       
+        /* send stackpointer back to the tcb */
+        "str r1, [r0] \n\r"
+
+        "push {lr} \n\r"
+        "bl CoreTaskSwitch \n\r"
+        "pop {lr} \n\r"  
+        "ldr r1, [r0] \n\r"
+
+        /* same here, if a fp context was active, restore the fp registers */
+#if defined(CONFIG_HAS_FLOAT)
+        "ldmfd r1!, {r3} \n\r"
+#endif       
+        /* ...after the callee regular registers */
+        "ldmfd r1!, {r4 - r11} \n\r"
+
+#if defined(CONFIG_HAS_FLOAT)
+        "cmp r3, #0x00 \n\r"
+        "it ne \n\r"
+        "vldmiane r1!, {d8 - d15} \n\r"
+#endif       
+        /* horray the stack pointer is now handled to the CPU */
+        "msr psp, r1 \n\r"
+
+        /* if the previous context saving was FP we need to tell the CPU to resume it*/
+#if defined(CONFIG_HAS_FLOAT)
+        "orr lr, lr, #0x10 \n\r"
+        "cmp r3, #0x00 \n\r"
+        "it ne \n\r"
+        "bicne lr, lr, #0x10 \n\r"
+#endif       
+        
+        /* re-enable interrupts and ensure return in thumb mode */
+        "orr lr, lr, #0x04 \n\r"
+        "msr PRIMASK,r2 \n\r"
+        "bx lr \n\r"
+    );
+}
+
+void __attribute__((naked)) SVC_Handler(void) {
+    asm volatile( 
+        "ldr r0, =isr_top_of_stack \n\r"
+        "ldr r0, [r0] \n\r"
+        "msr msp, r0 \n\r" 
+
+        "push {lr} \n\r"
+        "bl CoreTaskSwitch \n\r"
+        "pop {lr} \n\r"
+        "ldr r1, [r0] \n\r"
+
+#if defined(CONFIG_HAS_FLOAT)
+        "ldmfd r1!, {r3} \n\r"
+#endif       
+        /* ...after the callee regular registers */
+        "ldmfd r1!, {r4 - r11} \n\r"
+
+        /* horray the stack pointer is now handled to the CPU */
+        "msr psp, r1 \n\r"
+
+        "push {r2,lr} \n\r"
+        "bl CoreSetRunning \n\r"
+        "pop {r2,lr} \n\r"
+
+        /* re-enable interrupts and ensure return in thumb mode */
+        "orr lr, lr, #0x04 \n\r"
+        "bx lr \n\r" 
+    );
+}
+
 KernelResult ArchInitializeSpecifics() {
 
 #ifdef CONFIG_HAS_FLOAT
@@ -117,11 +215,14 @@ KernelResult ArchInitializeSpecifics() {
 	SysTick->LOAD = CONFIG_PLATFORM_SYS_CLOCK_HZ/CONFIG_TICKS_PER_SEC;
     SysTick->CTRL = 0x07;
 
+    //Setup global isr stack pointer, align into a 8byte boundary:
+    isr_top_of_stack  = (uint8_t *)((uint32_t)(isr_stack + (CONFIG_ISR_STACK_SIZE/4)) & ~0x07);
+
     return kSuccess;
 }
 
 KernelResult ArchStartKernel(uint32_t to) {
-    __asm volatile ("   svc #0 \n");
+    __asm volatile ("svc #0 \n");
     return kSuccess;
 }
 

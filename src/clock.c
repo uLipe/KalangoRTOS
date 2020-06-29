@@ -56,7 +56,9 @@ KernelResult ClockStep (uint32_t ticks) {
 
     ASSERT_KERNEL(ArchInIsr(), kErrorInvalidKernelState);
 
+#if CONFIG_ENABLE_SCHED_ROUND_ROBIN
     CoreManageRoundRobin();
+#endif
 
     sys_dlist_t expired_list;
     sys_dnode_t *next = sys_dlist_peek_head(&timeout_list);
