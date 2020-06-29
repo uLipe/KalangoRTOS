@@ -1,6 +1,6 @@
 #include <sched.h>
 
-#if CONFIG_ENABLE_SCHED_ROUND_ROBIN
+#if CONFIG_ENABLE_ROUND_ROBIN_SCHED
 
 KernelResult SchedulerDoRoundRobin(TaskPriorityList *list) {
     ASSERT_PARAM(list);

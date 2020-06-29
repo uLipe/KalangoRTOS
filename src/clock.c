@@ -56,7 +56,7 @@ KernelResult ClockStep (uint32_t ticks) {
 
     ASSERT_KERNEL(ArchInIsr(), kErrorInvalidKernelState);
 
-#if CONFIG_ENABLE_SCHED_ROUND_ROBIN
+#if CONFIG_ENABLE_ROUND_ROBIN_SCHED
     CoreManageRoundRobin();
 #endif
 

@@ -16,12 +16,10 @@ figure here.
 - Task management;
 - Recursive mutexes;
 - Message Queues;
-- Interrupt management (Register, Enable and Disable);
 - Scalable, user can configure how much kernel objects application need;
 - Unlimited kernel objects and threads(limited by processor memory);
 - O(1) TLSF memory allocator,leave kernel to manage its memory;
 - Written in C with less possible assembly paths (just on context switching);
-- Samples will be included for popular boards;
 
 # Limitations:
 - Please keep in mind this is an experimental project;
@@ -30,8 +28,13 @@ figure here.
 - No C++ support;
 - It was designed to take advantage of exisiting manufacturers microcontroller abstraction libraries
 such CMSIS and NRFx;
-- Documentation is in development (the code was written to be expressive as possible);
 - Timer callbacks are deffered from ISR;
+
+# Get the Code!
+To get this respository:
+ ```
+ $ git clone https://github.com/uLipe/KalangoRTOS
+ ```
 
 # Getting started, using CMake:
 You can use the CMake build system to integrate the Kalango into your existing cmake project, 
@@ -39,7 +42,7 @@ to do so just copy this folder into your project folder and in your cmake projec
 as below:
 
 ```
-    add_subdirectory(Kalango)
+    add_subdirectory(KalangoRTOS)
 ```
 
 After that, in your executable target, just link Kalango library using regular CMake option:
@@ -52,11 +55,6 @@ The Kalango top-level include will placed in your project and you can invoke all
 functions.
 
 # Getting started, stand-alone mode:
-- First get this respository and all the submodules:
- ```
- $ git clone --recursive https://github.com/uLipe/Kalango
- ```
-
 - On your embedded project, add <b>include</b> folder to your include search path;
 - Add <b>src</b>, desired <b>arch</b> folder and <b>lib</b> folders to search source path;
 - from confs board, take a template config and put in your project, rename it to kalango_config.h
