@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 project(KalangoRTOS C ASM)
 
-set(KALANGO_CONFIG_FILE_PATH "" CACHE STRING "Path to folder that contains the kalango_config.h file")
+set(KALANGO_CONFIG_FILE_PATH "confs" CACHE STRING "Path to folder that contains the kalango_config.h file")
 
 set(rtos_sources 
     "archs/arch_armv6m.c"
