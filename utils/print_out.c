@@ -1,5 +1,5 @@
 
-void _putchar(char c) {
+__attribute__ ((weak)) void _putchar(char c) {
     (void)c;
 }
 
