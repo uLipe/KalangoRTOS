@@ -1,11 +1,13 @@
 #pragma once
 
+#include <KalangoRTOS/kalango_config_internal.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <macros.h>
-#include <list.h>
-#include "kernel_objects.h"
+#include <KalangoRTOS/macros.h>
+#include <KalangoRTOS/list.h>
+#include <KalangoRTOS/kernel_objects.h>
+
 
 #if CONFIG_PRIORITY_LEVELS > 32
 #error "Maximum priority level allowed is 32"
@@ -65,11 +67,11 @@ typedef struct {
     void *arg;
 } TaskSettings;
 
-#ifndef CONFIG_REMOVE_CHECKINGS
+#if (CONFIG_REMOVE_CHECKINGS == 0)
 #define ASSERT_KERNEL(x, ...)       \
         if(!(x)) {                  \
             return __VA_ARGS__;     \
-        }                           
+        }
 #else
     #define ASSERT_KERNEL(x, ...)
 #endif

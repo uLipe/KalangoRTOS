@@ -1,4 +1,5 @@
-#pragma once
+#ifndef __KALANGO_CONFIG_H
+#define __KALANGO_CONFIG_H
 
 #define CONFIG_TICKS_PER_SEC                1000
 
@@ -17,10 +18,10 @@
 
 #define CONFIG_USE_PLATFORM_INIT            0
 
-#define CONFIG_ARCH_ARM_V7M                 1
-#define CONFIG_ARCH_ARM_V7M_VARIANT_M4      1
-#define CONFIG_HAS_FLOAT                    1
-#define CONFIG_IRQ_PRIORITY_LEVELS          8
+#define CONFIG_ARCH_C2000                   1
+#define CONFIG_ARCH_ALIGNMENT_BYTES         8
 
-#define CONFIG_PLATFORM_SYS_CLOCK_HZ     64000000
-#define CONFIG_DEBUG_KERNEL              1   
+#define CONFIG_PLATFORM_SYS_CLOCK_HZ     200000000
+#define CONFIG_DEBUG_KERNEL              1
+
+#endif

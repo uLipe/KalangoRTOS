@@ -1,9 +1,9 @@
 #pragma once
 
-#include <kernel_types.h>
-#include <sched.h>
-#include <arch.h>
-#include <platform.h>
+#include <KalangoRTOS/kernel_types.h>
+#include <KalangoRTOS/sched.h>
+#include <KalangoRTOS/arch.h>
+#include <KalangoRTOS/platform.h>
 
 KernelResult CoreInit();
 KernelResult CoreStart();

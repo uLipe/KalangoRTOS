@@ -1,10 +1,10 @@
-#pragma once 
+#pragma once
 
-#include <kernel_types.h>
-#include <core.h>
-#include <sched.h>
-#include <clock.h>
-#include <object_pool.h>
+#include <KalangoRTOS/kernel_types.h>
+#include <KalangoRTOS/core.h>
+#include <KalangoRTOS/sched.h>
+#include <KalangoRTOS/clock.h>
+#include <KalangoRTOS/object_pool.h>
 
 SemaphoreId SemaphoreCreate(uint32_t initial, uint32_t limit);
 KernelResult SemaphoreTake(SemaphoreId semaphore, uint32_t timeout);

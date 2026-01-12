@@ -1,4 +1,5 @@
-#include <mutex.h>
+#include <KalangoRTOS/mutex.h>
+#include <KalangoRTOS/kalango_config_internal.h>
 
 #if CONFIG_ENABLE_MUTEXES > 0
 
@@ -17,7 +18,7 @@ MutexId MutexCreate(){
     mutex->owned = false;
     mutex->recursive_taking_count = 0;
     mutex->owner = NULL;
-    
+
     KernelResult r = CoreInitializeTaskList(&mutex->pending_tasks);
     if(r != kSuccess) {
         FreeMutexObject(mutex);
@@ -57,7 +58,7 @@ KernelResult MutexTryLock(MutexId mutex)  {
         //Dont bump the priority if it already higher than mutex priority
         m->old_priority = TaskGetPriority(task);
     }
-    
+
     return CheckReschedule();
 }
 
@@ -87,7 +88,7 @@ KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
         }
 
         return CheckReschedule();
-    }   
+    }
 
     if(timeout != KERNEL_NO_WAIT) {
         TaskControBlock *task = CoreGetCurrentTask();
@@ -130,7 +131,7 @@ KernelResult MutexUnlock(MutexId mutex) {
         return kStatusMutexAlreadyTaken;
     }
 
- 
+
    if(NothingToSched(&m->pending_tasks)) {
         m->owned = false;
         m->owner = NULL;
@@ -151,7 +152,7 @@ KernelResult MutexUnlock(MutexId mutex) {
         //Dont bump the priority if it already higher than mutex priority
         m->old_priority = TaskGetPriority((TaskId)task);
     }
-    
+
     if(m->recursive_taking_count < 0xFFFFFFFF)
         m->recursive_taking_count++;
 
@@ -164,7 +165,7 @@ KernelResult MutexUnlock(MutexId mutex) {
 KernelResult MutexDelete(MutexId mutex) {
     ASSERT_PARAM(mutex);
     ASSERT_KERNEL(!ArchInIsr(), kErrorInsideIsr);
-    
+
     Mutex *m = (Mutex *)mutex;
 
     CoreSchedulingSuspend();

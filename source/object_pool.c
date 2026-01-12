@@ -1,10 +1,6 @@
-#include <object_pool.h>
-#include <tlsf.h>
-
-#ifndef CONFIG_KERNEL_HEAP_SIZE
-#warning "Heap size was not defined, defaulting to 4096 bytes"
-#define CONFIG_KERNEL_HEAP_SIZE 4096
-#endif
+#include <KalangoRTOS/object_pool.h>
+#include <KalangoRTOS/kalango_config_internal.h>
+#include "utils/tlsf.h"
 
 static uint8_t kernel_heap[(CONFIG_KERNEL_HEAP_SIZE + sizeof(control_t) + ALIGN_SIZE) & ~(ALIGN_SIZE - 1)];
 static tlsf_t  kernel_tlsf = NULL;
@@ -28,7 +24,7 @@ static void *KMalloc(uint32_t size) {
     ArchCriticalSectionExit();
 
     if(result) {
-        kernel_heap_free_bytes -= tlsf_block_size(result); 
+        kernel_heap_free_bytes -= tlsf_block_size(result);
     }
 
     return result;
@@ -38,7 +34,7 @@ static void KFree(void *memory) {
     ArchCriticalSectionEnter();
 
     if(memory) {
-        kernel_heap_free_bytes += tlsf_block_size(memory);   
+        kernel_heap_free_bytes += tlsf_block_size(memory);
     }
 
     tlsf_free(kernel_tlsf, memory);
@@ -54,7 +50,7 @@ uint32_t GetKernelFreeBytesOnHeap() {
 }
 
 uint8_t *AllocateRawBuffer(uint32_t size) {
-    return ((uint8_t *)KMalloc(size)); 
+    return ((uint8_t *)KMalloc(size));
 }
 
 KernelResult FreeRawBuffer(uint8_t *self) {

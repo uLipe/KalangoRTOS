@@ -1,7 +1,7 @@
-#pragma once 
+#pragma once
 
-#include <kernel_types.h>
-#include <arch.h>
+#include <KalangoRTOS/kernel_types.h>
+#include <KalangoRTOS/arch.h>
 
 bool IsSchedulerLocked(TaskPriorityList *taskset);
 KernelResult SchedulerLock(TaskPriorityList *taskset);

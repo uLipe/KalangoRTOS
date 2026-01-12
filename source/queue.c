@@ -1,4 +1,6 @@
-#include <queue.h>
+#include <KalangoRTOS/queue.h>
+#include <KalangoRTOS/kalango_config_internal.h>
+
 #if CONFIG_ENABLE_QUEUES > 0
 
 QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size) {
@@ -36,7 +38,7 @@ QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size) {
         CoreSchedulingResume();
         return NULL;
     }
-    
+
     r = CoreInitializeTaskList(&queue->writer_tasks_pending);
     if(r != kSuccess) {
         FreeRawBuffer(queue->buffer);
@@ -52,12 +54,12 @@ QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size) {
 KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t timeout) {
     ASSERT_PARAM(queue);
     ASSERT_PARAM(data);
-    
+
     //If called from ISR, requires a IRQ safe block
     if(ArchInIsr()) {
         if(!ArchGetIsrNesting()){
             return kErrorInvalidKernelState;
-        } 
+        }
     }
 
     Queue *q = (Queue *)queue;
@@ -71,7 +73,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
     if(!q->full) {
 
         uint32_t write_loc = q->tail * q->slot_size;
-        
+
         q->empty = false;
         memcpy(&q->buffer[write_loc], data, data_size);
 
@@ -95,7 +97,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
 
             //Not need to reeschedule a new unpended task in a ISR,
             //it will be done a single time after all ISRs
-            //get processed 
+            //get processed
             if(ArchInIsr()) {
                 CoreSchedulingResume();
                 return kSuccess;
@@ -128,7 +130,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
         return kErrorTimeout;
     } else {
         uint32_t write_loc = q->tail * q->slot_size;
-        
+
         q->empty = false;
         memcpy(&q->buffer[write_loc], data, data_size);
 
@@ -144,7 +146,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
         }
 
         CoreSchedulingResume();
-        return kSuccess;        
+        return kSuccess;
     }
 }
 
@@ -157,13 +159,13 @@ KernelResult QueuePeek(QueueId queue, void *data, uint32_t *data_size, uint32_t 
     if(ArchInIsr()) {
         if(!ArchGetIsrNesting()){
             return kErrorInvalidKernelState;
-        } 
+        }
     }
 
     Queue *q = (Queue*)queue;
 
     CoreSchedulingSuspend();
-    
+
     if(!q->empty) {
         uint32_t read_loc = q->head * q->slot_size;
         memcpy(data, &q->buffer[read_loc], q->slot_size);
@@ -209,7 +211,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
     if(ArchInIsr()) {
         if(!ArchGetIsrNesting()){
             return kErrorInvalidKernelState;
-        } 
+        }
     }
 
     Queue *q = (Queue*)queue;
@@ -218,7 +220,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
 
     if(!q->empty) {
         uint32_t read_loc = q->head * q->slot_size;
-        
+
         q->full = false;
         memcpy(data, &q->buffer[read_loc], q->slot_size);
 
@@ -229,7 +231,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
             q->available_slots++;
         q->head = read_loc;
         ArchCriticalSectionExit();
-     
+
         if(q->available_slots >= q->noof_slots) {
             q->available_slots = q->noof_slots;
             q->empty = true;
@@ -241,10 +243,10 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
         } else {
 
             CoreUnpendNextTask(&q->writer_tasks_pending);
-            
+
             //Not need to reeschedule a new unpended task in a ISR,
             //it will be done a single time after all ISRs
-            //get processed 
+            //get processed
             if(ArchInIsr()) {
                 CoreSchedulingResume();
                 return kSuccess;
@@ -278,7 +280,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
     } else {
 
         uint32_t read_loc = q->head * q->slot_size;
-        
+
         q->full = false;
         memcpy(data, &q->buffer[read_loc], q->slot_size);
 
@@ -289,7 +291,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
             q->available_slots++;
         q->head = read_loc;
         ArchCriticalSectionExit();
-     
+
         if(q->available_slots >= q->noof_slots) {
             q->available_slots = q->noof_slots;
             q->empty = true;

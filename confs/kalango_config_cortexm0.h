@@ -22,4 +22,4 @@
 #define CONFIG_IRQ_PRIORITY_LEVELS          8
 
 #define CONFIG_PLATFORM_SYS_CLOCK_HZ     48000000
-#define CONFIG_DEBUG_KERNEL              1   
+#define CONFIG_DEBUG_KERNEL              1

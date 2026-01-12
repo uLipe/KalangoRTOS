@@ -1,4 +1,6 @@
-#include <timer.h>
+#include <KalangoRTOS/timer.h>
+#include <KalangoRTOS/kalango_config_internal.h>
+
 #if CONFIG_ENABLE_TIMERS > 0
 
 TimerId TimerCreate(TimerCallback callback, uint32_t expiry_time, uint32_t period_time, void *user_data) {
@@ -37,9 +39,9 @@ KernelResult TimerStart(TimerId timer) {
 
     CoreSchedulingSuspend();
     KernelResult result = RemoveTimeout(&t->timeout);
-    
+
     if(result == kSuccess) {
-        result = AddTimeout(&t->timeout, t->expiry_time, t->callback, t->user_data, false, NULL);    
+        result = AddTimeout(&t->timeout, t->expiry_time, t->callback, t->user_data, false, NULL);
         if(result == kSuccess) {
             t->expired = false;
             t->running = true;
@@ -85,7 +87,7 @@ KernelResult TimerSetValues(TimerId timer, uint32_t expiry_time, uint32_t period
     timer->expired=false;
     timer->running=false;
     timer->expiry_time = expiry_time;
-    
+
     if(period_time) {
         timer->period_time = period_time;
         timer->periodic = true;
@@ -107,7 +109,7 @@ KernelResult TimerDelete(TimerId timer) {
     if(t->running) {
         RemoveTimeout(&t->timeout);
     }
-    t->callback = NULL; 
+    t->callback = NULL;
     FreeTimerObject(t);
     CoreSchedulingResume();
 

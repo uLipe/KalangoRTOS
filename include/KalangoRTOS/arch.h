@@ -1,8 +1,8 @@
-#pragma once 
+#pragma once
 
-#include <kernel_types.h>
-#include <clock.h>
-#include <core.h>
+#include <KalangoRTOS/kernel_types.h>
+#include <KalangoRTOS/clock.h>
+#include <KalangoRTOS/core.h>
 
 
 KernelResult ArchInitializeSpecifics();
@@ -14,5 +14,5 @@ KernelResult ArchYield();
 KernelResult ArchIsrEnter();
 KernelResult ArchIsrLeave();
 bool ArchInIsr();
-uint32_t ArchGetIsrNesting();    
+uint32_t ArchGetIsrNesting();
 uint8_t ArchCountLeadZeros(uint32_t word);

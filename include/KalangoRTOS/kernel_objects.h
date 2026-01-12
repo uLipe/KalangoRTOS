@@ -1,8 +1,6 @@
-#pragma once 
+#pragma once
 
-#ifndef CONFIG_KERNEL_BLOCKS
-#define CONFIG_KERNEL_BLOCKS 16
-#endif
+#include <KalangoRTOS/kalango_config_internal.h>
 
 typedef struct {
     sys_dlist_t task_list[CONFIG_PRIORITY_LEVELS];
@@ -16,7 +14,7 @@ typedef struct {
     bool is_task;
     uint32_t next_wakeup_tick;
     bool expired;
-    TaskPriorityList *bonded_list; 
+    TaskPriorityList *bonded_list;
     sys_dnode_t timed_node;
 }Timeout;
 

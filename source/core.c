@@ -1,4 +1,5 @@
-#include <core.h>
+#include <KalangoRTOS/core.h>
+#include <KalangoRTOS/kalango_config_internal.h>
 
 TaskControBlock *current = NULL;
 static TaskControBlock *next_task = NULL;
@@ -90,13 +91,13 @@ KernelResult CoreMakeAllTasksReady(TaskPriorityList *tasks) {
     while(!NothingToSched(tasks)) {
         CoreUnpendNextTask(tasks);
     }
- 
+
     ArchCriticalSectionExit();
 
     return kSuccess;
 }
 
-TaskControBlock * CoreTaskSwitch() { 
+TaskControBlock * CoreTaskSwitch() {
     current = next_task;
     return next_task;
 }
@@ -135,7 +136,7 @@ TaskControBlock * CoreGetCurrentTask() {
 }
 
 KernelResult CoreInit() {
-    
+
     if(initialized) {
         return kSuccess;
     }
@@ -159,8 +160,8 @@ KernelResult CoreStart() {
 
 #if CONFIG_USE_PLATFORM_INIT > 0
     PlatformInit(NULL);
-#endif 
-   
+#endif
+
     ArchInitializeSpecifics();
 
     TaskSettings settings;
@@ -169,12 +170,12 @@ KernelResult CoreStart() {
     settings.priority = 0;
     settings.stack_size = CONFIG_IDLE_TASK_STACK_SIZE;
     task_idle_id = TaskCreate(&settings);
-    
+
     ASSERT_KERNEL(task_idle_id != NULL, kErrorInvalidParam);
 
     next_task = ScheduleTaskSet(&ready_tasks_list);
     ASSERT_KERNEL(next_task, kErrorInvalidKernelState);
-    
+
     current = next_task;
     ArchCriticalSectionExit();
     ArchStartKernel();
@@ -187,10 +188,12 @@ bool IsCoreRunning() {
 }
 
 void CoreSetRunning() {
-    
+
+#if (CONFIG_ARCH_ARM_V7M > 0)
     if(!ArchInIsr()) {
         return;
     }
+#endif
 
     is_running = true;
 }

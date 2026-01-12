@@ -1,5 +1,5 @@
 #pragma once
 
-#include <kernel_types.h>
+#include <KalangoRTOS/kernel_types.h>
 
 extern KernelResult PlatformInit(void *arg);

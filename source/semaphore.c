@@ -1,4 +1,6 @@
-#include <semaphore.h>
+#include <KalangoRTOS/semaphore.h>
+#include <KalangoRTOS/kalango_config_internal.h>
+
 #if CONFIG_ENABLE_SEMAPHORES > 0
 
 SemaphoreId SemaphoreCreate(uint32_t initial, uint32_t limit) {
@@ -23,7 +25,7 @@ SemaphoreId SemaphoreCreate(uint32_t initial, uint32_t limit) {
         CoreSchedulingResume();
         return NULL;
     }
-    
+
     CoreSchedulingResume();
     return ((SemaphoreId)semaphore);
 }
@@ -52,7 +54,7 @@ KernelResult SemaphoreTake(SemaphoreId semaphore, uint32_t timeout) {
             return kErrorTimeout;
         }
         return kSuccess;
-    
+
     } else {
         CoreSchedulingResume();
         return kStatusSemaphoreUnavailable;
@@ -67,7 +69,7 @@ KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
     if(ArchInIsr()) {
         if(!ArchGetIsrNesting()){
             return kErrorInvalidKernelState;
-        } 
+        }
     }
 
     CoreSchedulingSuspend();
@@ -80,13 +82,13 @@ KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
         CoreSchedulingResume();
         return kSuccess;
     } else {
-        
+
         if(s->count > 0) {
             s->count--;
         }
 
         CoreUnpendNextTask(&s->pending_tasks);
- 
+
         if(ArchInIsr()) {
             CoreSchedulingResume();
             return kSuccess;

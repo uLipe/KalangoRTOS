@@ -1,4 +1,5 @@
-#include <clock.h>
+#include <KalangoRTOS/clock.h>
+#include <KalangoRTOS/kalango_config_internal.h>
 
 static sys_dlist_t timeout_list = SYS_DLIST_STATIC_INIT(&timeout_list);
 static uint32_t tick_counter = 0;
@@ -28,7 +29,7 @@ static KernelResult HandleExpiredTimers(sys_dlist_t *expired_list) {
 
     return kSuccess;
 }
-#endif 
+#endif
 
 uint32_t GetTicksPerSecond() {
     return CONFIG_TICKS_PER_SEC;
@@ -69,7 +70,7 @@ KernelResult ClockStep (uint32_t ticks) {
     while(next) {
         Timeout *timeout = CONTAINER_OF(next, Timeout, timed_node);
         if(timeout->next_wakeup_tick <= tick_counter) {
-            next = sys_dlist_peek_next(&timeout_list, next);           
+            next = sys_dlist_peek_next(&timeout_list, next);
 
             timeout->expired = true;
             sys_dlist_remove(&timeout->timed_node);
@@ -97,15 +98,15 @@ KernelResult ClockStep (uint32_t ticks) {
     return kSuccess;
 }
 
-KernelResult AddTimeout(Timeout *timeout, 
-                        uint32_t value, 
-                        TimerCallback timeout_callback, 
-                        void *user_data, 
+KernelResult AddTimeout(Timeout *timeout,
+                        uint32_t value,
+                        TimerCallback timeout_callback,
+                        void *user_data,
                         bool is_task,
                         TaskPriorityList *optional_list_to_bind) {
     ASSERT_PARAM(timeout);
     ASSERT_PARAM(value);
-    
+
     if(value == KERNEL_WAIT_FOREVER){
         return kSuccess;
     }

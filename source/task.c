@@ -1,4 +1,5 @@
-#include <task.h>
+#include <KalangoRTOS/task.h>
+#include <KalangoRTOS/kalango_config_internal.h>
 
 TaskId TaskCreate(TaskSettings *settings) {
     ASSERT_KERNEL(settings, NULL);
@@ -14,21 +15,22 @@ TaskId TaskCreate(TaskSettings *settings) {
 
     if(task == NULL) {
         CoreSchedulingResume();
-        return NULL;   
+        return NULL;
     }
 
     task->entry_point = settings->function;
     task->priority = settings->priority;
     task->arg1 = settings->arg;
-    task->stack_size = settings->stack_size;
+    task->stack_size = settings->stack_size + CONFIG_ARCH_ALIGNMENT_BYTES;
     task->state = 0;
 
     task->stackpointer = AllocateRawBuffer(settings->stack_size);
     if(!task->stackpointer) {
         FreeTaskObject(task);
         CoreSchedulingResume();
-        return NULL;   
+        return NULL;
     }
+
 
     KernelResult r = ArchNewTask(task, task->stackpointer, task->stack_size);
     if(r != kSuccess) {
@@ -51,7 +53,7 @@ KernelResult TaskSuspend(TaskId task_id) {
     if(ArchInIsr()) {
         if(!ArchGetIsrNesting()){
             return kErrorInvalidKernelState;
-        } 
+        }
     }
 
     TaskControBlock *task = (TaskControBlock *)task_id;
@@ -73,7 +75,7 @@ KernelResult TaskResume(TaskId task_id) {
     if(ArchInIsr()) {
         if(!ArchGetIsrNesting()){
             return kErrorInvalidKernelState;
-        } 
+        }
     }
 
     TaskControBlock *task = (TaskControBlock *)task_id;
@@ -88,7 +90,7 @@ KernelResult TaskResume(TaskId task_id) {
 
     //Not need to reeschedule a new unpended task in a ISR,
     //it will be done a single time after all ISRs
-    //get processed 
+    //get processed
     if(ArchInIsr()) {
         CoreSchedulingResume();
         return kSuccess;
@@ -104,7 +106,7 @@ KernelResult TaskDelete(TaskId task_id) {
     CoreSchedulingSuspend();
 
     CoreMakeTaskPending(task, TASK_STATE_TERMINATED, NULL);
-    
+
     return (CheckReschedule());
 }
 
@@ -116,13 +118,13 @@ uint32_t TaskSetPriority(TaskId task_id, uint32_t new_priority) {
     if(ArchInIsr()) {
         if(!ArchGetIsrNesting()){
             return kErrorInvalidKernelState;
-        } 
+        }
     }
 
     TaskControBlock *task = (TaskControBlock *)task_id;
     CoreSchedulingSuspend();
 
-    uint32_t old_prio = task->priority;    
+    uint32_t old_prio = task->priority;
     if(task->state == TASK_STATE_READY) {
         //Force ready task to be moved to correct place on ready queue;
         //Suspended task will be moved once the pending condition terminates
@@ -133,7 +135,7 @@ uint32_t TaskSetPriority(TaskId task_id, uint32_t new_priority) {
 
     //Not need to reeschedule a new unpended task in a ISR,
     //it will be done a single time after all ISRs
-    //get processed 
+    //get processed
     if(ArchInIsr()) {
         CoreSchedulingResume();
         return (old_prio);
@@ -146,7 +148,7 @@ uint32_t TaskSetPriority(TaskId task_id, uint32_t new_priority) {
 uint32_t TaskGetPriority(TaskId task_id) {
     ASSERT_PARAM(task_id);
     TaskControBlock *task = (TaskControBlock *)task_id;
-  
+
     return(task->priority);
 }
 

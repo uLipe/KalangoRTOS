@@ -1,10 +1,10 @@
-#include <sched.h>
-
+#include <KalangoRTOS/sched.h>
+#include <KalangoRTOS/kalango_config_internal.h>
 
 bool IsSchedulerLocked(TaskPriorityList *taskset) {
 
     ArchCriticalSectionEnter();
-    bool result = ((taskset->lock_level == 0) ? false : true); 
+    bool result = ((taskset->lock_level == 0) ? false : true);
     ArchCriticalSectionExit();
 
     return result;
@@ -34,11 +34,11 @@ KernelResult SchedulerUnlock(TaskPriorityList *taskset) {
 
 
 TaskControBlock *ScheduleTaskSet(TaskPriorityList *taskset) {
-    ASSERT_KERNEL(taskset, NULL);   
+    ASSERT_KERNEL(taskset, NULL);
 
     if(taskset->lock_level) {
         return NULL;
-    } 
+    }
 
     ArchCriticalSectionEnter();
 
@@ -56,7 +56,7 @@ TaskControBlock *ScheduleTaskSet(TaskPriorityList *taskset) {
 
 void SchedulerInitTaskPriorityList(TaskPriorityList *list) {
     ArchCriticalSectionEnter();
-    
+
     for(uint32_t i = 0; i < CONFIG_PRIORITY_LEVELS; i++) {
         sys_dlist_init(&list->task_list[i]);
     }

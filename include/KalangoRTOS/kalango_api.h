@@ -24,19 +24,19 @@
 
 #pragma once
 
-#include <kernel_types.h>
+#include <KalangoRTOS/kernel_types.h>
 
 /* Internal headers (ideally hidden from the application in a future refactor).
  * Kept here to preserve current project compatibility. */
-#include <core.h>
-#include <semaphore.h>
-#include <task.h>
-#include <queue.h>
-#include <clock.h>
-#include <sched.h>
-#include <timer.h>
-#include <mutex.h>
-#include <object_pool.h>
+#include <KalangoRTOS/core.h>
+#include <KalangoRTOS/semaphore.h>
+#include <KalangoRTOS/task.h>
+#include <KalangoRTOS/queue.h>
+#include <KalangoRTOS/clock.h>
+#include <KalangoRTOS/sched.h>
+#include <KalangoRTOS/timer.h>
+#include <KalangoRTOS/mutex.h>
+#include <KalangoRTOS/object_pool.h>
 
 /* -------------------------------------------------------------------------- */
 /* Core / System                                                              */

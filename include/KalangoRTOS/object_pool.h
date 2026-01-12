@@ -1,8 +1,8 @@
-#pragma once 
+#pragma once
 
-#include <arch.h>
-#include <kernel_types.h>
-#include <list.h>
+#include <KalangoRTOS/arch.h>
+#include <KalangoRTOS/kernel_types.h>
+#include <KalangoRTOS/list.h>
 
 uint32_t GetKernelFreeBytesOnHeap();
 
