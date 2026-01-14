@@ -1,6 +1,8 @@
 #pragma once
 
 #include <KalangoRTOS/kalango_config_internal.h>
+#include <KalangoRTOS/priority_queue.h>
+
 
 typedef struct {
     sys_dlist_t task_list[CONFIG_PRIORITY_LEVELS];
@@ -8,14 +10,16 @@ typedef struct {
     uint32_t lock_level;
 }TaskPriorityList;
 
-typedef struct {
-    void (*timeout_callback) (void *);
-    void *user_data;
-    bool is_task;
+struct Timeout_s;
+
+typedef int (*TimeoutCallback)(struct Timeout_s *timeout);
+
+typedef struct Timeout_s {
+    TimeoutCallback timeout_callback;
     uint32_t next_wakeup_tick;
     bool expired;
-    TaskPriorityList *bonded_list;
-    sys_dnode_t timed_node;
+    bool invalid;
+    struct heap_node node;
 }Timeout;
 
 typedef struct {

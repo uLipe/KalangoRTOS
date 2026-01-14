@@ -3,6 +3,24 @@
 
 #if CONFIG_ENABLE_TIMERS > 0
 
+static int TimerHandleExpired(Timeout* t) {
+    Timer *timer = CONTAINER_OF(t, Timer, timeout);
+
+    if(timer->callback) {
+        timer->callback(timer->user_data);
+    }
+
+    if(timer->periodic) {
+        AddTimeout(&timer->timeout, timer->period_time, TimerHandleExpired);
+        return 1;
+    } else {
+        timer->expired = true;
+        timer->running = false;
+        return 0;
+    }
+}
+
+
 TimerId TimerCreate(TimerCallback callback, uint32_t expiry_time, uint32_t period_time, void *user_data) {
     ASSERT_KERNEL(callback, NULL);
     ASSERT_KERNEL(expiry_time, NULL);
@@ -41,7 +59,7 @@ KernelResult TimerStart(TimerId timer) {
     KernelResult result = RemoveTimeout(&t->timeout);
 
     if(result == kSuccess) {
-        result = AddTimeout(&t->timeout, t->expiry_time, t->callback, t->user_data, false, NULL);
+        result = AddTimeout(&t->timeout, t->expiry_time, TimerHandleExpired);
         if(result == kSuccess) {
             t->expired = false;
             t->running = true;

@@ -553,6 +553,85 @@ static inline KernelResult Kalango_QueueDelete(QueueId queue) {
  * @{
  */
 
+
+/**
+ * @brief Convert milliseconds to system ticks (truncated).
+ *
+ * Converts a time value expressed in milliseconds to system ticks using
+ * CONFIG_TICKS_PER_SEC.
+ *
+ * @note This macro truncates the result. If @p ms is small, it may return 0.
+ *       For timeouts and sleeps, prefer the *_CEIL variant.
+ *
+ * @param ms Time in milliseconds.
+ * @return Equivalent time in system ticks.
+ */
+#define KALANGO_TICKS_FROM_MS(ms) \
+    ((uint32_t)(((uint64_t)(ms) * CONFIG_TICKS_PER_SEC) / 1000u))
+
+/**
+ * @brief Convert microseconds to system ticks (truncated).
+ *
+ * Converts a time value expressed in microseconds to system ticks using
+ * CONFIG_SYS_TICK_PER_SECOND.
+ *
+ * @note This macro truncates the result. If @p us is small, it may return 0.
+ *       For timeouts and sleeps, prefer the *_CEIL variant.
+ *
+ * @param us Time in microseconds.
+ * @return Equivalent time in system ticks.
+ */
+#define KALANGO_TICKS_FROM_US(us) \
+    ((uint32_t)(((uint64_t)(us) * CONFIG_TICKS_PER_SEC) / 1000000u))
+
+/**
+ * @brief Convert milliseconds to system ticks (rounded up).
+ *
+ * Converts a time value expressed in milliseconds to system ticks,
+ * rounding up to ensure the result is never zero when @p ms > 0.
+ *
+ * @param ms Time in milliseconds.
+ * @return Equivalent time in system ticks, rounded up.
+ */
+#define KALANGO_TICKS_FROM_MS_CEIL(ms) \
+    ((uint32_t)((((uint64_t)(ms) * CONFIG_TICKS_PER_SEC) + 999u) / 1000u))
+
+/**
+ * @brief Convert microseconds to system ticks (rounded up).
+ *
+ * Converts a time value expressed in microseconds to system ticks,
+ * rounding up to ensure the result is never zero when @p us > 0.
+ *
+ * @param us Time in microseconds.
+ * @return Equivalent time in system ticks, rounded up.
+ */
+#define KALANGO_TICKS_FROM_US_CEIL(us) \
+    ((uint32_t)((((uint64_t)(us) * CONFIG_TICKS_PER_SEC) + 999999u) / 1000000u))
+
+/**
+ * @brief Convert system ticks to milliseconds.
+ *
+ * Converts a number of system ticks to milliseconds using
+ * CONFIG_SYS_TICK_PER_SECOND.
+ *
+ * @param ticks Time in system ticks.
+ * @return Equivalent time in milliseconds.
+ */
+#define KALANGO_MS_FROM_TICKS(ticks) \
+    ((uint32_t)(((uint64_t)(ticks) * 1000u) / CONFIG_TICKS_PER_SEC))
+
+/**
+ * @brief Convert system ticks to microseconds.
+ *
+ * Converts a number of system ticks to microseconds using
+ * CONFIG_SYS_TICK_PER_SECOND.
+ *
+ * @param ticks Time in system ticks.
+ * @return Equivalent time in microseconds.
+ */
+#define KALANGO_US_FROM_TICKS(ticks) \
+    ((uint32_t)(((uint64_t)(ticks) * 1000000u) / CONFIG_TICKS_PER_SEC))
+
 /**
  * @brief Creates a timer.
  *

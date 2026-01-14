@@ -3,6 +3,13 @@
 
 #if CONFIG_ENABLE_SEMAPHORES > 0
 
+static int SemaphoreHandleTimeout(Timeout* t) {
+    TaskControBlock *wake_task = CONTAINER_OF(t, TaskControBlock,timeout);
+    CoreMakeTaskReady(wake_task);
+    return 0;
+}
+
+
 SemaphoreId SemaphoreCreate(uint32_t initial, uint32_t limit) {
     ASSERT_KERNEL(limit, NULL);
 
@@ -14,7 +21,6 @@ SemaphoreId SemaphoreCreate(uint32_t initial, uint32_t limit) {
         CoreSchedulingResume();
         return NULL;
     }
-
 
     semaphore->count = initial;
     semaphore->limit = limit;
@@ -46,7 +52,7 @@ KernelResult SemaphoreTake(SemaphoreId semaphore, uint32_t timeout) {
     if(timeout != KERNEL_NO_WAIT) {
         TaskControBlock *task = CoreGetCurrentTask();
         CoreMakeTaskPending(task, TASK_STATE_PEND_SEMAPHORE, &s->pending_tasks);
-        AddTimeout(&task->timeout, timeout, NULL, NULL, true, &s->pending_tasks);
+        AddTimeout(&task->timeout, timeout, SemaphoreHandleTimeout);
         CheckReschedule();
 
         //Still locked or expired:

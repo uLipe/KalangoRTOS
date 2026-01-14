@@ -1,35 +1,35 @@
 #include <KalangoRTOS/clock.h>
 #include <KalangoRTOS/kalango_config_internal.h>
 
-static sys_dlist_t timeout_list = SYS_DLIST_STATIC_INIT(&timeout_list);
+static int ClockTimeCompare(struct heap_node *a, struct heap_node *b);
+
+static struct priority_queue timeout_list = {
+    .head = NULL,
+    .tail = NULL,
+    .root = NULL,
+    .compare = ClockTimeCompare,
+};
+
 static uint32_t tick_counter = 0;
 
-#if CONFIG_ENABLE_TIMERS > 0
-static KernelResult HandleExpiredTimers(sys_dlist_t *expired_list) {
+static int ClockTimeCompare(struct heap_node *a, struct heap_node *b)
+{
+    Timeout *timer_a = CONTAINER_OF(a, Timeout, node);
+    Timeout *timer_b = CONTAINER_OF(b, Timeout, node);
 
-    sys_dnode_t *next = sys_dlist_peek_head(expired_list);
-
-    while(next) {
-        Timeout *timeout = CONTAINER_OF(next, Timeout, timed_node);
-        Timer *timer = CONTAINER_OF(timeout, Timer, timeout);
-
-        if(timeout->timeout_callback) {
-            timeout->timeout_callback(timeout->user_data);
-        }
-
-        if(timer->periodic) {
-            AddTimeout(&timer->timeout, timer->period_time, timer->callback, timer->user_data, false, NULL);
-        } else {
-            timer->expired = true;
-            timer->running = false;
-        }
-
-        next = sys_dlist_peek_next(expired_list, next);
-    }
-
-    return kSuccess;
+    if(timer_a->next_wakeup_tick < timer_b->next_wakeup_tick)
+        return 1;
+    else if (timer_a->next_wakeup_tick > timer_b->next_wakeup_tick)
+        return -1;
+    
+    return -1;
 }
-#endif
+
+static int ClockHandleSleepTasks(Timeout* t) {
+    TaskControBlock *wake_task = CONTAINER_OF(t, TaskControBlock,timeout);
+    CoreMakeTaskReady(wake_task);
+    return 0;
+}
 
 uint32_t GetTicksPerSecond() {
     return CONFIG_TICKS_PER_SEC;
@@ -45,7 +45,7 @@ KernelResult Sleep(uint32_t ticks) {
     CoreSchedulingSuspend();
     TaskControBlock *current = CoreGetCurrentTask();
     CoreMakeTaskPending(current, TASK_STATE_PEND_TIMEOUT, NULL);
-    AddTimeout(&current->timeout, ticks, NULL, NULL, true, NULL);
+    AddTimeout(&current->timeout, ticks, ClockHandleSleepTasks);
 
     return (CheckReschedule());
 }
@@ -61,67 +61,46 @@ KernelResult ClockStep (uint32_t ticks) {
     CoreManageRoundRobin();
 #endif
 
-    sys_dlist_t expired_list;
-    sys_dnode_t *next = sys_dlist_peek_head(&timeout_list);
-
-    sys_dlist_init(&expired_list);
     tick_counter += ticks;
+    int need_reorder = 0;
+    Timeout *next_timer = NULL;
+    struct heap_node *node = pq_peek(&timeout_list);
 
-    while(next) {
-        Timeout *timeout = CONTAINER_OF(next, Timeout, timed_node);
-        if(timeout->next_wakeup_tick <= tick_counter) {
-            next = sys_dlist_peek_next(&timeout_list, next);
+    while (node && (next_timer = CONTAINER_OF(node, Timeout, node))->next_wakeup_tick <= tick_counter) {
+        pq_pop(&timeout_list);
+        if(!next_timer->invalid && next_timer->timeout_callback) {
+            next_timer->expired = true;
+            need_reorder |= next_timer->timeout_callback(next_timer);
+        } 
 
-            timeout->expired = true;
-            sys_dlist_remove(&timeout->timed_node);
-
-            if(!timeout->is_task) {
-                sys_dlist_prepend(&expired_list, &timeout->timed_node);
-            } else {
-                TaskControBlock *timed_out = CONTAINER_OF(timeout, TaskControBlock,timeout);
-                if(timeout->bonded_list != NULL) {
-                    SchedulerResetPriority(timeout->bonded_list, timed_out->priority);
-                }
-                CoreMakeTaskReady(timed_out);
-            }
-        } else {
-            next = sys_dlist_peek_next(&timeout_list, next);
-        }
+        node = pq_peek(&timeout_list);
     }
 
-#if CONFIG_ENABLE_TIMERS > 0
-    if(!sys_dlist_is_empty(&expired_list)) {
-        return HandleExpiredTimers(&expired_list);
-    }
-#endif
+    if(need_reorder)
+    	pq_reorder(&timeout_list);
 
     return kSuccess;
 }
 
 KernelResult AddTimeout(Timeout *timeout,
                         uint32_t value,
-                        TimerCallback timeout_callback,
-                        void *user_data,
-                        bool is_task,
-                        TaskPriorityList *optional_list_to_bind) {
+                        TimeoutCallback timeout_callback) {
     ASSERT_PARAM(timeout);
     ASSERT_PARAM(value);
+    ASSERT_PARAM(timeout_callback);
 
     if(value == KERNEL_WAIT_FOREVER){
         return kSuccess;
     }
 
-    timeout->is_task = is_task;
+    timeout->invalid = false;
+    timeout->expired = false;
     timeout->next_wakeup_tick = tick_counter + value;
     timeout->timeout_callback = timeout_callback;
-    timeout->user_data = user_data;
-    timeout->expired = false;
-    if(optional_list_to_bind != NULL) {
-        timeout->bonded_list = optional_list_to_bind;
-    }
 
     ArchCriticalSectionEnter();
-    sys_dlist_append(&timeout_list, &timeout->timed_node);
+    pq_insert(&timeout_list, &timeout->node);
+    pq_reorder(&timeout_list);
     ArchCriticalSectionExit();
 
     return kSuccess;
@@ -131,7 +110,7 @@ KernelResult RemoveTimeout(Timeout *timeout) {
     ASSERT_PARAM(timeout);
 
     ArchCriticalSectionEnter();
-    sys_dlist_remove(&timeout->timed_node);
+    timeout->invalid = true;
     ArchCriticalSectionExit();
 
     return kSuccess;

@@ -16,6 +16,7 @@ set(rtos_sources
     "source/sched_fifo.c"
     "source/sched_round_robin.c"
     "source/semaphore.c"
+    "source/priority_queue.c"
     "source/task.c"
     "source/timer.c"
     "source/utils/print_out.c"

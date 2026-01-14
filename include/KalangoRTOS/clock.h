@@ -10,8 +10,5 @@ KernelResult Sleep(uint32_t ticks);
 KernelResult ClockStep(uint32_t ticks);
 KernelResult AddTimeout(Timeout *timeout,
                     uint32_t value,
-                    TimerCallback timeout_callback,
-                    void *user_data,
-                    bool is_task,
-                    TaskPriorityList *optional_list_to_bind);
+                    TimeoutCallback timeout_callback);
 KernelResult RemoveTimeout(Timeout *timeout);

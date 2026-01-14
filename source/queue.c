@@ -3,6 +3,13 @@
 
 #if CONFIG_ENABLE_QUEUES > 0
 
+static int QueueHandleTimeout(Timeout* t) {
+    TaskControBlock *wake_task = CONTAINER_OF(t, TaskControBlock,timeout);
+    CoreMakeTaskReady(wake_task);
+    return 0;
+}
+
+
 QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size) {
     ASSERT_KERNEL(noof_slots, NULL);
     ASSERT_KERNEL(slot_size, NULL);
@@ -120,7 +127,7 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
 
     TaskControBlock *task = CoreGetCurrentTask();
     CoreMakeTaskPending(task, TASK_STATE_PEND_QUEUE, &q->writer_tasks_pending);
-    AddTimeout(&task->timeout, timeout, NULL, NULL, true, &q->writer_tasks_pending);
+    AddTimeout(&task->timeout, timeout, QueueHandleTimeout);
     CheckReschedule();
 
     CoreSchedulingSuspend();
@@ -186,7 +193,7 @@ KernelResult QueuePeek(QueueId queue, void *data, uint32_t *data_size, uint32_t 
 
     TaskControBlock *task = CoreGetCurrentTask();
     CoreMakeTaskPending(task, TASK_STATE_PEND_QUEUE, &q->reader_tasks_pending);
-    AddTimeout(&task->timeout, timeout, NULL, NULL, true, &q->reader_tasks_pending);
+    AddTimeout(&task->timeout, timeout, QueueHandleTimeout);
     CheckReschedule();
 
     CoreSchedulingSuspend();
@@ -269,7 +276,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
 
     TaskControBlock *task = CoreGetCurrentTask();
     CoreMakeTaskPending(task, TASK_STATE_PEND_QUEUE, &q->reader_tasks_pending);
-    AddTimeout(&task->timeout, timeout, NULL, NULL, true, &q->reader_tasks_pending);
+    AddTimeout(&task->timeout, timeout, QueueHandleTimeout);
     CheckReschedule();
 
     CoreSchedulingSuspend();

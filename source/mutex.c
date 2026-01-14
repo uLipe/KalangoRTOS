@@ -3,6 +3,12 @@
 
 #if CONFIG_ENABLE_MUTEXES > 0
 
+static int MutexHandleTimeout(Timeout* t) {
+    TaskControBlock *wake_task = CONTAINER_OF(t, TaskControBlock,timeout);
+    CoreMakeTaskReady(wake_task);
+    return 0;
+}
+
 MutexId MutexCreate(){
 
     CoreInit();
@@ -93,7 +99,7 @@ KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
     if(timeout != KERNEL_NO_WAIT) {
         TaskControBlock *task = CoreGetCurrentTask();
         CoreMakeTaskPending(task, TASK_STATE_PEND_MUTEX, &m->pending_tasks);
-        AddTimeout(&task->timeout, timeout, NULL, NULL, true, &m->pending_tasks);
+        AddTimeout(&task->timeout, timeout, MutexHandleTimeout);
         CheckReschedule();
 
         //Still locked?
