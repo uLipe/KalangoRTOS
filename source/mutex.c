@@ -25,7 +25,7 @@ MutexId MutexCreate(){
     mutex->recursive_taking_count = 0;
     mutex->owner = NULL;
 
-    KernelResult r = CoreInitializeTaskList(&mutex->pending_tasks);
+    KernelResult r = CoreInitWaitQueue(&mutex->pending_tasks);
     if(r != kSuccess) {
         FreeMutexObject(mutex);
         CoreSchedulingResume();
@@ -117,6 +117,7 @@ KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
 KernelResult MutexUnlock(MutexId mutex) {
     ASSERT_PARAM(mutex);
     ASSERT_KERNEL(!ArchInIsr(), kErrorInsideIsr);
+    KernelResult result;
 
     Mutex *m = (Mutex *)mutex;
 
@@ -137,18 +138,17 @@ KernelResult MutexUnlock(MutexId mutex) {
         return kStatusMutexAlreadyTaken;
     }
 
+    TaskControBlock *task = CorePeekWaitQueue(&m->pending_tasks);
 
-   if(NothingToSched(&m->pending_tasks)) {
+    if(task == NULL) {
         m->owned = false;
         m->owner = NULL;
-
+        CoreSchedulingResume();
         m->old_priority = TaskSetPriority((TaskId)current, m->old_priority);
-        CheckReschedule();
-
-        return kSuccess;
+        return kSuccess;            
     }
 
-    TaskControBlock *task = ScheduleTaskSet(&m->pending_tasks);
+    result = CoreUnpendNextTask(&m->pending_tasks);
     m->owner = task;
 
     //Bumps the priority of next pending task:

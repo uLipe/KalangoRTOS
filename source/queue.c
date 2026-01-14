@@ -38,7 +38,7 @@ QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size) {
         return NULL;
     }
 
-    KernelResult r = CoreInitializeTaskList(&queue->reader_tasks_pending);
+    KernelResult r = CoreInitWaitQueue(&queue->reader_tasks_pending);
     if(r != kSuccess) {
         FreeRawBuffer(queue->buffer);
         FreeQueueObject(queue);
@@ -46,7 +46,7 @@ QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size) {
         return NULL;
     }
 
-    r = CoreInitializeTaskList(&queue->writer_tasks_pending);
+    r = CoreInitWaitQueue(&queue->writer_tasks_pending);
     if(r != kSuccess) {
         FreeRawBuffer(queue->buffer);
         FreeQueueObject(queue);
@@ -61,6 +61,7 @@ QueueId QueueCreate(uint32_t noof_slots, uint32_t slot_size) {
 KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t timeout) {
     ASSERT_PARAM(queue);
     ASSERT_PARAM(data);
+    KernelResult result;
 
     //If called from ISR, requires a IRQ safe block
     if(ArchInIsr()) {
@@ -95,24 +96,22 @@ KernelResult QueueInsert(QueueId queue, void *data, uint32_t data_size, uint32_t
             q->full = true;
         }
 
-        if(NothingToSched(&q->reader_tasks_pending)) {
+        result = CoreUnpendNextTask(&q->reader_tasks_pending);
+        if(result == kErrorNothingToSchedule) {
+            CoreSchedulingResume();
+            return kSuccess;            
+        }
+        
+        //Not need to reeschedule a new unpended task in a ISR,
+        //it will be done a single time after all ISRs
+        //get processed
+        if(ArchInIsr()) {
             CoreSchedulingResume();
             return kSuccess;
         } else {
-
-            CoreUnpendNextTask(&q->reader_tasks_pending);
-
-            //Not need to reeschedule a new unpended task in a ISR,
-            //it will be done a single time after all ISRs
-            //get processed
-            if(ArchInIsr()) {
-                CoreSchedulingResume();
-                return kSuccess;
-            } else {
-                return CheckReschedule();
-            }
-
+            return CheckReschedule();
         }
+
     }
 
     if(timeout == KERNEL_NO_WAIT) {
@@ -213,6 +212,7 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
     ASSERT_PARAM(queue);
     ASSERT_PARAM(data);
     (void)data_size;
+    KernelResult result;
 
     //If called from ISR, requires a IRQ safe block
     if(ArchInIsr()) {
@@ -244,22 +244,21 @@ KernelResult QueueRemove(QueueId queue, void *data, uint32_t *data_size, uint32_
             q->empty = true;
         }
 
-        if(NothingToSched(&q->writer_tasks_pending)) {
+        result = CoreUnpendNextTask(&q->writer_tasks_pending);
+ 
+        if(result == kErrorNothingToSchedule) {
+            CoreSchedulingResume();
+            return kSuccess;            
+        }
+        
+        //Not need to reeschedule a new unpended task in a ISR,
+        //it will be done a single time after all ISRs
+        //get processed
+        if(ArchInIsr()) {
             CoreSchedulingResume();
             return kSuccess;
         } else {
-
-            CoreUnpendNextTask(&q->writer_tasks_pending);
-
-            //Not need to reeschedule a new unpended task in a ISR,
-            //it will be done a single time after all ISRs
-            //get processed
-            if(ArchInIsr()) {
-                CoreSchedulingResume();
-                return kSuccess;
-            } else {
-                return CheckReschedule();
-            }
+            return CheckReschedule();
         }
 
     }

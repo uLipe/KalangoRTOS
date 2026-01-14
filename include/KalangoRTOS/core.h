@@ -7,10 +7,7 @@
 
 KernelResult CoreInit();
 KernelResult CoreStart();
-KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, TaskPriorityList *kobject_pending_list);
-KernelResult CoreUnpendNextTask(TaskPriorityList *kobject_pending_list);
 KernelResult CoreMakeTaskReady(TaskControBlock * task);
-KernelResult CoreMakeAllTasksReady(TaskPriorityList *tasks);
 KernelResult CheckReschedule();
 KernelResult CoreManageRoundRobin();
 KernelResult CoreInitializeTaskList(TaskPriorityList *list);
@@ -18,4 +15,11 @@ TaskControBlock * CoreGetCurrentTask();
 TaskControBlock * CoreTaskSwitch();
 KernelResult CoreSchedulingSuspend();
 KernelResult CoreSchedulingResume();
+
+KernelResult CoreInitWaitQueue(WaitQueue *wq);
+KernelResult CoreUnpendNextTask(WaitQueue *wq);
+KernelResult CoreMakeAllTasksReady(WaitQueue *wq);
+TaskControBlock *CorePeekWaitQueue(WaitQueue *wq);
+KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, WaitQueue *wq);
+
 bool IsCoreRunning();

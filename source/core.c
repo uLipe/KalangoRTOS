@@ -28,7 +28,7 @@ static void IdleTask(void *unused) {
     }
 }
 
-KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, TaskPriorityList *kobject_pending_list) {
+KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, WaitQueue *wq){
     ASSERT_PARAM(task);
     ASSERT_PARAM(reason);
 
@@ -38,9 +38,8 @@ KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, TaskPr
 
     task->state = reason;
 
-    if(kobject_pending_list) {
-        sys_dlist_append(&kobject_pending_list->task_list[task->priority], &task->ready_node);
-        SchedulerSetPriority(kobject_pending_list, task->priority);
+    if(wq) {
+        sys_dlist_append(&wq->waiters, &task->ready_node);
     }
 
     if(reason & TASK_STATE_TERMINATED) {
@@ -51,22 +50,23 @@ KernelResult CoreMakeTaskPending(TaskControBlock * task, uint32_t reason, TaskPr
     return kSuccess;
 }
 
-KernelResult CoreUnpendNextTask(TaskPriorityList *kobject_pending_list) {
-    ASSERT_PARAM(kobject_pending_list);
+KernelResult CoreUnpendNextTask(WaitQueue *wq) {
+    ASSERT_PARAM(wq);
 
-    TaskControBlock *task = ScheduleTaskSet(kobject_pending_list);
+    TaskControBlock *task;
+    sys_dnode_t *node =  sys_dlist_peek_head(&wq->waiters);
 
-    if(task) {
-        ArchCriticalSectionEnter();
-        RemoveTimeout(&task->timeout);
-        sys_dlist_remove(&task->ready_node);
-        SchedulerResetPriority(kobject_pending_list, task->priority);
-        ArchCriticalSectionExit();
-
-        return (CoreMakeTaskReady(task));
-    } else {
-        return kErrorNothingToSchedule;
+    if(node == NULL) {
+       return kErrorNothingToSchedule;
     }
+
+    task = CONTAINER_OF(node, TaskControBlock, ready_node);
+    ArchCriticalSectionEnter();
+    RemoveTimeout(&task->timeout);
+    sys_dlist_remove(&task->ready_node);
+    ArchCriticalSectionExit();
+
+    return (CoreMakeTaskReady(task));
 }
 
 KernelResult CoreMakeTaskReady(TaskControBlock * task) {
@@ -83,14 +83,16 @@ KernelResult CoreMakeTaskReady(TaskControBlock * task) {
     return kSuccess;
 }
 
-KernelResult CoreMakeAllTasksReady(TaskPriorityList *tasks) {
-    ASSERT_PARAM(tasks);
+KernelResult CoreMakeAllTasksReady(WaitQueue *wq) {
+    ASSERT_PARAM(wq);
+
+    KernelResult result;
 
     ArchCriticalSectionEnter();
 
-    while(!NothingToSched(tasks)) {
-        CoreUnpendNextTask(tasks);
-    }
+    do {
+        result = CoreUnpendNextTask(wq);
+    } while (result != kErrorNothingToSchedule);
 
     ArchCriticalSectionExit();
 
@@ -204,4 +206,30 @@ KernelResult CoreSchedulingSuspend() {
 
 KernelResult CoreSchedulingResume() {
     return SchedulerUnlock(&ready_tasks_list);
+}
+
+KernelResult CoreInitWaitQueue(WaitQueue *wq) {
+    ASSERT_PARAM(wq);
+    
+    ArchCriticalSectionEnter();
+    sys_dlist_init(&wq->waiters);
+    ArchCriticalSectionExit();
+
+    return kSuccess;
+}
+
+TaskControBlock * CorePeekWaitQueue(WaitQueue *wq) {
+    ASSERT_KERNEL(wq, NULL);
+    
+    sys_dnode_t *node;
+
+    ArchCriticalSectionEnter();
+    node = sys_dlist_peek_head(&wq->waiters);
+    ArchCriticalSectionExit();
+
+    if(node == NULL) {
+        return NULL;
+    }
+
+    return (CONTAINER_OF(node, TaskControBlock, ready_node));
 }
