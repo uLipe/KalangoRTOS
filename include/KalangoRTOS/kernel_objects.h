@@ -10,6 +10,10 @@ typedef struct {
     uint32_t lock_level;
 }TaskPriorityList;
 
+typedef struct {
+    sys_dlist_t waiters;
+}WaitQueue;
+
 struct Timeout_s;
 
 typedef int (*TimeoutCallback)(struct Timeout_s *timeout);
@@ -36,7 +40,7 @@ typedef struct {
 typedef struct {
     uint32_t count;
     uint32_t limit;
-    TaskPriorityList pending_tasks;
+    WaitQueue pending_tasks;
 }Semaphore;
 
 typedef struct {
@@ -44,7 +48,7 @@ typedef struct {
     void *owner;
     uint32_t recursive_taking_count;
     uint32_t old_priority;
-    TaskPriorityList pending_tasks;
+    WaitQueue pending_tasks;
 }Mutex;
 
 typedef struct {
@@ -67,6 +71,6 @@ typedef struct {
     uint32_t available_slots;
     bool full;
     bool empty;
-    TaskPriorityList writer_tasks_pending;
-    TaskPriorityList reader_tasks_pending;
+    WaitQueue writer_tasks_pending;
+    WaitQueue reader_tasks_pending;
 } Queue;

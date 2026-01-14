@@ -24,7 +24,7 @@ SemaphoreId SemaphoreCreate(uint32_t initial, uint32_t limit) {
 
     semaphore->count = initial;
     semaphore->limit = limit;
-    KernelResult r = CoreInitializeTaskList(&semaphore->pending_tasks);
+    KernelResult r = CoreInitWaitQueue(&semaphore->pending_tasks);
 
     if(r != kSuccess) {
         FreeSemaphoreObject(semaphore);
@@ -70,6 +70,7 @@ KernelResult SemaphoreTake(SemaphoreId semaphore, uint32_t timeout) {
 KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
     ASSERT_PARAM(semaphore);
     ASSERT_PARAM(count);
+    KernelResult result;
 
         //If called from ISR, requires a IRQ safe block
     if(ArchInIsr()) {
@@ -84,23 +85,22 @@ KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
     s->count += count;
     (s->count > s->limit) ? s->count = s->limit : s->count;
 
-    if(NothingToSched(&s->pending_tasks)) {
+    result = CoreUnpendNextTask(&s->pending_tasks);
+
+    if(result == kErrorNothingToSchedule) {
+        CoreSchedulingResume();
+        return kSuccess;            
+    }
+
+    if(s->count > 0) {
+        s->count--;
+    }
+
+    if(ArchInIsr()) {
         CoreSchedulingResume();
         return kSuccess;
     } else {
-
-        if(s->count > 0) {
-            s->count--;
-        }
-
-        CoreUnpendNextTask(&s->pending_tasks);
-
-        if(ArchInIsr()) {
-            CoreSchedulingResume();
-            return kSuccess;
-        } else {
-            return CheckReschedule();
-        }
+        return CheckReschedule();
     }
 }
 
