@@ -68,7 +68,8 @@ KernelResult ClockStep (uint32_t ticks) {
 
     while (node && (next_timer = CONTAINER_OF(node, Timeout, node))->next_wakeup_tick <= tick_counter) {
         pq_pop(&timeout_list);
-        if(!next_timer->invalid && next_timer->timeout_callback) {
+
+        if(next_timer->timeout_callback) {
             next_timer->expired = true;
             need_reorder |= next_timer->timeout_callback(next_timer);
         } 
@@ -90,6 +91,7 @@ KernelResult AddTimeout(Timeout *timeout,
     ASSERT_PARAM(timeout_callback);
 
     if(value == KERNEL_WAIT_FOREVER){
+        timeout->invalid = true;
         return kSuccess;
     }
 
@@ -109,8 +111,13 @@ KernelResult AddTimeout(Timeout *timeout,
 KernelResult RemoveTimeout(Timeout *timeout) {
     ASSERT_PARAM(timeout);
 
+    if(timeout->invalid) {
+        return kSuccess;
+    } 
+
     ArchCriticalSectionEnter();
-    timeout->invalid = true;
+    pq_remove(&timeout_list, &timeout->node);
+    pq_reorder(&timeout_list);
     ArchCriticalSectionExit();
 
     return kSuccess;

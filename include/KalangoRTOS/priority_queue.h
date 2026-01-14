@@ -94,5 +94,15 @@ struct heap_node *pq_peek(struct priority_queue *pq);
  */
 void pq_reorder(struct priority_queue *pq);
 
+/**
+ * pq_remove - Remove the specified note from the pq
+ * @pq: Pointer to the priority queue
+ * @node: Pointer to the node to be inserted
+ *
+ * Return: 0 on success, -EINVAL on invalid parameters
+ * @note: you MUST reorder the pq after calling this function
+ */
+int pq_remove(struct priority_queue *pq, struct heap_node *node);
+
 #endif /* PRIORITY_QUEUE_H */
 

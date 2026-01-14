@@ -54,10 +54,13 @@ TimerId TimerCreate(TimerCallback callback, uint32_t expiry_time, uint32_t perio
 KernelResult TimerStart(TimerId timer) {
     ASSERT_PARAM(timer);
     Timer * t = (Timer *)timer;
+    KernelResult result = kSuccess;
 
     CoreSchedulingSuspend();
-    KernelResult result = RemoveTimeout(&t->timeout);
-
+    if(t->running) {
+        result = RemoveTimeout(&t->timeout);
+    }
+    
     if(result == kSuccess) {
         result = AddTimeout(&t->timeout, t->expiry_time, TimerHandleExpired);
         if(result == kSuccess) {
