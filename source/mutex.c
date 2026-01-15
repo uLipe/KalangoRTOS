@@ -105,9 +105,31 @@ KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
         //Still locked?
         if(task->timeout.expired) {
             return kErrorTimeout;
+        } else if(!m->owned) {
+            CoreSchedulingSuspend();
+
+            m->owned = true;
+
+            if(m->recursive_taking_count < 0xFFFFFFFF)
+                m->recursive_taking_count++;
+
+            TaskControBlock *task = CoreGetCurrentTask();
+            m->owner = task;
+
+            //Raise priority
+            if(TaskGetPriority((TaskId)task) < CONFIG_MUTEX_CEIL_PRIORITY) {
+                m->old_priority = TaskSetPriority((TaskId)task, CONFIG_MUTEX_CEIL_PRIORITY);
+            } else {
+                //Dont bump the priority if it already higher than mutex priority
+                m->old_priority = TaskGetPriority((TaskId)task);
+            }
+
+            return CheckReschedule();
         } else {
-            return kSuccess;
+            CoreSchedulingResume();
+            return kStatusMutexAlreadyTaken;            
         }
+        
     } else {
         CoreSchedulingResume();
         return kStatusMutexAlreadyTaken;
@@ -117,7 +139,6 @@ KernelResult MutexLock(MutexId mutex, uint32_t timeout) {
 KernelResult MutexUnlock(MutexId mutex) {
     ASSERT_PARAM(mutex);
     ASSERT_KERNEL(!ArchInIsr(), kErrorInsideIsr);
-    KernelResult result;
 
     Mutex *m = (Mutex *)mutex;
 
@@ -138,32 +159,11 @@ KernelResult MutexUnlock(MutexId mutex) {
         return kStatusMutexAlreadyTaken;
     }
 
-    TaskControBlock *task = CorePeekWaitQueue(&m->pending_tasks);
-
-    if(task == NULL) {
-        m->owned = false;
-        m->owner = NULL;
-        CoreSchedulingResume();
-        m->old_priority = TaskSetPriority((TaskId)current, m->old_priority);
-        return kSuccess;            
-    }
-
-    result = CoreUnpendNextTask(&m->pending_tasks);
-    m->owner = task;
-
-    //Bumps the priority of next pending task:
-    if(TaskGetPriority((TaskId)task) < CONFIG_MUTEX_CEIL_PRIORITY) {
-        m->old_priority = TaskSetPriority((TaskId)task, CONFIG_MUTEX_CEIL_PRIORITY);
-    } else {
-        //Dont bump the priority if it already higher than mutex priority
-        m->old_priority = TaskGetPriority((TaskId)task);
-    }
-
-    if(m->recursive_taking_count < 0xFFFFFFFF)
-        m->recursive_taking_count++;
+    m->owned = false;
+    m->owner = NULL;
+    m->old_priority = TaskSetPriority((TaskId)current, m->old_priority);
 
     CoreUnpendNextTask(&m->pending_tasks);
-    m->old_priority = TaskSetPriority((TaskId)current, m->old_priority);
 
     return CheckReschedule();
 }

@@ -92,6 +92,7 @@ KernelResult AddTimeout(Timeout *timeout,
 
     if(value == KERNEL_WAIT_FOREVER){
         timeout->invalid = true;
+        timeout->expired = false;
         return kSuccess;
     }
 

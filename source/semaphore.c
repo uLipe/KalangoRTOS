@@ -59,7 +59,14 @@ KernelResult SemaphoreTake(SemaphoreId semaphore, uint32_t timeout) {
         if(task->timeout.expired) {
             return kErrorTimeout;
         }
-        return kSuccess;
+
+        if(s->count) {
+            s->count--;
+            CoreSchedulingResume();
+            return kSuccess;
+        }
+
+        return kStatusSemaphoreUnavailable;
 
     } else {
         CoreSchedulingResume();
@@ -70,7 +77,6 @@ KernelResult SemaphoreTake(SemaphoreId semaphore, uint32_t timeout) {
 KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
     ASSERT_PARAM(semaphore);
     ASSERT_PARAM(count);
-    KernelResult result;
 
         //If called from ISR, requires a IRQ safe block
     if(ArchInIsr()) {
@@ -85,16 +91,7 @@ KernelResult SemaphoreGive(SemaphoreId semaphore, uint32_t count) {
     s->count += count;
     (s->count > s->limit) ? s->count = s->limit : s->count;
 
-    result = CoreUnpendNextTask(&s->pending_tasks);
-
-    if(result == kErrorNothingToSchedule) {
-        CoreSchedulingResume();
-        return kSuccess;            
-    }
-
-    if(s->count > 0) {
-        s->count--;
-    }
+    CoreUnpendNextTask(&s->pending_tasks);
 
     if(ArchInIsr()) {
         CoreSchedulingResume();
