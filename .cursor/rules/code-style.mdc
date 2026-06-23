@@ -1,0 +1,84 @@
+---
+description: C code style — Linux kernel style adapted for embedded TriCore
+alwaysApply: true
+---
+
+# Code Style
+
+Follows Linux kernel coding style (Documentation/process/coding-style.rst)
+with minor adaptations for embedded/bare-metal context.
+
+## Indentation
+- **Tabs**, not spaces. Tab width = 8 characters.
+- Continuation lines: align to opening parenthesis or indent one extra tab.
+
+## Line Length
+- Soft limit: **80 columns**. Hard limit: **100 columns**.
+- Exceptions: strings, include paths, assembly operands.
+
+## Braces
+K&R style — opening brace on the same line as the statement, closing brace on its own line.
+
+```c
+/* functions: opening brace on its OWN line */
+int ul_thread_yield(void)
+{
+	...
+}
+
+/* everything else: opening brace on SAME line */
+if (cond) {
+	...
+} else {
+	...
+}
+
+for (i = 0; i < n; i++) {
+	...
+}
+```
+
+Single-statement bodies: **always** use braces.
+
+## Spaces
+- Space after keywords: `if (`, `for (`, `while (`, `switch (`
+- No space between function name and `(`: `ul_thread_yield()`
+- Space around binary operators: `a + b`, `x = y`
+- No space inside parentheses: `(x + y)`, not `( x + y )`
+
+## Naming
+- Functions and variables: `snake_case`
+- Macros and constants: `UPPER_SNAKE_CASE`
+- Typedefs: `snake_case_t`
+- Public API: prefixed with module name — `ul_thread_*`, `ul_ep_*`, `ul_irq_*`
+- Kernel-internal: no `ul_` prefix needed
+
+## Comments
+Prefer `/* */` over `//`. Block comments:
+
+```c
+/*
+ * Multi-line comment describing non-obvious behaviour,
+ * hardware quirks or design trade-offs.
+ */
+```
+
+No comments that just narrate what the code does.
+
+## Declarations
+- One variable per line.
+- Declare variables at the **top** of the block (C89 style, avoids confusion on deeply nested scopes).
+- No unnecessary initialisation to zero when the first use assigns the value.
+
+## Headers
+- Each module has exactly one public header.
+- Include guards: `#ifndef UL_FOO_H` / `#define UL_FOO_H` / `#endif`.
+- Order: system headers (`<stdint.h>`, ...), then project headers.
+
+## Typedefs
+Use `typedef` only for:
+- Opaque handles exposed in public API (`ul_ep_t`, `ul_tid_t`)
+- Function pointer types (`ul_irq_handler_t`)
+- Fixed-layout structs in public API (`ul_msg_t`, `ul_thread_attr_t`)
+
+Do **not** typedef internal structs; use `struct foo` directly.

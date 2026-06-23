@@ -111,5 +111,20 @@ RUN qemu-system-tricore --version
 
 RUN tricore-elf-gdb --version && echo "GDB OK"
 
+# -----------------------------------------------------------------------------
+# Unity — lightweight C unit testing framework for embedded targets
+#   https://github.com/ThrowTheSwitch/Unity
+# Installed to /opt/unity/{unity.c,unity.h,unity_internals.h}
+# Makefile in tests/ references UNITY_DIR=/opt/unity
+# -----------------------------------------------------------------------------
+ARG UNITY_VERSION=v2.6.1
+RUN set -e && \
+    mkdir -p /opt/unity && \
+    BASE="https://raw.githubusercontent.com/ThrowTheSwitch/Unity/${UNITY_VERSION}/src" && \
+    wget -q "${BASE}/unity.c"            -O /opt/unity/unity.c && \
+    wget -q "${BASE}/unity.h"            -O /opt/unity/unity.h && \
+    wget -q "${BASE}/unity_internals.h"  -O /opt/unity/unity_internals.h && \
+    echo "Unity ${UNITY_VERSION} installed at /opt/unity"
+
 WORKDIR /workspace
 CMD ["/bin/bash"]
