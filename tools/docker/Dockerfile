@@ -1,0 +1,115 @@
+# =============================================================================
+# ulipeMicroKernel — TriCore development environment
+#
+# Two stages:
+#   toolchain  — GCC + CMake + Ninja  (~5 min, cacheable layer)
+#   dev        — adds QEMU TC27x + GDB  (~30 min on first build)
+#
+# Build manually:
+#   docker build --target dev -t ulipe-microkernel:dev tools/docker/
+#
+# Or use the helper (builds automatically if image is absent):
+#   python3 tools/dev.py
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1 — toolchain: tricore-elf-gcc + tricore-elf-gdb + build tools
+#
+# Uses the NoMore201/tricore-gcc-toolchain pre-built release:
+#   https://github.com/NoMore201/tricore-gcc-toolchain/releases
+# Includes GCC 13.4, Binutils 2.40, GDB 14.0 — all with TriCore support.
+# -----------------------------------------------------------------------------
+FROM ubuntu:24.04 AS toolchain
+
+LABEL description="ulipeMicroKernel TriCore toolchain"
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        ninja-build \
+        git \
+        wget \
+        curl \
+        python3 \
+        python3-pip \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TC_TOOLCHAIN_VERSION=13.4.1
+ARG TC_TOOLCHAIN_ARCHIVE=tricore-gcc-${TC_TOOLCHAIN_VERSION}-linux.tar.gz
+
+RUN set -e && \
+    URL="https://github.com/NoMore201/tricore-gcc-toolchain/releases/download/${TC_TOOLCHAIN_VERSION}/${TC_TOOLCHAIN_ARCHIVE}" && \
+    wget -q "${URL}" -O /tmp/tricore-gcc.tar.gz && \
+    tar -xf /tmp/tricore-gcc.tar.gz -C /opt && \
+    rm /tmp/tricore-gcc.tar.gz && \
+    GCC_BIN=$(find /opt -name "tricore-elf-gcc" -type f | head -1) && \
+    GCC_BINDIR=$(dirname "${GCC_BIN}") && \
+    ln -sfn "${GCC_BINDIR}" /opt/tricore-gcc-bin && \
+    echo "GCC: $("${GCC_BIN}" --version | head -1)" && \
+    echo "GDB: $(${GCC_BINDIR}/tricore-elf-gdb --version 2>/dev/null | head -1 || echo not found)"
+
+ENV PATH="/opt/tricore-gcc-bin:${PATH}"
+RUN tricore-elf-gcc --version
+RUN tricore-elf-gdb --version
+
+WORKDIR /workspace
+
+# -----------------------------------------------------------------------------
+# Stage 2 — dev: adds QEMU TC27x (linumiz fork) with full interrupt support
+#
+# The linumiz fork adds:
+#   - KIT_AURIX_TC277_TRB machine with TC27x peripherals
+#   - Interrupt router (IR/SRC) emulation
+#   - VIRT debug device at 0xBF000000 (putchar/exit for tests)
+#
+# PSW patch: QEMU's TriCore resets in user mode (IO=0); real TC1.6.1 hw
+# resets in supervisor mode (IO=2).  The sed patch below fixes this so
+# CSFRs (FCX, LCX, BIV, BTV, ISP) can be written from _start.
+# -----------------------------------------------------------------------------
+FROM toolchain AS dev
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libglib2.0-dev \
+        libfdt-dev \
+        libpixman-1-dev \
+        zlib1g-dev \
+        libslirp-dev \
+        meson \
+        pkg-config \
+        flex \
+        bison \
+        libssl-dev \
+        ninja-build \
+        python3-tomli \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG QEMU_REPO=https://gitlab.com/linumiz/infineon/release/qemu-aurix.git
+ARG QEMU_BRANCH=release/ifx/tricore-2.0
+
+RUN set -e && \
+    git clone --depth=1 --branch "${QEMU_BRANCH}" "${QEMU_REPO}" /tmp/qemu-src && \
+    sed -i \
+        's/env->PSW |= MASK_PSW_IE;/env->PSW |= MASK_PSW_IE;\n    \/* TC1.6.1 HW resets in supervisor mode; QEMU defaults to user mode. *\/\n    env->PSW = (env->PSW \& ~MASK_PSW_IO) | (TRICORE_PRIV_SM << 10);/' \
+        /tmp/qemu-src/target/tricore/cpu.c && \
+    mkdir /tmp/qemu-src/build && \
+    cd /tmp/qemu-src/build && \
+    ../configure \
+        --target-list=tricore-softmmu \
+        --prefix=/opt/qemu-tricore \
+        --disable-docs \
+        --disable-debug-info && \
+    make -j"$(nproc)" && \
+    make install && \
+    rm -rf /tmp/qemu-src
+
+ENV PATH="/opt/qemu-tricore/bin:${PATH}"
+RUN qemu-system-tricore --version
+
+RUN tricore-elf-gdb --version && echo "GDB OK"
+
+WORKDIR /workspace
+CMD ["/bin/bash"]

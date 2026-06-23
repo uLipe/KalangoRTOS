@@ -1,0 +1,297 @@
+---
+description: TriCore TC2xx microkernel architecture, ABI, CSA, MPU and context switch conventions
+alwaysApply: true
+---
+
+# TriCore TC2xx Microkernel — Referência Técnica Consolidada
+
+## Documentos de Referência Primária
+Antes de qualquer implementação, consulte:
+- `docs/microkernel_book_tricore.md` — guia completo de implementação (fonte canônica)
+- `docs/tricore_guide_pt.md` — ABI, CSA layout, context switch, ISR, gotchas
+
+---
+
+## Arquitetura-Alvo
+- **ISA**: TriCore 1.6.1 (AURIX TC2xx, foco em TC275/TC277/TC297)
+- **Toolchain**: `tricore-elf-gcc` (HighTec GCC)
+- **Cores**: TC275 tem 3 cores (CPU0, CPU1, CPU2); cada core é independente
+- **Memória**:
+  - PFlash: `0xA0000000` (cached), `0x80000000` (non-cached)
+  - DSPR Core0 (global): `0x70000000`, 240 KB
+  - DSPR Core1 (global): `0x60000000`, 120 KB
+  - DSPR Core2 (global): `0x50000000`, 120 KB
+  - Alias local (todos os cores): `0xD0000000`
+  - LMU (shared): `0x90000000`, 32 KB
+  - Periféricos: `0xF0000000+`
+
+---
+
+## Registradores Críticos para o Kernel
+
+### CSFRs (acesso via MFCR/MTCR + ISYNC obrigatório após MTCR)
+| CSFR   | Endereço | Uso no Kernel |
+|--------|----------|---------------|
+| PCXI   | 0xFE00   | Head da CSA chain — salvo no TCB no context switch |
+| PSW    | 0xFE04   | IO level, IS flag, PRS, CDC/CDE |
+| FCX    | 0xFE38   | Head da free list de CSAs |
+| LCX    | 0xFE3C   | Limite da free list (trap Class 3 TIN 1 se atingido) |
+| ICR    | 0xFE2C   | IE global + CCPN (prioridade atual) |
+| ISP    | 0xFE28   | Interrupt Stack Pointer |
+| BIV    | 0xFE20   | Base da Interrupt Vector Table |
+| BTV    | 0xFE24   | Base da Trap Vector Table |
+| SYSCON | 0xFE14   | PROTEN bit (habilita MPU) |
+| CORE_ID| 0xFE1C   | Identifica qual core está executando |
+
+### PSW campos relevantes
+- `PSW.IO [11:10]`: nível de privilégio — **0** = User-0, **1** = User-1 (drivers), **2** = Supervisor (kernel)
+- `PSW.IS [9]`: **1** = usando ISP (interrupt stack), **0** = user stack
+- `PSW.PRS [15:14]`: Protection Register Set ativo (0–3)
+- `PSW.CDE [7]` / `PSW.CDC [6:0]`: call depth counter; usar `CDC=0x7F` para desabilitar
+
+---
+
+## CSA (Context Save Area) — Regras Invioláveis
+
+### Estrutura
+- Cada CSA = **16 words (64 bytes)**, alinhado a 64 bytes
+- Pool em DSPR local (nunca em Flash)
+- `FCX` aponta para o head da free list; `LCX` é o limite mínimo
+- **Sempre** colocar `ISYNC` após `MTCR` em qualquer CSFR
+- **Sempre** colocar `DSYNC` antes de `MTCR PCXI` ao montar contexto manualmente
+
+### Upper Context CSA (UL=1) — salvo automaticamente por CALL/interrupt/trap
+```
+Word 0:  PCXI (link pro CSA anterior)
+Word 1:  PSW
+Word 2:  A[10] (SP)
+Word 3:  A[11] (RA)
+Word 4:  D[0]  Word 5:  D[1]  Word 6:  D[2]  Word 7:  D[3]
+Word 8:  A[2]  Word 9:  A[3]
+Word 10: D[4]  Word 11: D[5]  Word 12: D[6]  Word 13: D[7]
+Word 14: A[6]  Word 15: A[7]
+```
+
+### Lower Context CSA (UL=0) — salvo por SVLCX/BISR
+```
+Word 0:  PCXI (link pro CSA anterior)
+Word 1:  A[11] (RA)
+Word 2:  A[2]  Word 3:  A[3]
+Word 4:  D[8]  Word 5:  D[9]  Word 6:  D[10] Word 7:  D[11]
+Word 8:  A[12] Word 9:  A[13] Word 10: A[14] Word 11: A[15]
+Word 12: D[12] Word 13: D[13] Word 14: D[14] Word 15: D[15]
+```
+
+### Conversão endereço ↔ link word
+```c
+#define CSA_LINK_TO_ADDR(link) \
+    ((((link) & 0x70000u) << 12) | (((link) & 0xFFFFu) << 6))
+
+#define ADDR_TO_CSA_LINK(addr) \
+    ((((addr) >> 12) & 0x70000u) | (((addr) >> 6) & 0xFFFFu))
+```
+
+### Sizing do pool
+- Fórmula: `N_threads × (2 + avg_call_depth) + max_isr_nesting × 2 + margin`
+- Ponto de partida seguro: **256 CSAs (16 KB)** para uso típico
+
+---
+
+## Context Switch — Sequência Canônica
+
+### Dentro de ISR de timer (preemptivo) ou trap handler (cooperativo)
+```asm
+svlcx                          ; 1. Salva Lower Context da task atual
+mfcr    d15, #0xFE00           ; 2. Lê PCXI (head da CSA chain)
+st.w    [current_tcb], d15     ; 3. Salva PCXI no TCB atual
+call    os_select_next         ; 4. Scheduler escolhe nova task
+ld.w    d15, [next_tcb]        ; 5. Carrega PCXI da nova task
+dsync                          ; 6. Garante que writes no CSA estão completos
+mtcr    #0xFE00, d15           ; 7. PCXI = nova task
+isync                          ;    obrigatório após mtcr
+rslcx                          ; 8. Restaura Lower Context da nova task
+rfe                            ; 9. Restaura Upper Context + PSW + PC
+```
+
+### TCB mínimo
+```c
+typedef struct ul_thread {
+    uint32_t    pcxi;           /* head da CSA chain — campo DEVE ser o primeiro */
+    uint32_t    sp;             /* A[10] — redundante mas útil para debug */
+    void       *stack_base;
+    uint32_t    stack_size;
+    int         priority;
+    int         state;
+    /* ... campos RTOS ... */
+} ul_thread_t;
+```
+
+### Criação de contexto inicial (fabricar CSA chain)
+- Alocar 1 CSA para Upper Context: preencher PSW, SP, `A[11]=entry`, `D[4]=arg`
+- Alocar 1 CSA para Lower Context: link word aponta para Upper (com `UL=1`, `PIE=1`)
+- `tcb->pcxi` = link word do Lower CSA
+- PSW inicial recomendado: `IO=2(supervisor)`, `IS=0`, `CDE=1`, `CDC=0x7F`
+
+### First task load
+```asm
+disable
+ld.w    d0, [a4]               ; a4 = TCB da primeira task, d0 = pcxi
+mtcr    #0xFE00, d0
+isync
+rslcx
+rfe
+```
+
+---
+
+## MPU TriCore (DPR/CPR + PRS)
+
+### Diferenças críticas vs ARM MPU
+- **DPR** (Data Protection Range): leitura/escrita — qualquer tamanho, alinhado a 8 bytes
+- **CPR** (Code Protection Range): execução — qualquer tamanho, alinhado a 8 bytes
+- Sem restrição power-of-2 (vantagem sobre ARMv7-M)
+- **4 PRS** (Protection Register Sets): trocar `PSW.PRS` = ~3 ciclos (vs ~50 no ARM)
+- Até 18 DPRs e 10 CPRs compartilhados entre os 4 PRS via enable bits
+
+### Mapeamento de PRS
+| PRS | Usuário |
+|-----|---------|
+| 0   | Kernel (acesso total) |
+| 1   | Driver A (IO=1, acesso a periféricos) |
+| 2   | Driver B (IO=1) |
+| 3   | App/overflow (slow path, reconfigurar ranges) |
+
+### Habilitação
+```c
+/* Habilita proteção: SYSCON.PROTEN = 1 */
+uint32_t syscon = __mfcr(CSFR_SYSCON);
+__mtcr(CSFR_SYSCON, syscon | (1u << 1));
+```
+
+### Ranges
+- `DPRn_L` = `0xC000 + n*8`, `DPRn_U` = `0xC004 + n*8`
+- `CPRn_L` = `0xD000 + n*8`, `CPRn_U` = `0xD004 + n*8`
+- Enable bits: `DPRE_x` (read), `DPWE_x` (write), `CPRE_x` (read), `CPXE_x` (execute)
+
+---
+
+## Sistema de Interrupções
+
+### Fluxo de entrada em ISR
+1. Hardware salva Upper Context em CSA automaticamente
+2. `ICR.IE ← 0`, `ICR.CCPN ← prioridade aceita`
+3. Se `PSW.IS == 0`: `A[10] ← ISP`, `PSW.IS ← 1`
+4. PC ← `BIV + (priority × 32)` (modo 32-byte spacing)
+
+### ISR entry pattern (assembly)
+```asm
+.align 5
+__isr_prio_N:
+    svlcx                          ; salva Lower Context
+    movh.a  %a14, hi:handler_N
+    lea     %a14, [%a14] lo:handler_N
+    ji      %a14
+```
+
+### ISR exit obrigatório
+```asm
+    disable                        ; evita race condition
+    rslcx
+    nop                            ; safety — alguns pipelines precisam
+    rfe
+```
+
+### Syscall (trap classe 6) para operações cooperativas
+```c
+static inline void ul_yield(void) {
+    __asm volatile("syscall %0" :: "i"(0));
+}
+```
+- `D[15]` contém o TIN (número do syscall)
+- Hardware salva Upper Context antes de entrar no handler
+
+### SRC (Service Request Control) — configuração de IRQ
+```c
+SRC_STM0SR0.B.SRPN = priority;  /* 1-255 */
+SRC_STM0SR0.B.TOS  = 0;         /* 0=CPU0, 1=CPU1, 2=DMA, 3=CPU2 */
+SRC_STM0SR0.B.SRE  = 1;         /* enable */
+```
+
+---
+
+## Trap Classes Relevantes para o Kernel
+
+| Classe | Nome | Ação do Kernel |
+|--------|------|---------------|
+| 1 | Internal Protection | Matar thread violadora; reiniciar se for driver |
+| 3 | Context Management | TIN 1 (FCD): pool quase vazio — ação crítica; TIN 4 (FCU): fatal |
+| 6 | System Call | Despachar syscall pelo TIN em D[15] |
+
+---
+
+## Privilégios e Modelo de Isolamento
+
+```
+IO=2 Supervisor → Kernel (scheduler, IPC, MPU, CSA mgmt)
+IO=1 User-1    → Drivers (acesso a periféricos, sem CSFRs)
+IO=0 User-0    → Apps (sem acesso a periféricos)
+```
+
+- Cada thread tem `address_space_t` com lista de `mem_region_t`
+- Kernel, código de drivers e apps mapeados em CPRs separados
+- Dados privados em DPRs separados; IPC buffer em região compartilhada
+
+---
+
+## Modelo de IPC
+
+- Mensagem síncrona: `send` bloqueia caller, acorda server → server processa → `reply` desbloqueia caller
+- Payload inline: até 8 bytes em `ul_ipc_msg_t.contents`
+- Payload grande: shared memory grant via `ul_kmmap`
+- Priority inheritance obrigatória: server herda prioridade do cliente mais alto na fila
+
+---
+
+## Layout de Memória (Linker Script)
+
+- Alinhamento base: **64 bytes** (limite do CSA)
+- CSA pool: seção `(NOLOAD)` em DSPR, alinhada a 64 bytes
+- ISR stack: seção `(NOLOAD)` em DSPR, alinhada a 8 bytes
+- Memory domains (dados de cada thread): alinhados a 64 bytes
+- IPC shared buffer: preferencialmente em LMU (`0x90000000`) para acesso multi-core
+- Small data (ABI): `A[0]/A[1]` apontam para `.sdata`; definir `_small_data_` no linker
+
+---
+
+## Gotchas — Não Esquecer
+
+1. **ISYNC após todo MTCR** — sem isso o pipeline pode ler valor antigo do CSFR
+2. **DSYNC antes de MTCR PCXI** quando CSA foi escrito manualmente
+3. **ISP deve ser inicializado no boot** antes de qualquer enable de interrupts
+4. **CSA pool em RAM rápida** (DSPR local) — nunca em Flash
+5. **A[0], A[1], A[8], A[9]** são globais (small data); não salvar se todas as tasks compartilham o mesmo binário
+6. **FPU inexistente no TC1.6** — floats usam registradores D[], já cobertos pelo Upper/Lower context
+7. **CDC/CDE no PSW** inicial de cada task: usar `CDC=0x7F` para desabilitar proteção de call depth ou configurar com valor adequado
+8. **PSW.IS=0** deve estar no Upper Context da task — se vier de ISR e a task retornar com IS=1 o SP fica errado
+9. **CSA chain deve ser liberada** quando task termina — percorrer a chain e devolver cada CSA ao FCX
+10. **Multicore**: cada core tem seu próprio FCX/LCX, BIV, BTV, ISP — **nunca compartilhar CSA pools entre cores**
+
+---
+
+## Boot Sequence Mínima
+
+```
+1.  Desabilitar/configurar Watchdog
+2.  Inicializar clocks (PLL)
+3.  Clear BSS, copiar .data
+4.  Setar BTV (trap vector table)
+5.  Setar BIV (interrupt vector table)
+6.  Setar ISP (interrupt stack pointer)
+7.  Inicializar CSA free list (FCX, LCX)
+8.  Chamar mpu_init() — configurar PRS 0 (kernel) com acesso total
+9.  Criar threads (alocar stacks + fabricar CSA chains)
+10. Configurar timer para tick (SRC_STM0SR0)
+11. Habilitar MPU (SYSCON.PROTEN = 1)
+12. Setar ICR: CCPN=0, IE=1
+13. Carregar primeira task (MTCR PCXI, ISYNC, RSLCX, RFE)
+```

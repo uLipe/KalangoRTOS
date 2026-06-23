@@ -1,0 +1,39 @@
+---
+description: Embedded C coding standards for firmware projects (Zephyr, ESP-IDF, Linux)
+alwaysApply: true
+---
+
+# Embedded C Standards
+
+## Naming
+- Functions and variables: `snake_case`
+- Macros and constants: `UPPER_SNAKE_CASE`
+- Type definitions: `snake_case_t` (e.g. `msg_header_t`)
+- Public API functions: prefixed with module name (e.g. `rpmsg_lite_init()`)
+- Static functions: no prefix needed, keep descriptive
+
+## Memory & Safety
+- Prefer stack allocation over heap in ISR and time-critical paths
+- Always check return values from system calls and allocations
+- Use `static` for file-scoped functions and variables
+- Prefer fixed-size types from `<stdint.h>` (`uint32_t`, `int8_t`, etc.)
+- Avoid dynamic allocation in ISR context
+
+## Structure
+- One public header per module, internal headers prefixed with `_` or in a `private/` dir
+- Keep functions short — if it exceeds ~60 lines, consider splitting
+- Group related declarations: includes, defines, types, static vars, static functions, public API
+
+## Error Handling
+- Return error codes, do not silently ignore failures
+- Use the platform's error/logging API (`LOG_ERR`, `ESP_LOGE`, `pr_err`, etc.)
+- Log with meaningful context: what failed and relevant parameter values
+
+## microkernel related
+- Primary references (always consult before writing any kernel code):
+  - `docs/microkernel_book_tricore.md` — implementação completa do microkernel para TC2xx (fonte principal)
+  - `docs/tricore_guide_pt.md` — ABI, CSA, context switch, interrupts e gotchas do TriCore 1.6
+  - `docs/microkernel_book.md` — referência de conceitos genéricos (ARM-targeted, usar só para conceitos que não estão no livro TriCore)
+- Inspire, but not copy, in kernels like seL4 and QNX
+- Code for size optimization first, speed second
+- All code introduced should be tested; mock what is necessary

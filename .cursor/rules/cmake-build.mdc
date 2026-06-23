@@ -1,0 +1,18 @@
+---
+description: CMake and build system conventions
+globs: "**/CMakeLists.txt,**/*.cmake"
+alwaysApply: true
+---
+
+# CMake Conventions
+
+## General
+- Specify `cmake_minimum_required(VERSION 3.20)` or higher
+- Use modern CMake: `target_*` commands over global `include_directories`/`add_definitions`
+- Prefer imported/aliased targets over raw library names
+- Split cmake files responsibillities into a cmake folder
+
+## Style
+- Use lowercase cmake commands (`add_library`, not `ADD_LIBRARY`)
+- Quote all variable expansions in conditionals: `if("${VAR}" STREQUAL "value")`
+- Group logically: options, dependencies, sources, target properties
