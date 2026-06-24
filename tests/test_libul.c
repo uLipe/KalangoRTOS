@@ -15,7 +15,7 @@
 
 #include "unity.h"
 
-/* #include <sys/ulipe_microkernel.h> */
+/* #include <ul/microkernel.h> */
 /* #include <ul/libul.h>             */
 
 #if 0

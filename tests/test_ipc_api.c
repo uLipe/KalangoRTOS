@@ -12,7 +12,7 @@
 
 #include "unity.h"
 
-/* #include <sys/ulipe_microkernel.h> */
+/* #include <ul/microkernel.h> */
 
 #if 0
 
