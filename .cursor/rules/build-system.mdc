@@ -72,6 +72,24 @@ cmake build:
   link ulipe.elf -T build/generated.ld
 ```
 
+## Kernel Configuration (§9)
+
+Exactly 5 symbols — CMake cache variables, no Kconfig, no separate config file:
+
+```cmake
+-DUL_CONFIG_MAX_THREADS=32       # TCB pool size
+-DUL_CONFIG_MAX_ENDPOINTS=64     # IPC endpoint pool
+-DUL_CONFIG_MAX_NOTIFS=32        # notification object pool
+-DUL_CONFIG_MAX_IRQ_BINDINGS=16  # SRPN→notif binding table
+-DUL_CONFIG_TICK_HZ=1000         # scheduler tick rate
+```
+
+`configure_file(cmake/config.h.in ${CMAKE_BINARY_DIR}/include/ul/config.h)`
+
+The header is internal to the kernel. User code does not include it.
+Everything else is either a hardware constant (arch_config.h), a memory-sizing
+parameter (memory.ld), or a userspace policy decision.
+
 ## Root Thread Contract
 
 Apps provide exactly one:
