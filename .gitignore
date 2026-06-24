@@ -11,10 +11,10 @@ __pycache__/
 *.pyc
 *.pyo
 
-# CMake
+# CMake (generated files only — hand-written Makefiles are tracked)
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
-Makefile
+build/Makefile
 install_manifest.txt
 CTestTestfile.cmake

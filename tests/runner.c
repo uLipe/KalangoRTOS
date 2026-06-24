@@ -185,6 +185,51 @@ extern void test_irq_ack_reserved_srpn_returns_error(void);
 */
 
 /* =========================================================================
+ * test_linker.c
+ * ========================================================================= */
+extern void test_linker_private_bss_byte_is_zero(void);
+extern void test_linker_private_bss_word_is_zero(void);
+extern void test_linker_private_bss_array_is_zero(void);
+extern void test_linker_domain_bss_other_module_is_zero(void);
+extern void test_linker_private_bss_byte_is_writable(void);
+extern void test_linker_domain_data_byte_write_read(void);
+extern void test_linker_domain_data_word_write_read(void);
+extern void test_linker_domain_data_array_write_read(void);
+extern void test_linker_domain_sensor_bss_is_zero(void);
+extern void test_linker_domain_sensor_data_write_read(void);
+/*
+extern void test_linker_kernel_text_start_aligned_32(void);
+extern void test_linker_kernel_text_end_greater_than_start(void);
+extern void test_linker_kernel_data_start_aligned_mpu(void);
+extern void test_linker_kernel_data_end_aligned_mpu(void);
+extern void test_linker_kernel_data_end_gte_start(void);
+extern void test_linker_kernel_stack_top_gt_bottom(void);
+extern void test_linker_kernel_stack_size_at_least_2k(void);
+extern void test_linker_isr_stack_top_gt_bottom(void);
+extern void test_linker_isr_stack_size_at_least_1k(void);
+extern void test_linker_trap_table_aligned_256(void);
+extern void test_linker_int_table_aligned_256(void);
+extern void test_linker_csa_pool_start_aligned_64(void);
+extern void test_linker_csa_pool_end_gt_start(void);
+extern void test_linker_csa_pool_fits_at_least_16_frames(void);
+extern void test_linker_csa_pool_size_multiple_of_64(void);
+extern void test_linker_domain_testmod_start_aligned_mpu(void);
+extern void test_linker_domain_testmod_end_aligned_mpu(void);
+extern void test_linker_domain_testmod_end_gte_start(void);
+extern void test_linker_domain_sensor_start_aligned_mpu(void);
+extern void test_linker_domain_sensor_end_aligned_mpu(void);
+extern void test_linker_domain_testmod_sensor_do_not_overlap(void);
+extern void test_linker_domain_table_start_aligned_4(void);
+extern void test_linker_domain_table_has_at_least_one_entry(void);
+extern void test_linker_domain_table_size_multiple_of_descriptor(void);
+extern void test_linker_domain_table_entry_names_are_non_null(void);
+extern void test_linker_domain_table_entry_start_lte_end(void);
+extern void test_linker_user_pool_start_aligned_mpu(void);
+extern void test_linker_user_pool_end_gt_start(void);
+extern void test_linker_user_pool_size_at_least_4k(void);
+*/
+
+/* =========================================================================
  * test_libul.c
  * ========================================================================= */
 /*
@@ -384,6 +429,51 @@ int main(void)
 	RUN_TEST(test_irq_ack_enabled_srpn_returns_zero);
 	RUN_TEST(test_irq_ack_unbound_srpn_returns_error);
 	RUN_TEST(test_irq_ack_reserved_srpn_returns_error);
+	*/
+
+	/* --- Linker macro API (always active) ------------------------------- */
+	RUN_TEST(test_linker_private_bss_byte_is_zero);
+	RUN_TEST(test_linker_private_bss_word_is_zero);
+	RUN_TEST(test_linker_private_bss_array_is_zero);
+	RUN_TEST(test_linker_domain_bss_other_module_is_zero);
+	RUN_TEST(test_linker_private_bss_byte_is_writable);
+	RUN_TEST(test_linker_domain_data_byte_write_read);
+	RUN_TEST(test_linker_domain_data_word_write_read);
+	RUN_TEST(test_linker_domain_data_array_write_read);
+	RUN_TEST(test_linker_domain_sensor_bss_is_zero);
+	RUN_TEST(test_linker_domain_sensor_data_write_read);
+
+	/* --- Linker symbol placement (uncomment when generated.ld is wired) - */
+	/*
+	RUN_TEST(test_linker_kernel_text_start_aligned_32);
+	RUN_TEST(test_linker_kernel_text_end_greater_than_start);
+	RUN_TEST(test_linker_kernel_data_start_aligned_mpu);
+	RUN_TEST(test_linker_kernel_data_end_aligned_mpu);
+	RUN_TEST(test_linker_kernel_data_end_gte_start);
+	RUN_TEST(test_linker_kernel_stack_top_gt_bottom);
+	RUN_TEST(test_linker_kernel_stack_size_at_least_2k);
+	RUN_TEST(test_linker_isr_stack_top_gt_bottom);
+	RUN_TEST(test_linker_isr_stack_size_at_least_1k);
+	RUN_TEST(test_linker_trap_table_aligned_256);
+	RUN_TEST(test_linker_int_table_aligned_256);
+	RUN_TEST(test_linker_csa_pool_start_aligned_64);
+	RUN_TEST(test_linker_csa_pool_end_gt_start);
+	RUN_TEST(test_linker_csa_pool_fits_at_least_16_frames);
+	RUN_TEST(test_linker_csa_pool_size_multiple_of_64);
+	RUN_TEST(test_linker_domain_testmod_start_aligned_mpu);
+	RUN_TEST(test_linker_domain_testmod_end_aligned_mpu);
+	RUN_TEST(test_linker_domain_testmod_end_gte_start);
+	RUN_TEST(test_linker_domain_sensor_start_aligned_mpu);
+	RUN_TEST(test_linker_domain_sensor_end_aligned_mpu);
+	RUN_TEST(test_linker_domain_testmod_sensor_do_not_overlap);
+	RUN_TEST(test_linker_domain_table_start_aligned_4);
+	RUN_TEST(test_linker_domain_table_has_at_least_one_entry);
+	RUN_TEST(test_linker_domain_table_size_multiple_of_descriptor);
+	RUN_TEST(test_linker_domain_table_entry_names_are_non_null);
+	RUN_TEST(test_linker_domain_table_entry_start_lte_end);
+	RUN_TEST(test_linker_user_pool_start_aligned_mpu);
+	RUN_TEST(test_linker_user_pool_end_gt_start);
+	RUN_TEST(test_linker_user_pool_size_at_least_4k);
 	*/
 
 	/* --- libul (uncomment when kernel is implemented) ------------------- */
