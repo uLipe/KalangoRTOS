@@ -12,10 +12,14 @@ Full spec: `docs/build_system_spec.md`.
 Single ELF output. Isolation is by MPU sections, not separate binaries.
 
 ```
-ulipeMicroKernel/          ← kernel repo (this)
+ulipeMicroKernel/          ← kernel repo (this); only QEMU board built-in
 ulipeMicroKernel_apps/     ← apps repo (sibling, optional)
+<anywhere>/my_board/       ← real board chip input (external); pointed by UL_CHIP_DIR
 build/                     ← generated artefacts (never committed)
 ```
+
+Real board chip inputs (memory.ld, bmhd.ld.in) live OUTSIDE the kernel repo.
+Only `boards/qemu_tc27x/` is shipped with the kernel — it is the CI platform.
 
 ## App Discovery
 
@@ -76,8 +80,22 @@ void ul_root_thread(const ul_boot_info_t *info);
 ```
 Kernel-only builds use `stub/root_thread_stub.c` (calls `ul_thread_exit()`).
 
-## Bootloader Boundary
+## ul_board_init — Optional Chip Setup Callback
 
-`startup.S` (_start) receives control after reset or from a Stage-0 bootloader.
-Clock/PLL/DRAM init is NOT the kernel's responsibility — belongs in Stage-0 or
-in the chip input package (`boards/<chip>/`).
+```c
+/* stub/board_init_stub.c — weak no-op; user overrides with strong symbol */
+__attribute__((weak)) void ul_board_init(void) {}
+```
+
+Runs as the FIRST C function in the system, before .data copy, before any kernel
+API. Intended for PLL, flash wait states, external RAM. No CMake registration —
+just define `ul_board_init()` anywhere in the link and the strong symbol wins.
+
+**Constraints:** no .data vars, no ul_* API, no interrupt enable, must return.
+
+Boot sequence:
+```
+_start → ul_board_init() → .data copy → .bss zero → ul_arch_init() → ul_kernel_main()
+```
+
+When a dedicated bootloader is used, leave `ul_board_init()` as the no-op stub.

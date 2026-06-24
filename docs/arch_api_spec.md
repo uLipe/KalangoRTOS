@@ -502,47 +502,110 @@ void     ul_arch_atomic_store32(volatile uint32_t *ptr, uint32_t val);
 
 ## 11. Boot Entry
 
+### 11.1 ul_board_init (optional, user-provided)
+
+```c
+/*
+ * ul_board_init - optional board-level hardware setup
+ *
+ * Called by startup.S as the very first C function, before .data is copied
+ * and before any kernel subsystem is initialised.  Intended for chip-specific
+ * bring-up that the kernel should not own: PLL configuration, flash wait-state
+ * tuning, external RAM initialisation, port mux setup.
+ *
+ * Constraints:
+ *   - Runs in full supervisor mode (PSW.IO = 3); MPU is NOT yet active.
+ *   - Must NOT use initialised global variables (.data has not been copied yet).
+ *   - Must NOT call any ul_* kernel or arch API functions.
+ *   - Must NOT enable interrupts (BIV/BTV not yet programmed).
+ *   - Must return normally; ul_arch_init() is called immediately after.
+ *
+ * If not defined by the user, the linker selects the weak no-op stub from
+ * arch/tricore/board_init_stub.c.  No CMake registration is required.
+ *
+ * Declared with __attribute__((weak)) so the user overrides it by defining
+ * a strong symbol with the same name anywhere in the link.
+ */
+__attribute__((weak)) void ul_board_init(void);
+```
+
+`ul_board_init()` is the recommended replacement for a first-stage bootloader in
+systems where the kernel can afford to own startup (i.e., the CPU comes up with
+enough internal flash speed to run PLL init code). When a dedicated bootloader IS
+used, `ul_board_init()` should be left as the no-op stub, since the bootloader
+will have already configured the hardware before jumping to `_start`.
+
+### 11.2 ul_arch_init (arch-provided)
+
 ```c
 /*
  * ul_arch_init - one-time CPU and peripheral initialisation
  *
- * Called by startup.S immediately before transferring control to the
- * platform-independent kernel.  Must NOT call any kernel functions.
+ * Called by startup.S after ul_board_init(), after .data copy and .bss zero.
+ * Must NOT call any kernel functions.
  *
  * Responsibilities:
- *   1. ul_arch_csa_pool_init()  — build CSA free list
+ *   1. ul_arch_csa_pool_init()    — build CSA free list
  *   2. ul_arch_irq_vectors_init() — set BIV, BTV, ISP
- *   3. ul_arch_mpu_init()       — zero all protection ranges
- *   4. ul_arch_tick_init()      — configure tick timer
+ *   3. ul_arch_mpu_init()         — zero all protection ranges
+ *   4. ul_arch_tick_init()        — configure tick timer
  *   5. Return; control passes to ul_kernel_main() [internal kernel fn]
  *
- * The boot information structure (@info) is filled in by this function and
- * passed to ul_kernel_main(), which forwards it to ul_root_thread().
- *
- * @info: caller-allocated ul_boot_info_t to fill in
+ * @info: caller-allocated ul_boot_info_t to fill in; forwarded to
+ *        ul_kernel_main(), which passes it to ul_root_thread().
  */
 void ul_arch_init(ul_boot_info_t *info);
 ```
 
-**startup.S calling convention (TriCore):**
+### 11.3 startup.S calling convention (TriCore)
 
 ```asm
 _start:
-    /* Set up kernel stack (A10) and interrupt stack (ISP) */
-    movh.a  %a10, hi:_kernel_stack_top
-    lea     %a10, [%a10]lo:_kernel_stack_top
+    /* 1. Kernel stack (A10) and interrupt stack pointer (ISP / A11) */
+    movh.a  %a10, hi:_ul_kernel_stack_top
+    lea     %a10, [%a10]lo:_ul_kernel_stack_top
 
-    /* ul_arch_init(&boot_info_static) */
+    /* 2. BTV, BIV, small-data anchors, CSA pool
+     *    (done in assembly before any C call) */
+    ...
+
+    /* 3. ul_board_init() — optional chip setup; weak no-op if absent.
+     *    Called BEFORE .data copy: must not use initialised global vars. */
+    call    ul_board_init
+
+    /* 4. Copy .data LMA→VMA, zero .bss */
+    ...
+
+    /* 5. ul_arch_init(&boot_info_static) — kernel arch setup */
     movh.a  %a4, hi:_boot_info_static
     lea     %a4, [%a4]lo:_boot_info_static
     call    ul_arch_init
 
-    /* ul_kernel_main(&boot_info_static)  [does not return] */
+    /* 6. ul_kernel_main(&boot_info_static) — does not return */
     movh.a  %a4, hi:_boot_info_static
     lea     %a4, [%a4]lo:_boot_info_static
     call    ul_kernel_main
     debug
     j .
+```
+
+**Full boot sequence:**
+
+```
+_start
+  │
+  ├─ [asm] stack (A10) + ISP + BTV/BIV + small-data anchors + CSA pool
+  │
+  ├─ ul_board_init()          user optional; weak stub if absent
+  │    PLL, flash WS, ext RAM    (supervisor mode, no kernel API, no .data)
+  │
+  ├─ [asm] .data copy (LMA → VMA) + .bss zero
+  │
+  ├─ ul_arch_init()           arch-provided; fills ul_boot_info_t
+  │    CSA free list, MPU zero, tick timer, BIV/BTV programmed to CSFRs
+  │
+  └─ ul_kernel_main()         kernel-internal; does not return
+       physical allocator, scheduler, root thread launch
 ```
 
 ---

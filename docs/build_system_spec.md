@@ -27,13 +27,18 @@ The build system follows the same layering principle as the linker and arch spec
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│  ulipeMicroKernel/          Kernel repo — owns kernel source,        │
-│                             arch port, linker fragments, CMake API,  │
-│                             boards/, stub root_thread.                │
+│  ulipeMicroKernel/          Kernel repo — kernel source, arch port,  │
+│                             linker fragments, CMake API, stub files,  │
+│                             and the built-in QEMU board only.         │
 ├──────────────────────────────────────────────────────────────────────┤
-│  ulipeMicroKernel_apps/     Apps repo (sibling, optional) — owns     │
-│                             drivers, application tasks, and the real  │
-│                             ul_root_thread() implementation.          │
+│  ulipeMicroKernel_apps/     Apps repo (sibling, optional) — drivers, │
+│                             application tasks, ul_root_thread(), and  │
+│                             optionally a ul_board_init() for the      │
+│                             target board.                             │
+├──────────────────────────────────────────────────────────────────────┤
+│  <any path>/my_board/       Board chip input (external, optional) —  │
+│                             memory.ld + bmhd.ld.in for real hardware. │
+│                             Pointed to by UL_CHIP_DIR.               │
 ├──────────────────────────────────────────────────────────────────────┤
 │  build/                     Generated artefacts — generated.ld,      │
 │                             object files, final ELF. Never committed. │
@@ -134,13 +139,11 @@ ulipeMicroKernel/                        ← this repo
 │       ├── microkernel.h                 ← public kernel API
 │       └── linker.h                      ← UL_DOMAIN_BSS, UL_PRIVATE, …
 ├── stub/
-│   └── root_thread_stub.c               ← fallback ul_root_thread() for kernel-only builds
-├── boards/                              ← chip inputs (Layer 3 per linker spec)
-│   ├── qemu_tc27x/
-│   │   └── memory.ld                    ← MEMORY block + flags for QEMU
-│   └── tc27x/
-│       ├── memory.ld                    ← MEMORY block + flags for TC27x hardware
-│       └── bmhd.ld.in                   ← TC27x boot mode header section
+│   ├── root_thread_stub.c               ← weak ul_root_thread(): called when no apps repo
+│   └── board_init_stub.c                ← weak ul_board_init(): no-op; overridden by user
+├── boards/
+│   └── qemu_tc27x/                      ← ONLY built-in board: needed for CI on QEMU
+│       └── memory.ld                    ← MEMORY block + flags (no BMHD for QEMU)
 ├── tests/
 └── tools/
     ├── dev.py
@@ -148,13 +151,14 @@ ulipeMicroKernel/                        ← this repo
     └── hello/                           ← standalone hello-world (not part of main build)
 ```
 
-The apps repository sits **beside** the kernel repository:
+The repos that sit beside the kernel:
 
 ```
-ulipeMicroKernel/            ← kernel repo
+ulipeMicroKernel/            ← kernel repo (this); ships only qemu_tc27x board
 ulipeMicroKernel_apps/       ← apps repo (sibling, optional)
     CMakeLists.txt
     root_thread.c
+    board_init.c             ← optional ul_board_init() for target chip
     drivers/
         asclin/
             CMakeLists.txt
@@ -163,7 +167,16 @@ ulipeMicroKernel_apps/       ← apps repo (sibling, optional)
         sensor/
             CMakeLists.txt
             sensor.c
+
+<anywhere>/my_board/         ← real board chip input (external, not in kernel)
+    memory.ld                ← MEMORY block with real HW addresses
+    bmhd.ld.in               ← chip boot header (chip-family specific)
 ```
+
+Real board chip inputs are **not** kept in the kernel repo. The kernel repo only
+ships the QEMU board (`boards/qemu_tc27x/`) because it is required for built-in
+CI via the Docker toolchain. Any real hardware board lives in the apps repo, in a
+separate board repo, or anywhere on the filesystem — pointed to by `UL_CHIP_DIR`.
 
 ---
 
@@ -328,7 +341,10 @@ cmake -B build -DUL_CHIP_DIR=boards/qemu_tc27x
 ├─ sibling directory check:
 │   ├─ found  → add_subdirectory(ulipeMicroKernel_apps)
 │   │            ul_add_app(), ul_add_domain(), ul_set_root_thread() called
-│   └─ absent → stub root_thread registered
+│   │            board_init.c (if present) compiled alongside app sources
+│   └─ absent → stub/root_thread_stub.c registered
+│                stub/board_init_stub.c always linked (weak; overridden if
+│                user provides a strong ul_board_init() symbol)
 │
 ├─ ul_generate_linker_script():
 │   registers PRE_LINK command:
@@ -338,6 +354,7 @@ cmake -B build -DUL_CHIP_DIR=boards/qemu_tc27x
        kernel/**/*.c
        arch/tricore/startup.S
        arch/tricore/vectors.S
+       stub/board_init_stub.c          ← weak ul_board_init(); user overrides
        <app sources registered by ul_add_app>
        <root_thread.c or stub>)
    target_link_options(-T build/generated.ld)
@@ -345,12 +362,20 @@ cmake -B build -DUL_CHIP_DIR=boards/qemu_tc27x
 
 cmake --build build
 │
-├─ compile kernel sources
-├─ compile arch sources
+├─ compile kernel, arch, stub sources
 ├─ compile app sources (each with -DUL_APP_NAME=<name>)
-├─ compile root_thread
+├─ compile root_thread (user or stub)
 ├─ [PRE_LINK] generate_ld.py → build/generated.ld
 └─ link → build/ulipe.elf
+
+Runtime boot sequence (inside the ELF):
+  _start (startup.S)
+    │  stack, ISP, BTV/BIV, small-data anchors, CSA pool
+    ├─ ul_board_init()      ← user optional; weak no-op if absent
+    │    PLL, flash WS, ext RAM — NO kernel API, NO .data vars
+    ├─ [asm] .data copy (LMA→VMA) + .bss zero
+    ├─ ul_arch_init()       ← arch-provided; fills ul_boot_info_t
+    └─ ul_kernel_main()     ← kernel-internal; does not return
 ```
 
 ---
@@ -381,7 +406,42 @@ default when building for TriCore.
 
 ---
 
-## 8. Root Thread and Stub
+## 8. Root Thread, Board Init, and Stubs
+
+### 8.0 ul_board_init — optional chip setup callback
+
+`ul_board_init()` runs as the first C function in the system, before `.data` is
+copied from flash and before any kernel subsystem is initialised.
+
+```c
+/* arch/tricore/board_init_stub.c — weak no-op; user overrides with strong symbol */
+__attribute__((weak)) void ul_board_init(void) {}
+```
+
+The user provides a strong `ul_board_init()` anywhere in the link — in the apps
+repo, in a board-specific file, or anywhere else. No CMake registration is needed;
+the linker resolves the strong symbol over the weak stub automatically.
+
+```c
+/* ulipeMicroKernel_apps/board_init.c — example for TC27x */
+void ul_board_init(void)
+{
+    /* Configure PLL: 20 MHz crystal → 200 MHz CPU clock */
+    /* Set flash wait states for 200 MHz operation        */
+    /* Enable external RAM if present                     */
+}
+```
+
+**Constraints for ul_board_init:**
+- Full supervisor privilege; MPU not yet active.
+- No initialised global variables available (`.data` not yet copied).
+- No `ul_*` kernel or arch API calls.
+- No interrupt enable.
+- Must return normally.
+
+When a dedicated bootloader is used, `ul_board_init()` should remain the no-op
+stub — the bootloader will have already configured hardware before jumping to
+`_start`.
 
 ### 8.1 Contract
 
@@ -484,36 +544,38 @@ change any of the kernel source or linker fragments — only the CMake packaging
 
 ## 10. Bootloader Boundary
 
-The current model assumes the CPU starts executing at `_start` in `startup.S`
-with hardware in its reset state. Clock configuration, PLL setup, and flash
-wait-state tuning are **not** the kernel's responsibility. A first-stage
-bootloader may handle these before passing control to `_start`.
+`ul_board_init()` (§8.0) eliminates the need for a separate bootloader in many
+systems. For chips where the internal oscillator provides enough speed to run PLL
+init code (most automotive MCUs, including TC2xx), `ul_board_init()` is
+sufficient.
 
 ```
-┌─────────────────────┐  ← power-on / reset vector
-│  Stage 0 (optional) │     ROM bootloader or first-stage (not this repo)
-│  - PLL / clock init │
-│  - Flash wait states│
-│  - DRAM init        │
-└────────┬────────────┘
-         │ jump to _start
-┌────────▼────────────┐
-│  startup.S (_start) │     this repo
-│  - SP / ISP         │
-│  - BTV / BIV        │
-│  - small data regs  │
-│  - CSA pool init    │
-│  - .data copy       │
-│  - .bss zero        │
-│  → ul_arch_init()   │
-│  → ul_kernel_main() │
-└─────────────────────┘
+WITHOUT external bootloader (common case):
+
+  power-on / reset vector
+       │
+  _start (startup.S)
+       ├─ stack, ISP, BTV/BIV, small-data, CSA
+       ├─ ul_board_init()   ← PLL, flash WS, ext RAM
+       ├─ .data copy + .bss zero
+       ├─ ul_arch_init()
+       └─ ul_kernel_main()
+
+WITH external bootloader (when needed):
+
+  power-on → ROM bootloader / Stage-0 (not this repo)
+       │  PLL, clock, DRAM, flash WS already configured
+       │  jump to _start
+  _start (startup.S)
+       ├─ stack, ISP, BTV/BIV, small-data, CSA
+       ├─ ul_board_init()   ← no-op stub (HW already set up)
+       ├─ .data copy + .bss zero
+       ├─ ul_arch_init()
+       └─ ul_kernel_main()
 ```
 
-This boundary means the kernel and its build system are agnostic to clock
-sources, DRAM configuration, and any other chip bring-up details. Those belong
-in the bootloader or in the chip input package (`boards/<chip>/`), not in the
-kernel build.
+The kernel build system is agnostic to which path is taken. The `ul_board_init()`
+weak stub makes both modes work without any build-time flag.
 
 ---
 
@@ -524,10 +586,10 @@ In dependency order:
 | Step | Deliverable | Depends on |
 |------|-------------|-----------|
 | 1 | `cmake/toolchain-tricore-gcc.cmake` | — |
-| 2 | `boards/qemu_tc27x/memory.ld` | linker spec §9 |
+| 2 | `boards/qemu_tc27x/memory.ld` | linker spec §10 |
 | 3 | `cmake/linker_api.cmake` — `ul_add_app`, `ul_add_domain`, `ul_set_root_thread` | — |
 | 4 | `cmake/generate_ld.py` — assembles `generated.ld` from fragments + lists | step 3 |
-| 5 | `stub/root_thread_stub.c` | API spec §5 |
+| 5 | `stub/root_thread_stub.c` + `stub/board_init_stub.c` | API spec §5, arch spec §11 |
 | 6 | Top-level `CMakeLists.txt` — sibling discovery, ELF target | steps 1–5 |
 | 7 | `linker/kernel/*.ld.in` — 6 kernel fragments | linker spec §4 |
 | 8 | `arch/tricore/linker/*.ld.in` — prologue, csa_pool, small_data | linker spec §4.5–4.6 |
