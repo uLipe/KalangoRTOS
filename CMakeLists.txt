@@ -49,6 +49,7 @@ add_library(ulipe_kernel STATIC
     kernel/mem/mem.c
     kernel/irq/irq.c
     arch/tricore/arch.c
+    arch/tricore/ctx_switch.S
     stub/board_init_stub.c
     stub/printk_stub.c
     stub/root_thread_stub.c

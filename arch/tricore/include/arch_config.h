@@ -38,11 +38,17 @@
  *   [13:12] IO   [11:0] CDC/CDC-lower
  * ========================================================================= */
 
-/* IO=0 (user), IS=0, CDE=1, CDC=0 */
+/*
+ * PSW.IO field is at bits[9:8]: 00=user, 01=driver, 10=supervisor.
+ * CDE=bit11=1 enables call-depth error trap.  IS=bit7=1 selects ISP stack.
+ *
+ * UL_ARCH_PSW_USER   = IO=0, IS=0, CDE=1
+ * UL_ARCH_PSW_DRIVER = IO=1, IS=0, CDE=1
+ * UL_ARCH_PSW_SUPER  = IO=2, IS=0, CDE=1  (kernel-internal contexts)
+ */
 #define UL_ARCH_PSW_USER	0x00000880u
-
-/* IO=1 (driver), IS=0, CDE=1, CDC=0 */
 #define UL_ARCH_PSW_DRIVER	0x00000980u
+#define UL_ARCH_PSW_SUPER	0x00000A80u
 
 /* =========================================================================
  * CSA pool constraints

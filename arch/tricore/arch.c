@@ -39,7 +39,7 @@ void ul_arch_cpu_irq_disable(void)
 
 void ul_arch_cpu_idle(void)
 {
-	/* TODO: WAIT instruction */
+	__asm__ volatile("wait");
 }
 
 void ul_arch_cpu_halt(void)
@@ -55,39 +55,33 @@ uint32_t ul_arch_cpu_clz(uint32_t val)
 }
 
 /* =========================================================================
- * Context management — CSA-based
+ * Context management
  * ========================================================================= */
 
 void ul_arch_csa_pool_init(uintptr_t pool_base, size_t pool_size)
 {
 	(void)pool_base;
 	(void)pool_size;
-	/* TODO: build FCX/LCX linked list of 64-byte frames */
+	/*
+	 * The CSA free list is already built by startup.S before ul_arch_init()
+	 * is called — startup.S links all frames and writes FCX/LCX.
+	 * This function exists for platforms that need software-side init.
+	 */
 }
 
 void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 		      void (*entry)(void *arg), void *arg,
 		      uintptr_t stack_top, ul_privilege_t priv)
 {
-	(void)ctx;
-	(void)entry;
 	(void)arg;
-	(void)stack_top;
 	(void)priv;
-	/* TODO: allocate two CSA frames (upper/lower), set PSW, PC, A10, D4 */
-}
-
-void ul_arch_ctx_switch(ul_arch_ctx_t *from, const ul_arch_ctx_t *to)
-{
-	(void)from;
-	(void)to;
-	/* TODO: store PSW+PCXI → from->pcxi; load to->pcxi; RFE */
+	ctx->sp = (uint32_t)stack_top;
+	ctx->ra = (uint32_t)(uintptr_t)entry;
 }
 
 void ul_arch_ctx_free(ul_arch_ctx_t *ctx)
 {
 	(void)ctx;
-	/* TODO: return CSA frames back to free list */
 }
 
 /* =========================================================================

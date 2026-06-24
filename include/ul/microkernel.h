@@ -27,6 +27,7 @@
 typedef enum {
 	UL_PRIV_USER   = 0,	/* IO=0: no peripheral access */
 	UL_PRIV_DRIVER = 1,	/* IO=1: peripheral access, restricted syscalls */
+	UL_PRIV_KERNEL = 2,	/* IO=2: supervisor mode (kernel-internal use only) */
 } ul_privilege_t;
 
 /* =========================================================================

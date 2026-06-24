@@ -24,11 +24,19 @@
  * ========================================================================= */
 
 /*
- * Saved CPU context.  TriCore only needs PCXI; the CSA chain holds
- * the full register state.
+ * Saved CPU context for cooperative switching.
+ *
+ * We store only the two values needed to resume a thread:
+ *   sp  — stack pointer (A10) at the point of suspension
+ *   ra  — return address (A11) to jump to on resume
+ *
+ * The upper-context CSA frame pushed by CALL into ul_arch_ctx_switch is
+ * read for these two fields and then immediately returned to the FCX free
+ * list, so there is no per-switch CSA frame leak.
  */
 typedef struct {
-	uint32_t pcxi;
+	uint32_t sp;
+	uint32_t ra;
 } ul_arch_ctx_t;
 
 /* Saved interrupt state (ICR register value on TriCore). */
