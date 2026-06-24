@@ -32,13 +32,7 @@ uint32_t ul_kernel_trap_syscall(uint8_t tin, uint32_t args[4])
 
 void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 {
-	(void)trap_class;
-	(void)tin;
-	/*
-	 * TODO:
-	 *   - Identify faulting thread from PCXI saved context
-	 *   - Kill the faulting thread / notify root thread via IPC
-	 */
+	ul_printk("TRAP class=%u tin=%u\n", (unsigned)trap_class, (unsigned)tin);
 	for (;;)
 		;
 }

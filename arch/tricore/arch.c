@@ -19,22 +19,27 @@
 
 ul_arch_irq_key_t ul_arch_cpu_irq_save(void)
 {
-	return 0; /* TODO: MFCR ICR, disable IE */
+	uint32_t icr;
+
+	__asm__ volatile("mfcr %0, 0xFE2C" : "=d"(icr));
+	__asm__ volatile("disable" ::: "memory");
+	return icr;
 }
 
 void ul_arch_cpu_irq_restore(ul_arch_irq_key_t key)
 {
-	(void)key; /* TODO: MTCR ICR */
+	__asm__ volatile("mtcr 0xFE2C, %0" :: "d"((uint32_t)key));
+	__asm__ volatile("isync" ::: "memory");
 }
 
 void ul_arch_cpu_irq_enable(void)
 {
-	/* TODO: ENABLE instruction */
+	__asm__ volatile("enable" ::: "memory");
 }
 
 void ul_arch_cpu_irq_disable(void)
 {
-	/* TODO: DISABLE instruction */
+	__asm__ volatile("disable" ::: "memory");
 }
 
 void ul_arch_cpu_idle(void)
@@ -135,10 +140,15 @@ bool ul_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
 
 void ul_arch_irq_vectors_init(uintptr_t btv, uintptr_t biv, uintptr_t isp_top)
 {
-	(void)btv;
-	(void)biv;
-	(void)isp_top;
-	/* TODO: MTCR BTV, BIV, ISP */
+	uint32_t btv32 = (uint32_t)btv;
+	uint32_t biv32 = (uint32_t)biv;
+	uint32_t isp32 = (uint32_t)isp_top;
+
+	__asm__ volatile("dsync" ::: "memory");
+	__asm__ volatile("mtcr 0xFE24, %0" :: "d"(btv32));	/* BTV */
+	__asm__ volatile("mtcr 0xFE20, %0" :: "d"(biv32));	/* BIV, VSS=0 → 32-byte slots */
+	__asm__ volatile("mtcr 0xFE28, %0" :: "d"(isp32));	/* ISP */
+	__asm__ volatile("isync" ::: "memory");
 }
 
 void ul_arch_irq_src_configure(uint8_t srpn, uint8_t priority, uint8_t cpu_id)
@@ -146,46 +156,107 @@ void ul_arch_irq_src_configure(uint8_t srpn, uint8_t priority, uint8_t cpu_id)
 	(void)srpn;
 	(void)priority;
 	(void)cpu_id;
-	/* TODO: write SRC[srpn] register */
+	/* Generic SRC configure not implemented; use peripheral-specific init. */
 }
 
 void ul_arch_irq_src_enable(uint8_t srpn)
 {
 	(void)srpn;
-	/* TODO: set SRC[srpn].SRE */
 }
 
 void ul_arch_irq_src_disable(uint8_t srpn)
 {
 	(void)srpn;
-	/* TODO: clear SRC[srpn].SRE */
 }
 
 void ul_arch_irq_src_ack(uint8_t srpn)
 {
 	(void)srpn;
-	/* TODO: set SRC[srpn].CLRR */
 }
 
 bool ul_arch_irq_src_is_pending(uint8_t srpn)
 {
 	(void)srpn;
-	return false; /* TODO: read SRC[srpn].SRR */
+	return false;
 }
 
 /* =========================================================================
- * Tick timer
+ * Tick timer — STM0 tickless implementation
+ *
+ * Register accessors map directly to the STM0 MMIO addresses.
+ * The QEMU Linumiz fork places STM0 at 0xF0000000 (real TC27x: 0xF0001000).
  * ========================================================================= */
 
-void ul_arch_tick_init(uint32_t tick_hz)
+static volatile uint32_t g_tick_count __attribute__((section(".bss.g_tick_count")));
+
+static inline uint32_t stm0_read(uint32_t reg_addr)
 {
-	(void)tick_hz;
-	/* TODO: configure STM compare match for 1/tick_hz period */
+	return *(volatile uint32_t *)reg_addr;
 }
 
-uint64_t ul_arch_tick_get(void)
+static inline void stm0_write(uint32_t reg_addr, uint32_t val)
 {
-	return 0; /* TODO: read STM TIM0 + TIM6 */
+	*(volatile uint32_t *)reg_addr = val;
+}
+
+void ul_arch_tick_init(void)
+{
+	/*
+	 * CMCON: MSTART0=0, MSIZE0=31 → compare all 32 bits of TIM0 against CMP0.
+	 * Write before enabling SRC so no spurious match fires.
+	 */
+	stm0_write(UL_ARCH_STM0_CMCON, 0x0000001Fu);
+
+	/*
+	 * Configure SRC_STM0SR0.
+	 * The Linumiz QEMU IR uses slot index 0xC0 for STM0 SR0 (not the
+	 * hardware-correct 0xF0038490).  TC27x machines have tc4x_mode=0 in
+	 * the IR struct, so irq_evaluate checks SRE at bit 10 (not bit 23).
+	 * See arch_config.h for the full Linumiz SRC field layout.
+	 */
+	*(volatile uint32_t *)UL_ARCH_SRC_STM0_SR0 = UL_ARCH_SRC_CONFIG_VAL;
+
+	/* ICR: leave CMP0EN=0; caller arms with ul_arch_tick_deadline(). */
+	stm0_write(UL_ARCH_STM0_ICR, 0u);
+}
+
+uint32_t ul_arch_tick_get(void)
+{
+	return stm0_read(UL_ARCH_STM0_TIM0) / UL_ARCH_STM_TICKS_PER_US;
+}
+
+void ul_arch_tick_deadline(uint32_t delta_us)
+{
+	uint32_t now = stm0_read(UL_ARCH_STM0_TIM0);
+	uint32_t target = now + delta_us * UL_ARCH_STM_TICKS_PER_US;
+
+	/* Write CMP0 first — QEMU timer_update arms the QEMU timer on this write. */
+	stm0_write(UL_ARCH_STM0_CMP0, target);
+
+	/* Enable CMP0EN: interrupt fires when TIM0 reaches CMP0. */
+	stm0_write(UL_ARCH_STM0_ICR, 0x00000001u);
+}
+
+uint32_t ul_arch_tick_count(void)
+{
+	return g_tick_count;
+}
+
+/*
+ * Called from vectors.S tick ISR (after svlcx, before rslcx/rfe).
+ * Interrupt priority is already held by hardware (CCPN = UL_ARCH_TICK_SRPN).
+ */
+void _arch_tick_isr_handler(void)
+{
+	/* Ack CMP0 match to prevent re-trigger when CMP0EN is re-enabled. */
+	stm0_write(UL_ARCH_STM0_ISCR, 0x00000001u);
+
+	/* Disable CMP0EN: one-shot; caller re-arms via ul_arch_tick_deadline(). */
+	stm0_write(UL_ARCH_STM0_ICR, 0u);
+
+	g_tick_count++;
+
+	ul_kernel_tick();
 }
 
 /* =========================================================================
@@ -265,15 +336,20 @@ void ul_arch_syscall_entry(void)
  * Boot entry
  * ========================================================================= */
 
+/*
+ * Linker-defined symbols for the vector tables and kernel stack.
+ * These are section-start labels; their ADDRESS is the relevant value.
+ */
+extern char _trap_class0[];	/* BTV: base of .trap_table section */
+extern char _ul_int_table[];	/* BIV: base of .int_table section  */
+extern char _ul_kernel_stack_top[];	/* ISP: top of kernel stack    */
+
 void ul_arch_init(ul_boot_info_t *info)
 {
 	(void)info;
-	/*
-	 * TODO:
-	 *   1. ul_arch_csa_pool_init(_ul_csa_pool_start, pool_size)
-	 *   2. ul_arch_mpu_init()
-	 *   3. ul_arch_irq_vectors_init(_ul_trap_table, _ul_int_table,
-	 *                               _ul_isr_stack_top)
-	 *   4. Fill info->mem[], info->tick_hz, etc.
-	 */
+
+	ul_arch_irq_vectors_init(
+		(uintptr_t)_trap_class0,
+		(uintptr_t)_ul_int_table,
+		(uintptr_t)_ul_kernel_stack_top);
 }

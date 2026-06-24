@@ -95,16 +95,35 @@ _trap_class7:
     j       .
 
 /* ---------------------------------------------------------------------------
- * Interrupt vector table (single generic entry, SRPN dispatch in C)
+ * Interrupt vector table — 32-byte slots, BIV-relative (VSS=0)
+ *
+ * On interrupt entry the hardware:
+ *   1. Saves the Upper Context (PSW, A10, A11, D8–D15) into a fresh CSA frame
+ *   2. Sets A10 = ISP, IS=1, IE=0, CCPN=SRPN
+ *   3. Jumps to BIV + SRPN * 32
+ *
+ * Each ISR entry must save the Lower Context (SVLCX), call the C handler,
+ * restore the Lower Context (RSLCX), and return (RFE).
+ * DISABLE before RSLCX prevents a higher-priority interrupt from nesting
+ * during the critical restore sequence.
  * ------------------------------------------------------------------------ */
 
-    .section .int_table, "ax"
-    .align  8   /* 256 bytes */
+    .extern _arch_tick_isr_handler
 
-    .global _isr_generic
-_isr_generic:
-    /* D15 holds the SRPN on entry when using the TriCore interrupt mechanism.
-     * Pass it to the C dispatcher. */
-    mov     %d4, %d15
-    call    ul_kernel_irq_dispatch
+    .section .int_table, "ax"
+    .align  8   /* 256-byte aligned BIV base */
+
+    .global _ul_int_table
+_ul_int_table:
+
+/* SRPN=0 — priority 0 is disabled; this slot is never dispatched. */
     rfe
+    .align  5		/* pad to next 32-byte boundary */
+
+/* SRPN=1 — kernel tick one-shot ISR (BIV + 1*32 = _ul_int_table + 0x20) */
+    svlcx
+    call    _arch_tick_isr_handler
+    disable
+    rslcx
+    rfe
+    .align  5		/* pad to next 32-byte boundary */

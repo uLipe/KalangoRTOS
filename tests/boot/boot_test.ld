@@ -29,10 +29,10 @@ SECTIONS {
         KEEP(*(.text._start))
     } > PFLASH
 
-    .vectors : {
-        KEEP(*(.text.vectors))
-        KEEP(*(.text._trap*))
-        KEEP(*(.text._int*))
+    .vectors : ALIGN(256) {
+        KEEP(*(.trap_table))
+        . = ALIGN(256);
+        KEEP(*(.int_table))
     } > PFLASH
 
     .text : {

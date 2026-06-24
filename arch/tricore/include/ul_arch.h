@@ -117,11 +117,18 @@ void ul_arch_irq_src_ack(uint8_t srpn);
 bool ul_arch_irq_src_is_pending(uint8_t srpn);
 
 /* =========================================================================
- * Tick timer (arch_api_spec.md §9)
+ * Tick timer — tickless, µs-resolution (arch_api_spec.md §9)
+ *
+ * ul_arch_tick_init   — one-time STM setup; does NOT arm CMP0.
+ * ul_arch_tick_get    — returns elapsed µs since reset (wraps at ~4294s).
+ * ul_arch_tick_deadline — arm a one-shot CMP0 interrupt after delta_us µs.
+ * ul_arch_tick_count  — number of deadline ISRs fired since boot.
  * ========================================================================= */
 
-void     ul_arch_tick_init(uint32_t tick_hz);
-uint64_t ul_arch_tick_get(void);
+void     ul_arch_tick_init(void);
+uint32_t ul_arch_tick_get(void);
+void     ul_arch_tick_deadline(uint32_t delta_us);
+uint32_t ul_arch_tick_count(void);
 
 /* =========================================================================
  * Atomic operations (arch_api_spec.md §10)
