@@ -19,8 +19,14 @@
 
 #define VIRT_BASE    0xBF000000UL
 #define VIRT_PUTCHAR (*(volatile uint32_t *)(VIRT_BASE + 0x20U))
+#define VIRT_EXIT    (*(volatile uint32_t *)(VIRT_BASE + 0x28U))
 
 void ul_printk_char_out(char c)
 {
 	VIRT_PUTCHAR = (uint32_t)(uint8_t)c;
+}
+
+void qemu_virt_exit(uint32_t code)
+{
+	VIRT_EXIT = code;
 }
