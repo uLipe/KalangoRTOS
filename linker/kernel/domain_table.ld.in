@@ -1,0 +1,18 @@
+/* linker/kernel/domain_table.ld.in
+ * Layer 1 — kernel-owned, arch-independent.
+ * Read-only table of ul_domain_desc_t descriptors in flash.
+ *
+ * Each UL_DEFINE_DOMAIN(name, perms) in driver code places one descriptor
+ * in the .domain_table input section.  The kernel scans the range
+ * [_ul_domain_table_start, _ul_domain_table_end) at boot to register
+ * all declared memory domains.
+ *
+ * KEEP prevents --gc-sections from removing descriptors that have no
+ * direct code references.
+ */
+
+    .domain_table : ALIGN(4) {
+        _ul_domain_table_start = .;
+        KEEP(*(.domain_table))
+        _ul_domain_table_end = .;
+    } > KERNEL_FLASH

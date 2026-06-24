@@ -1,0 +1,20 @@
+/* linker/kernel/vectors.ld.in
+ * Layer 1 — kernel-owned, arch-independent.
+ * Trap vector table and interrupt vector table sections.
+ *
+ * Both require 256-byte alignment so the hardware base-address register
+ * field encodes the address without bit manipulation.
+ *
+ * If HAVE_BMHD is set in the chip memory.ld, generate_ld.py inserts the
+ * chip-provided bmhd.ld.in before this fragment.
+ */
+
+    .trap_table : ALIGN(256) {
+        _ul_trap_table = .;
+        KEEP(*(.trap_table))
+    } > KERNEL_FLASH
+
+    .int_table : ALIGN(256) {
+        _ul_int_table = .;
+        KEEP(*(.int_table))
+    } > KERNEL_FLASH

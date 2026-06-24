@@ -1,0 +1,26 @@
+/* linker/kernel/kernel_text.ld.in
+ * Layer 1 — kernel-owned, arch-independent.
+ * Kernel executable code and read-only data.
+ *
+ * Not MPU-aligned: the kernel runs in supervisor mode and does not need
+ * a protection range for its own code.  ALIGN(32) satisfies TriCore's
+ * 32-byte instruction fetch granularity.
+ *
+ * Input section patterns match the naming conventions for kernel and arch
+ * internal functions (all prefixed ul_arch_*, ul_kernel_*, etc.).
+ */
+
+    .kernel_text : ALIGN(32) {
+        _ul_kernel_text_start = .;
+        *(.text.ul_arch_*)
+        *(.text.ul_kernel_*)
+        *(.text.ul_sched_*)
+        *(.text.ul_ipc_*)
+        *(.text.ul_irq_*)
+        *(.text.ul_mem_*)
+        *(.text.ul_notif_*)
+        *(.text._start)
+        *(.text .text.*)
+        *(.rodata .rodata.*)
+        _ul_kernel_text_end = .;
+    } > KERNEL_FLASH

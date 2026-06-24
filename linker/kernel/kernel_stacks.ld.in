@@ -1,0 +1,25 @@
+/* linker/kernel/kernel_stacks.ld.in
+ * Layer 1 — kernel-owned, arch-independent.
+ * Kernel supervisor stack and ISR stack (TriCore ISP / A11).
+ *
+ * Both are NOLOAD: no flash space wasted, contents undefined at boot.
+ * startup.S loads _ul_kernel_stack_top into A10 and _ul_isr_stack_top
+ * into ISP (CSFR 0xFE28) before any C call.
+ *
+ * UL_KERNEL_STACK_SIZE and UL_ISR_STACK_SIZE are defined in memory.ld.
+ * Defaults (if memory.ld omits them):
+ *   UL_KERNEL_STACK_SIZE = 4096
+ *   UL_ISR_STACK_SIZE    = 2048
+ */
+
+    .kernel_stack (NOLOAD) : ALIGN(8) {
+        _ul_kernel_stack_bottom = .;
+        . += UL_KERNEL_STACK_SIZE;
+        _ul_kernel_stack_top = .;
+    } > KERNEL_RAM
+
+    .isr_stack (NOLOAD) : ALIGN(8) {
+        _ul_isr_stack_bottom = .;
+        . += UL_ISR_STACK_SIZE;
+        _ul_isr_stack_top = .;
+    } > KERNEL_RAM

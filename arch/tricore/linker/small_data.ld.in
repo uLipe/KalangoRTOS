@@ -1,0 +1,21 @@
+/* arch/tricore/linker/small_data.ld.in
+ * Layer 2 — arch-owned, TriCore-specific.
+ * Included by generate_ld.py when HAVE_SMALL_DATA = 1 in the chip memory.ld.
+ *
+ * TriCore ABI reserves A0, A1, A8, A9 as global-address-register base
+ * pointers for small-data areas.  startup.S must load the four anchor
+ * symbols below before any C function runs.
+ *
+ * The +0x8000 offset places each anchor at the centre of the 64 KiB window
+ * reachable by the signed 16-bit base+offset in LD/ST short encodings.
+ */
+
+    .sdata  : { *(.sdata  .sdata.*)  } > KERNEL_RAM
+    .sbss   : { *(.sbss   .sbss.*)   } > KERNEL_RAM
+    .sdata2 : { *(.sdata2 .sdata2.*) } > KERNEL_RAM
+    .sbss2  : { *(.sbss2  .sbss2.*)  } > KERNEL_RAM
+
+    _small_data_  = ADDR(.sdata)  + 0x8000;   /* → A0 */
+    _small_data2_ = ADDR(.sdata2) + 0x8000;   /* → A1 */
+    _small_data3_ = ADDR(.sdata)  + 0x8000;   /* → A8 (mirrors A0 range) */
+    _small_data4_ = ADDR(.sdata2) + 0x8000;   /* → A9 (mirrors A1 range) */

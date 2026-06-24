@@ -1,0 +1,9 @@
+/* arch/tricore/linker/prologue.ld.in
+ * Layer 2 — arch-owned, TriCore-specific.
+ * Emitted first by generate_ld.py, before the SECTIONS block.
+ * Specifies ELF output format and entry point.
+ */
+
+OUTPUT_FORMAT("elf32-tricore")
+OUTPUT_ARCH(tricore)
+ENTRY(_start)

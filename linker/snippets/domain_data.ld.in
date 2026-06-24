@@ -1,0 +1,21 @@
+/* linker/snippets/domain_data.ld.in
+ * Template rendered by generate_ld.py for each registered domain.
+ * @DOMAIN_NAME@ is substituted with the domain name string.
+ * @DOMAIN_REGION@ is substituted with KERNEL_RAM or SHARED_RAM.
+ *
+ * Each domain's data occupies a separate MPU-aligned NOLOAD section in RAM.
+ * The _ul_domain_@DOMAIN_NAME@_start/end symbols are consumed by:
+ *   - UL_DEFINE_DOMAIN() macro (stores them in the domain descriptor)
+ *   - The kernel MPU configurator (programs DPR range for each thread)
+ *
+ * Input sections are produced by UL_DOMAIN_BSS(name) and
+ * UL_DOMAIN_DATA(name) macros in ul/linker.h.
+ */
+
+    .domain_@DOMAIN_NAME@ (NOLOAD) : ALIGN(UL_MPU_ALIGN) {
+        _ul_domain_@DOMAIN_NAME@_start = .;
+        *(.domain_@DOMAIN_NAME@.data .domain_@DOMAIN_NAME@.data.*)
+        *(.domain_@DOMAIN_NAME@.bss  .domain_@DOMAIN_NAME@.bss.*)
+        . = ALIGN(UL_MPU_ALIGN);
+        _ul_domain_@DOMAIN_NAME@_end = .;
+    } > @DOMAIN_REGION@
