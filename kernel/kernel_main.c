@@ -20,36 +20,16 @@
  * Arch callbacks — invoked from arch/tricore/vectors.S
  * ========================================================================= */
 
-/*
- * ul_kernel_tick — called from the STM compare-match ISR.
- * Runs in supervisor context with the ISR stack (ISP register).
- */
 void ul_kernel_tick(void)
 {
 	/* TODO: ul_sched_tick(), software timer expiry */
 }
 
-/*
- * ul_kernel_trap_syscall — arch-agnostic syscall dispatcher.
- *
- * Called by ul_arch_syscall_entry() (arch/tricore/arch.c) after it has
- * read D15 (TIN) and D4–D7 (args) from the live TriCore registers.
- * This function contains zero arch-specific code.
- *
- * Returns the value that ul_arch_syscall_entry() will write into D2.
- */
 uint32_t ul_kernel_trap_syscall(uint8_t tin, uint32_t args[4])
 {
 	return ul_syscall_router(tin, args[0], args[1], args[2], args[3]);
 }
 
-/*
- * ul_kernel_trap_fault — hardware protection fault handler.
- * @trap_class: TriCore trap class (1 = Internal Protection, 3 = FCU, etc.)
- * @tin:        fault subtype (arch_api_spec.md §13.5)
- *
- * Called from vectors.S trap handlers.  Does not return.
- */
 void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 {
 	(void)trap_class;
@@ -64,11 +44,53 @@ void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 }
 
 /* =========================================================================
+ * Root thread bootstrap
+ *
+ * root_thread_entry() is the first function executed in the root thread
+ * context after the initial context switch.  It calls ul_root_thread()
+ * and, if that returns, switches back to the kernel idle context.
+ * ========================================================================= */
+
+/*
+ * Explicit .bss.* sections: tricore-elf-gcc with -fdata-sections uses the
+ * variable name as the section name (e.g. .idle_ctx_g) which is NOT captured
+ * by the *(.bss*) linker rule.  Forcing the .bss. prefix fixes placement.
+ */
+static ul_arch_ctx_t idle_ctx_g
+	__attribute__((section(".bss.idle_ctx_g")));
+static ul_arch_ctx_t root_ctx_g
+	__attribute__((section(".bss.root_ctx_g")));
+static uint8_t root_stack_g[4096]
+	__attribute__((aligned(8), section(".bss.root_stack_g")));
+static const ul_boot_info_t *boot_info_g
+	__attribute__((section(".bss.boot_info_g")));
+
+/*
+ * Entry point for the root thread context.
+ * Runs after ul_arch_ctx_switch(idle_ctx, root_ctx) in ul_kernel_main.
+ */
+static void root_thread_entry(void *arg)
+{
+	(void)arg;
+	ul_printk("ulipeMicroKernel: root thread\n");
+	ul_root_thread(boot_info_g);
+	/*
+	 * If ul_root_thread() returns (only in test stubs), switch back to
+	 * the kernel idle context so the test can verify that path too.
+	 */
+	ul_arch_ctx_switch(&root_ctx_g, &idle_ctx_g);
+	for (;;)
+		ul_arch_cpu_idle();
+}
+
+/* =========================================================================
  * Kernel main — does not return
  * ========================================================================= */
 
 void ul_kernel_main(const ul_boot_info_t *info)
 {
+	boot_info_g = info;
+
 	ul_printk("ulipeMicroKernel: kernel entry\n");
 
 	ul_sched_init();
@@ -77,21 +99,22 @@ void ul_kernel_main(const ul_boot_info_t *info)
 	ul_irq_table_init();
 	UL_LOG_DBG("irq table init done");
 
-	ul_printk("ulipeMicroKernel: launching root thread\n");
+	ul_arch_ctx_init(&root_ctx_g,
+			 root_thread_entry,
+			 NULL,
+			 (uintptr_t)(root_stack_g + sizeof(root_stack_g)),
+			 UL_PRIV_KERNEL);
+
+	ul_printk("ulipeMicroKernel: switching to root thread\n");
 
 	/*
-	 * TODO:
-	 *   1. ul_arch_phys_alloc_init(_ul_user_pool_start, pool_size)
-	 *   2. ul_arch_mpu_enable()
-	 *   3. Allocate root thread stack
-	 *   4. ul_kern_thread_spawn() with ul_root_thread as entry
-	 *   5. ul_arch_tick_init(info->tick_hz)
-	 *   6. ul_arch_cpu_irq_enable()
-	 *   7. ul_arch_ctx_switch(NULL, root_thread_ctx)  ← never returns
+	 * First context switch: idle_ctx_g is initialised in-place by
+	 * ul_arch_ctx_switch as it saves the current (kernel-main) PCXI.
+	 * When root_thread_entry switches back, execution resumes here.
 	 */
+	ul_arch_ctx_switch(&idle_ctx_g, &root_ctx_g);
 
-	ul_root_thread(info);
-
+	ul_printk("ulipeMicroKernel: idle loop\n");
 	for (;;)
 		ul_arch_cpu_idle();
 }
