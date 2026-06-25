@@ -27,16 +27,11 @@ LDFLAGS := \
     -Wl,--gc-sections \
     -Wl,--no-warn-rwx-segments
 
-# QEMU AURIX ignores mtcr FCX (free context pointer register), so the manual
-# frame-freeing in ctx_switch.S does not take effect in the emulator.  Each
-# context switch therefore leaks one CSA frame in QEMU (on real hardware the
-# mtcr works and there is no net consumption).
-#
-# The stress ELF uses a larger pool so that STRESS_TARGET switches complete
-# before pool exhaustion:
-#   min_pool = 2 (permanent) + STRESS_TARGET (leaks) + ul_printk_depth (≈5)
-# 256 frames gives comfortable headroom; boot_test.ld keeps 64 for other tests.
-STRESS_LDFLAGS := $(LDFLAGS) -Wl,--defsym,_ul_csa_pool_frames=256
+# SVLCX/RSLCX/RFE implementation: RSLCX and RFE free CSA frames via hardware
+# instructions — no mtcr FCX required and no per-switch leak in QEMU.
+# The stress test intentionally uses the same 64-frame default pool so that
+# any regression (leak) causes FCU trap → hang → timeout → FAIL.
+STRESS_LDFLAGS := $(LDFLAGS)
 
 LIBS := -lc -lgcc
 

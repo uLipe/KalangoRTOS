@@ -24,18 +24,14 @@
 
 #define VIRT_EXIT           (*(volatile uint32_t *)0xBF000028U)
 /*
- * QEMU AURIX limitation: mtcr FCX (free context pointer) writes are not
- * propagated to QEMU's internal CSA allocator, so ctx_switch.S's frame-
- * freeing logic leaks one CSA frame per switch in the emulator.  On real
- * TriCore hardware the mtcr takes effect and there is no net frame
- * consumption.
- *
- * To compensate, the stress ELF linker uses 256 CSA frames (see Makefile
- * STRESS_LDFLAGS) instead of the default 64.  The pool budget is:
- *   2  permanent (kernel_main + ul_root_thread never return)
- *   N  leaked by QEMU (one per switch)
- *   5  needed by ul_printk call chain at any given moment
- * With N=56 and pool=256 there is ample headroom.
+ * Pool budget with the SVLCX/RSLCX/RFE context-switch implementation:
+ *   - RSLCX and RFE free CSA frames via hardware, so there is no net
+ *     frame leak per switch (unlike the old JI-based approach).
+ *   - While a thread is suspended it holds 2 frames (CALL + SVLCX).
+ *   - A running thread holds ~1-2 frames for each active call level.
+ *   - ul_printk call chain is ~5 levels deep.
+ *   - Total worst-case: 2 suspended × 2 + 1 running × 7 ≈ 11 frames.
+ *   - Default 64-frame pool (boot_test.ld) is sufficient.
  *
  * QEMU TriCore TCG freezes in tight loops without MMIO events; SIGTERM
  * from timeout(1) is not delivered.  STRESS_PRINT_EVERY=1 forces an MMIO
