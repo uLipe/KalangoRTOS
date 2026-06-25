@@ -28,7 +28,7 @@
 /* Class 0 — MMU / MPU Data Access Trap */
     .global _trap_class0
 _trap_class0:
-    movh    %d4, 0
+    mov     %d4, 0
     mov     %d5, %d15
     call    ul_kernel_trap_fault
     j       .
@@ -37,7 +37,7 @@ _trap_class0:
     .align  5
     .global _trap_class1
 _trap_class1:
-    movh    %d4, 1
+    mov     %d4, 1
     mov     %d5, %d15
     call    ul_kernel_trap_fault
     j       .
@@ -46,7 +46,7 @@ _trap_class1:
     .align  5
     .global _trap_class2
 _trap_class2:
-    movh    %d4, 2
+    mov     %d4, 2
     mov     %d5, %d15
     call    ul_kernel_trap_fault
     j       .
@@ -55,7 +55,7 @@ _trap_class2:
     .align  5
     .global _trap_class3
 _trap_class3:
-    movh    %d4, 3
+    mov     %d4, 3
     mov     %d5, %d15
     call    ul_kernel_trap_fault
     j       .
@@ -64,7 +64,7 @@ _trap_class3:
     .align  5
     .global _trap_class4
 _trap_class4:
-    movh    %d4, 4
+    mov     %d4, 4
     mov     %d5, %d15
     call    ul_kernel_trap_fault
     j       .
@@ -73,7 +73,7 @@ _trap_class4:
     .align  5
     .global _trap_class5
 _trap_class5:
-    movh    %d4, 5
+    mov     %d4, 5
     mov     %d5, %d15
     call    ul_kernel_trap_fault
     j       .
@@ -89,7 +89,7 @@ _trap_class6:
     .align  5
     .global _trap_class7
 _trap_class7:
-    movh    %d4, 7
+    mov     %d4, 7
     mov     %d5, %d15
     call    ul_kernel_trap_fault
     j       .

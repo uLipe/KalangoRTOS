@@ -24,19 +24,22 @@
  * ========================================================================= */
 
 /*
- * Saved CPU context for cooperative switching.
+ * Saved CPU context — head of the CSA chain for this thread.
  *
- * We store only the two values needed to resume a thread:
- *   sp  — stack pointer (A10) at the point of suspension
- *   ra  — return address (A11) to jump to on resume
+ * On suspension ul_arch_ctx_switch() stores the PCXI register here.
+ * PCXI encodes a two-frame chain:
+ *   pcxi → lower-context CSA (UL=0, saved by SVLCX)
+ *        → upper-context CSA (UL=1, saved by CALL into ctx_switch)
  *
- * The upper-context CSA frame pushed by CALL into ul_arch_ctx_switch is
- * read for these two fields and then immediately returned to the FCX free
- * list, so there is no per-switch CSA frame leak.
+ * For a freshly created thread ul_arch_ctx_init() fabricates the same
+ * two-frame chain so that the first RSLCX+RFE starts the thread at its
+ * entry point via the arch trampoline.
+ *
+ * Must be the first field so that ul_thread_t.pcxi is accessible at a
+ * fixed offset (required by the assembly context-switch path).
  */
 typedef struct {
-	uint32_t sp;
-	uint32_t ra;
+	uint32_t pcxi;
 } ul_arch_ctx_t;
 
 /* Saved interrupt state (ICR register value on TriCore). */

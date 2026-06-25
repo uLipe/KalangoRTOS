@@ -32,23 +32,38 @@
 #define UL_ARCH_REGION_ALIGN	64
 
 /* =========================================================================
- * PSW initial values for new threads
- * TriCore PSW register layout:
- *   [31:26] CDE  [25] = 1 (CDC high bit)
- *   [13:12] IO   [11:0] CDC/CDC-lower
- * ========================================================================= */
-
-/*
- * PSW.IO field is at bits[9:8]: 00=user, 01=driver, 10=supervisor.
- * CDE=bit11=1 enables call-depth error trap.  IS=bit7=1 selects ISP stack.
+ * PSW initial values for fabricated thread contexts.
  *
- * UL_ARCH_PSW_USER   = IO=0, IS=0, CDE=1
- * UL_ARCH_PSW_DRIVER = IO=1, IS=0, CDE=1
- * UL_ARCH_PSW_SUPER  = IO=2, IS=0, CDE=1  (kernel-internal contexts)
+ * TC1.6.1 PSW bit layout (confirmed from QEMU cpu.h / Ghidra / NuttX):
+ *   [11:10] IO  — privilege: 00=User-0, 01=User-1, 10=Supervisor
+ *   [9]     IS  — interrupt stack indicator (0 = task stack)
+ *   [8]     GW  — global address register write permission
+ *   [7]     CDE — call depth count enable (0 = disabled)
+ *   [6:0]   CDC — call depth counter
+ *
+ * CDE=0: call depth protection disabled — safe for fabricated contexts.
+ * IS=0: thread uses its own stack (A10), not ISP.
+ * GW=1: allow writes to small-data global registers (A0, A1, A8, A9).
+ * ========================================================================= */
+/*
+ * Reference PSW values for TC1.6.1 fabricated thread contexts.
+ * These are NOT used directly by ul_arch_ctx_init — that function reads
+ * the runtime kernel PSW via MFCR and strips IS/CDC before applying the IO
+ * level, so it inherits GW and CDE from the live kernel state.
+ *
+ * These constants remain here for documentation and for any future use
+ * outside of ctx_init (e.g. unit tests, tooling).
+ *
+ * Key constraints confirmed against QEMU Linumiz:
+ *   IS  = 0  — QEMU starts with IS=1 (reset PSW = 0xB80); threads need IS=0
+ *              or RFE into the fabricated context triggers a class-4 PSE trap.
+ *   CDE = 1  — inherited from kernel; required for the QEMU peripheral check.
+ *   CDC = 0  — fresh counter for the new thread.
+ *   GW  = 1  — allow writes to small-data globals (A0/A1/A8/A9).
  */
-#define UL_ARCH_PSW_USER	0x00000880u
-#define UL_ARCH_PSW_DRIVER	0x00000980u
-#define UL_ARCH_PSW_SUPER	0x00000A80u
+#define UL_ARCH_PSW_USER	0x00000180u	/* IO=0, IS=0, GW=1, CDE=1, CDC=0 */
+#define UL_ARCH_PSW_DRIVER	0x00000580u	/* IO=1, IS=0, GW=1, CDE=1, CDC=0 */
+#define UL_ARCH_PSW_SUPER	0x00000980u	/* IO=2, IS=0, GW=1, CDE=1, CDC=0 */
 
 /* =========================================================================
  * CSA pool constraints
