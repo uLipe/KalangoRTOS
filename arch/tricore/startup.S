@@ -21,6 +21,8 @@
     .extern __ul_kernel_data_load
     .extern _ul_kernel_data_start
     .extern _ul_kernel_data_end
+    .extern _ul_kernel_bss_start
+    .extern _ul_kernel_bss_end
     .extern _small_data_
     .extern _small_data2_
     .extern _small_data3_
@@ -112,8 +114,22 @@ _start:
     j       .L_data_copy
 .L_data_done:
 
-    /* 5. Zero BSS is handled inside the .kernel_data section (bss merged).
-     *    Platform BSS is separately zeroed here using the bss symbol range. */
+    /* 5. Zero BSS: clear [_ul_kernel_bss_start .. _ul_kernel_bss_end). */
+    movh.a  %a5, hi:_ul_kernel_bss_start
+    lea     %a5, [%a5] lo:_ul_kernel_bss_start
+    movh.a  %a6, hi:_ul_kernel_bss_end
+    lea     %a6, [%a6] lo:_ul_kernel_bss_end
+    mov     %d0, 0
+
+.L_bss_zero:
+    mov.d   %d1, %a5
+    mov.d   %d2, %a6
+    jge     %d1, %d2, .L_bss_done
+    st.w    [%a5], %d0
+    lea     %a5, [%a5] 4
+    j       .L_bss_zero
+
+.L_bss_done:
 
     /* 6. Small-data address registers. */
     movh.a  %a0, hi:_small_data_

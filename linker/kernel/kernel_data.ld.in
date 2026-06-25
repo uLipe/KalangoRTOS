@@ -1,11 +1,17 @@
 /* linker/kernel/kernel_data.ld.in
  * Layer 1 — kernel-owned, arch-independent.
- * Kernel mutable state: .data (initialised) and .bss (zero-initialised).
+ * Kernel mutable state split into two sections:
+ *   .kernel_data — initialised variables, LMA-backed (flash → RAM copy)
+ *   .kernel_bss  — zero-initialised variables, NOLOAD (startup.S zeroes)
  *
- * Aligned to UL_MPU_ALIGN on both ends.  startup.S uses the start/end
- * symbols to copy the LMA image from flash and zero the bss range.
- * The arch may optionally configure a single supervisor-only DPR range
- * covering this region.
+ * Both sections are aligned to UL_MPU_ALIGN on both ends so the arch may
+ * optionally configure a single supervisor-only DPR range covering the
+ * combined kernel data/bss area.
+ *
+ * startup.S protocol:
+ *   1. Copy [__ul_kernel_data_load .. __ul_kernel_data_load + size) → RAM
+ *      using _ul_kernel_data_start / _ul_kernel_data_end.
+ *   2. Zero [_ul_kernel_bss_start .. _ul_kernel_bss_end).
  */
 
     __ul_kernel_data_load = LOADADDR(.kernel_data);
@@ -19,6 +25,12 @@
         *(.data.ul_mem_*)
         *(.data.ul_notif_*)
         *(.data .data.*)
+        . = ALIGN(4);
+        _ul_kernel_data_end = .;
+    } > KERNEL_RAM AT > KERNEL_FLASH
+
+    .kernel_bss (NOLOAD) : ALIGN(4) {
+        _ul_kernel_bss_start = .;
         *(.bss.ul_arch_*)
         *(.bss.ul_kernel_*)
         *(.bss.ul_sched_*)
@@ -28,6 +40,6 @@
         *(.bss.ul_notif_*)
         *(.bss .bss.*)
         *(COMMON)
-        . = ALIGN(UL_MPU_ALIGN);
-        _ul_kernel_data_end = .;
-    } > KERNEL_RAM AT > KERNEL_FLASH
+        . = ALIGN(4);
+        _ul_kernel_bss_end = .;
+    } > KERNEL_RAM

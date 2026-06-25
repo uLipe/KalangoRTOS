@@ -52,8 +52,9 @@ TEST_SRCS := \
 
 SRCS := $(KERNEL_SRCS) $(TEST_SRCS)
 
-# Pass/fail sentinel expected in QEMU stdout.
-BOOT_SENTINEL := BOOT OK
+# Pass/fail sentinels expected in QEMU stdout (both must appear).
+SENTINEL_BSS  := boot_test: bss zero check — OK
+SENTINEL_BOOT := BOOT OK
 
 .PHONY: all run clean gen_config
 
@@ -81,10 +82,18 @@ run: $(TARGET)
 	    -kernel $(TARGET) \
 	    -nographic \
 	    </dev/null 2>/dev/null | tee /tmp/boot_test.log ; \
-	if grep -q "$(BOOT_SENTINEL)" /tmp/boot_test.log; then \
+	PASS=1; \
+	if ! grep -q "$(SENTINEL_BSS)" /tmp/boot_test.log; then \
+	    echo "BOOT INTEGRATION TEST: FAIL (sentinel '$(SENTINEL_BSS)' not found)"; \
+	    PASS=0; \
+	fi; \
+	if ! grep -q "$(SENTINEL_BOOT)" /tmp/boot_test.log; then \
+	    echo "BOOT INTEGRATION TEST: FAIL (sentinel '$(SENTINEL_BOOT)' not found)"; \
+	    PASS=0; \
+	fi; \
+	if [ "$$PASS" = "1" ]; then \
 	    echo "BOOT INTEGRATION TEST: PASS"; \
 	else \
-	    echo "BOOT INTEGRATION TEST: FAIL (sentinel '$(BOOT_SENTINEL)' not found)"; \
 	    exit 1; \
 	fi
 

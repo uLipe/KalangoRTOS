@@ -50,12 +50,14 @@ SECTIONS {
     } > SRAM AT > PFLASH
 
     .bss (NOLOAD) : {
-        __bss_start = .;
+        _ul_kernel_bss_start = .;
         *(.bss*)
         *(COMMON)
         . = ALIGN(4);
-        __bss_end = .;
+        _ul_kernel_bss_end = .;
     } > SRAM
+    PROVIDE(__bss_start = _ul_kernel_bss_start);
+    PROVIDE(__bss_end   = _ul_kernel_bss_end);
 
     .csa_pool (NOLOAD) : ALIGN(64) {
         _ul_csa_pool_start = .;
