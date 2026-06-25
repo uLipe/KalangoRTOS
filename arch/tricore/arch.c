@@ -12,7 +12,6 @@
 #include <stdbool.h>
 #include <ul/microkernel.h>
 #include <ul_arch.h>
-
 /* =========================================================================
  * CPU control
  * ========================================================================= */
@@ -60,6 +59,59 @@ uint32_t ul_arch_cpu_clz(uint32_t val)
 }
 
 /* =========================================================================
+ * CSA helpers — used by context init only; not part of the public API.
+ *
+ * CSA link-word format (TC1.6.1 §3.2):
+ *   [20]    UL   — 1 = upper context, 0 = lower context
+ *   [19:16] PCXS — segment index (bits [30:28] of the physical address)
+ *   [15:0]  PCXO — offset within segment (bits [21:6] of the physical addr)
+ *
+ * Conversion:
+ *   addr = (PCXS << 28) | (PCXO << 6)
+ *   link = ((addr >> 12) & 0x70000) | ((addr >> 6) & 0xFFFF)
+ * ========================================================================= */
+
+#define UL_CSA_UL_FLAG		(1u << 20)	/* upper-context flag in link */
+
+static inline uint32_t *csa_link_to_addr(uint32_t link)
+{
+	return (uint32_t *)(((link & 0x70000u) << 12) |
+			    ((link & 0xFFFFu) << 6));
+}
+
+static inline uint32_t addr_to_csa_link(const uint32_t *addr)
+{
+	uint32_t a = (uint32_t)(uintptr_t)addr;
+
+	return ((a >> 12) & 0x70000u) | ((a >> 6) & 0xFFFFu);
+}
+
+/*
+ * Pop one CSA frame from the free list (FCX).
+ * Must not be called from interrupt context or with interrupts enabled
+ * while other code may concurrently modify FCX.
+ */
+static uint32_t csa_alloc(void)
+{
+	uint32_t fcx;
+	uint32_t next;
+	uint32_t *frame;
+
+	__asm__ volatile("mfcr %0, 0xFE38" : "=d"(fcx));
+	if (fcx == 0u)
+		ul_arch_cpu_halt(); /* CSA pool exhausted — fatal */
+
+	frame = csa_link_to_addr(fcx);
+	next  = frame[0]; /* free list: frame[0] = link to next free frame */
+
+	__asm__ volatile("dsync" ::: "memory");
+	__asm__ volatile("mtcr 0xFE38, %0" :: "d"(next)); /* FCX = next */
+	__asm__ volatile("isync" ::: "memory");
+
+	return fcx;
+}
+
+/* =========================================================================
  * Context management
  * ========================================================================= */
 
@@ -74,16 +126,95 @@ void ul_arch_csa_pool_init(uintptr_t pool_base, size_t pool_size)
 	 */
 }
 
+extern void _ul_thread_trampoline(void);
+
+/*
+ * Fabricate the initial two-frame CSA chain for a new thread.
+ *
+ * IMPORTANT: The QEMU Linumiz fork inverts upper/lower register sets
+ * relative to the TC1.6.1 specification:
+ *
+ *   Upper context (CALL/RFE): PCXI PSW A10 A11 D8-D11 A12-A15 D12-D15
+ *   Lower context (SVLCX/RSLCX): PCXI A11 A2 A3 D0-D3 A4-A7 D4-D7
+ *
+ * RFE sequence in QEMU: PC = A11 (pre-restore) → load upper context.
+ * Therefore lower_csa[1] = trampoline sets the jump target of RFE.
+ *
+ * Fabricated frames:
+ *
+ *   Upper CSA (UL=1):
+ *     [0]  PCXI = 0     (terminal)
+ *     [1]  PSW          (privilege)
+ *     [2]  A10          (stack_top)
+ *     [3]  A11          (trampoline — restored into A11 register by RFE)
+ *     [10] A14          (entry function address — loaded by RFE into A14)
+ *
+ *   Lower CSA (UL=0):
+ *     [0]  PCXI         (upper_link | UL_FLAG)
+ *     [1]  A11          (trampoline — RFE uses this for PC before restore)
+ *     [8]  A4           (arg pointer — restored by RSLCX, ABI-correct)
+ *
+ * ctx->pcxi = lower_link (UL=0).
+ */
 void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 		      void (*entry)(void *arg), void *arg,
 		      uintptr_t stack_top, ul_privilege_t priv)
 {
-	(void)arg;
-	(void)priv;
-	ctx->sp = (uint32_t)stack_top;
-	ctx->ra = (uint32_t)(uintptr_t)entry;
+	uint32_t upper_link;
+	uint32_t lower_link;
+	uint32_t *upper_csa;
+	uint32_t *lower_csa;
+	uint32_t psw;
+	uint32_t i;
+
+	/*
+	 * Build the initial PSW from the current kernel PSW, overriding the
+	 * fields that must be explicit for a thread context:
+	 *
+	 *   CDC = 0  (fresh call-depth counter)
+	 *   IS  = 0  (thread uses A10 / task stack, never ISP)
+	 *   IO       (as requested by caller)
+	 *
+	 * GW and CDE are inherited from the kernel PSW.  QEMU Linumiz starts
+	 * with IS=1 in the reset PSW and never clears it, so we must strip IS
+	 * explicitly; leaving IS=1 causes a class-4 PSE trap after the first
+	 * RFE into a fabricated context.
+	 */
+	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
+	psw &= ~0x7Fu;					/* clear CDC */
+	psw &= ~0x200u;					/* clear IS (task stack) */
+	psw &= ~0xC00u;					/* clear IO bits */
+	psw |= (uint32_t)(priv == UL_PRIV_USER   ? 0u :
+			  priv == UL_PRIV_DRIVER ? 0x400u : 0x800u);
+
+	upper_link = csa_alloc();
+	upper_csa  = csa_link_to_addr(upper_link);
+	for (i = 0u; i < 16u; i++)
+		upper_csa[i] = 0u;
+	upper_csa[1]  = psw;
+	upper_csa[2]  = (uint32_t)stack_top;
+	upper_csa[3]  = (uint32_t)(uintptr_t)_ul_thread_trampoline;
+	upper_csa[10] = (uint32_t)(uintptr_t)entry;	/* A14: entry fn */
+
+	lower_link = csa_alloc();
+	lower_csa  = csa_link_to_addr(lower_link);
+	for (i = 0u; i < 16u; i++)
+		lower_csa[i] = 0u;
+	lower_csa[0] = upper_link | UL_CSA_UL_FLAG;
+	lower_csa[1] = (uint32_t)(uintptr_t)_ul_thread_trampoline;
+	lower_csa[8] = (uint32_t)(uintptr_t)arg;	/* A4: pointer arg */
+
+	ctx->pcxi = lower_link;
 }
 
+/*
+ * Free the saved CSA chain back to FCX.
+ * Called when a thread is destroyed.  The chain must not be active
+ * (i.e. the thread must be in DEAD state before this is called).
+ *
+ * TODO: implement — walk the PCXI chain from ctx->pcxi, return each frame
+ * to FCX.  Needed for ul_thread_kill / ul_kern_exit.
+ */
 void ul_arch_ctx_free(ul_arch_ctx_t *ctx)
 {
 	(void)ctx;
