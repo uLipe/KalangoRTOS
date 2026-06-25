@@ -206,24 +206,25 @@ Compilado para (pseudo):
 
 Este é o ponto central para context switch:
 
-**Upper Context (salvo automaticamente por CALL/hardware):**
+**Upper Context (salvo automaticamente por CALL/interrupt/trap):**
 ```
-A[11] (RA), A[10] (SP), A[2], A[3]
-D[0], D[1], D[2], D[3]
-A[4], A[5], A[6], A[7]
-D[4], D[5], D[6], D[7]
+A[11] (RA), A[10] (SP)
+D[8], D[9], D[10], D[11], D[12], D[13], D[14], D[15]
+A[12], A[13], A[14], A[15]
 PSW
 PCXI (→ link pro contexto anterior)
 ```
 
-**Lower Context (callee-saved, precisa save explícito ou via SVLCX/BISR):**
+**Lower Context (salvo explicitamente por SVLCX/BISR):**
 ```
-A[12], A[13], A[14], A[15]
-D[8], D[9], D[10], D[11], D[12], D[13], D[14], D[15]
+A[11] (RA), A[2], A[3]
+D[0], D[1], D[2], D[3]
+A[4], A[5], A[6], A[7]
+D[4], D[5], D[6], D[7]
 PCXI (→ link pro contexto anterior)
 ```
 
-> **Importantíssimo**: A instrução `CALL` automaticamente salva o **Upper Context** em um CSA e linka via PCXI. O Lower Context só é salvo se a função (callee) decidir usar esses registradores, ou se o RTOS executa `SVLCX` explicitamente.
+> **Importantíssimo**: A instrução `CALL` automaticamente salva o **Upper Context** (D8-D15, A12-A15 — callee-saved) em um CSA e linka via PCXI. O Lower Context (D0-D7, A2-A7 — caller-saved) é salvo explicitamente pelo OS via `SVLCX` na entrada de ISR/context switch.
 
 ### 3.3 Alinhamento de Stack
 
@@ -320,32 +321,9 @@ Mapeamento típico TC2xx:
 
 Quando o Upper Context é salvo (por CALL, interrupt, trap, ou SVUCX):
 
-| Offset (words) | Conteúdo |
-|----------------|----------|
-| 0 | **Link Word** (PCXI do momento do save → aponta pro CSA anterior na chain) |
-| 1 | PSW |
-| 2 | A[10] (SP) |
-| 3 | A[11] (RA) |
-| 4 | D[0] |
-| 5 | D[1] |
-| 6 | D[2] |
-| 7 | D[3] |
-| 8 | A[2] |
-| 9 | A[3] |
-| 10 | D[4] |
-| 11 | D[5] |
-| 12 | D[6] |
-| 13 | D[7] |
-| 14 | A[4] |
-| 15 | A[5] — *Nota: A[6] e A[7] NÃO são salvos no Upper Context* |
-
-**CORREÇÃO IMPORTANTE**: Checando a spec mais a fundo:
-
-**Upper Context CSA (16 words):**
-
 | Word | Conteúdo |
 |------|----------|
-| 0 | PCXI (link) |
+| 0 | **PCXI** (link word → CSA anterior na chain) |
 | 1 | PSW |
 | 2 | A[10] (SP) |
 | 3 | A[11] (RA) |
@@ -361,89 +339,42 @@ Quando o Upper Context é salvo (por CALL, interrupt, trap, ou SVUCX):
 | 13 | D[13] |
 | 14 | D[14] |
 | 15 | D[15] |
-
-**NÃO!** Vou reescrever corretamente. O TriCore architecture manual define:
-
-### 4.3 Layout do Upper Context CSA (CORRETO)
-
-O Upper Context contém os registradores que são **automaticamente salvos por CALL** (caller-saved):
-
-| Word | Conteúdo |
-|------|----------|
-| 0 | PCXI (link word → CSA anterior) |
-| 1 | PSW (incluindo USB, call depth, etc.) |
-| 2 | A[10] (SP) |
-| 3 | A[11] (RA / Return Address) |
-| 4 | D[0] |
-| 5 | D[1] |
-| 6 | D[2] |
-| 7 | D[3] |
-| 8 | A[2] |
-| 9 | A[3] |
-| 10 | D[4] |
-| 11 | D[5] |
-| 12 | D[6] |
-| 13 | D[7] |
-| 14 | A[6] |
-| 15 | A[7] |
 
 O campo `UL` no PCXI/link word = **1** indica Upper Context.
 
 ### 4.4 Layout do Lower Context CSA
 
-O Lower Context contém os registradores **callee-saved**:
+O Lower Context contém os registradores caller-saved e é salvo por SVLCX/BISR:
 
 | Word | Conteúdo |
 |------|----------|
-| 0 | PCXI (link word → CSA anterior) |
-| 1 | A[11] (RA) — *sim, RA aparece em ambos* |
+| 0 | **PCXI** (link word → CSA anterior) |
+| 1 | A[11] (RA) |
 | 2 | A[2] |
 | 3 | A[3] |
-| 4 | D[8] |
-| 5 | D[9] |
-| 6 | D[10] |
-| 7 | D[11] |
-| 8 | A[12] |
-| 9 | A[13] |
-| 10 | A[14] |
-| 11 | A[15] |
-| 12 | D[12] |
-| 13 | D[13] |
-| 14 | D[14] |
-| 15 | D[15] |
+| 4 | D[0] |
+| 5 | D[1] |
+| 6 | D[2] |
+| 7 | D[3] |
+| 8 | A[4] |
+| 9 | A[5] |
+| 10 | A[6] |
+| 11 | A[7] |
+| 12 | D[4] |
+| 13 | D[5] |
+| 14 | D[6] |
+| 15 | D[7] |
 
 O campo `UL` no PCXI/link word = **0** indica Lower Context.
 
-> **NOTA CRÍTICA PARA RTOS DEVELOPERS**: Existe variação nos manuais Infineon entre versões. **SEMPRE verifique contra o TriCore Architecture Manual v1.6 (Volume 1, seções sobre CALL, RET, SVLCX, RSLCX, SVUCX)**. Os layouts acima refletem o entendimento padrão, mas a ordem exata dos words pode variar. Confira no capítulo "Context Save Areas" do arch manual.
+A definição **canônica** segundo o TC1.6 Architecture Manual e confirmada pelo QEMU mainline é:
 
-A definição **canônica** segundo o TC1.6 Architecture Manual é:
-
-**Upper CSA:**
+**Upper CSA (CALL/RFE — D8-D15, A12-A15 são callee-saved):**
 ```
 Word 0:  PCXI
-Word 1:  PSW  
+Word 1:  PSW
 Word 2:  A[10]
 Word 3:  A[11]
-Word 4:  D[0]
-Word 5:  D[1]
-Word 6:  D[2]
-Word 7:  D[3]  
-Word 8:  A[2]
-Word 9:  A[3]
-Word 10: D[4]
-Word 11: D[5]
-Word 12: D[6]
-Word 13: D[7]
-Word 14: A[6]
-Word 15: A[7]
-```
-
-**Lower CSA:**
-```
-Word 0:  PCXI
-Word 1:  A[11] (RA)
-Word 2:  A[2]
-Word 3:  A[3]
 Word 4:  D[8]
 Word 5:  D[9]
 Word 6:  D[10]
@@ -456,6 +387,26 @@ Word 12: D[12]
 Word 13: D[13]
 Word 14: D[14]
 Word 15: D[15]
+```
+
+**Lower CSA (SVLCX/RSLCX — D0-D7, A2-A7 são caller-saved):**
+```
+Word 0:  PCXI
+Word 1:  A[11] (RA)
+Word 2:  A[2]
+Word 3:  A[3]
+Word 4:  D[0]
+Word 5:  D[1]
+Word 6:  D[2]
+Word 7:  D[3]
+Word 8:  A[4]
+Word 9:  A[5]
+Word 10: A[6]
+Word 11: A[7]
+Word 12: D[4]
+Word 13: D[5]
+Word 14: D[6]
+Word 15: D[7]
 ```
 
 ### 4.5 Instruções de Contexto

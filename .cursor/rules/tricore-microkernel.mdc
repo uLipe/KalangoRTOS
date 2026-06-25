@@ -66,10 +66,9 @@ Word 0:  PCXI (link pro CSA anterior)
 Word 1:  PSW
 Word 2:  A[10] (SP)
 Word 3:  A[11] (RA)
-Word 4:  D[0]  Word 5:  D[1]  Word 6:  D[2]  Word 7:  D[3]
-Word 8:  A[2]  Word 9:  A[3]
-Word 10: D[4]  Word 11: D[5]  Word 12: D[6]  Word 13: D[7]
-Word 14: A[6]  Word 15: A[7]
+Word 4:  D[8]  Word 5:  D[9]  Word 6:  D[10] Word 7:  D[11]
+Word 8:  A[12] Word 9:  A[13] Word 10: A[14] Word 11: A[15]
+Word 12: D[12] Word 13: D[13] Word 14: D[14] Word 15: D[15]
 ```
 
 ### Lower Context CSA (UL=0) — salvo por SVLCX/BISR
@@ -77,9 +76,9 @@ Word 14: A[6]  Word 15: A[7]
 Word 0:  PCXI (link pro CSA anterior)
 Word 1:  A[11] (RA)
 Word 2:  A[2]  Word 3:  A[3]
-Word 4:  D[8]  Word 5:  D[9]  Word 6:  D[10] Word 7:  D[11]
-Word 8:  A[12] Word 9:  A[13] Word 10: A[14] Word 11: A[15]
-Word 12: D[12] Word 13: D[13] Word 14: D[14] Word 15: D[15]
+Word 4:  D[0]  Word 5:  D[1]  Word 6:  D[2]  Word 7:  D[3]
+Word 8:  A[4]  Word 9:  A[5]  Word 10: A[6]  Word 11: A[7]
+Word 12: D[4]  Word 13: D[5]  Word 14: D[6]  Word 15: D[7]
 ```
 
 ### Conversão endereço ↔ link word

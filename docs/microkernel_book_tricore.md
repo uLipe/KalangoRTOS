@@ -258,7 +258,7 @@ Upper Context (salvo automaticamente em trap/interrupt):
   │  D12   │  D13   │  D14   │  D15   │       │
   └──────────────────────────────────────────────┘
 
-Lower Context (salvo automaticamente em CALL):
+Lower Context (salvo por SVLCX/BISR):
   ┌──────────────────────────────────────────────┐
   │  PCXI  │  A2    │  A3    │  D0    │       │
   │  D1    │  D2    │  D3    │  A4    │       │
