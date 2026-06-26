@@ -1,7 +1,7 @@
 CC      := tricore-elf-gcc
 QEMU    := qemu-system-tricore
 MACHINE := KIT_AURIX_TC277_TRB
-TARGET  := tick_test.elf
+TARGET  := sched_integ_test.elf
 
 ROOT    := ../..
 GEN_INC := /tmp/gen
@@ -24,8 +24,7 @@ LDFLAGS := \
     -mcpu=tc27xx \
     -nostartfiles \
     -Wl,--gc-sections \
-    -Wl,--no-warn-rwx-segments \
-    -Wl,--defsym,_ul_csa_pool_frames=128
+    -Wl,--no-warn-rwx-segments
 
 LIBS := -lc -lgcc
 
@@ -47,13 +46,20 @@ KERNEL_SRCS := \
     $(ROOT)/stub/board_init_stub.c
 
 TEST_SRCS := \
-    tick_test.c \
+    sched_integ_test.c \
     $(ROOT)/boards/qemu_tc27x/qemu_console.c
 
 SRCS := $(KERNEL_SRCS) $(TEST_SRCS)
 
-SENTINEL    := tick_test: PASS
-QEMU_TIMEOUT := 150
+SENTINELS := \
+    "sched_integ: high step 1" \
+    "sched_integ: high step 2" \
+    "sched_integ: mid step 1" \
+    "sched_integ: mid step 2" \
+    "sched_integ: low step 1" \
+    "sched_integ: PASS"
+
+QEMU_TIMEOUT := 60
 TIMEOUT_CMD  := timeout --kill-after=5 $(QEMU_TIMEOUT)
 
 .PHONY: all run clean gen_config
@@ -76,19 +82,28 @@ $(TARGET): $(SRCS) ../boot/boot_test.ld
 	tricore-elf-size $@
 
 run: $(TARGET)
-	@echo "--- running tick integration test (timeout=$(QEMU_TIMEOUT)s) ---"
+	@echo "--- running sched integration test (timeout=$(QEMU_TIMEOUT)s) ---"
 	@$(TIMEOUT_CMD) $(QEMU) \
 	    -machine $(MACHINE) \
 	    -kernel $(TARGET) \
 	    -nographic \
-	    </dev/null 2>/dev/null | tee /tmp/tick_test.log | \
-	    grep -m 1 "$(SENTINEL)" ; \
-	if grep -q "$(SENTINEL)" /tmp/tick_test.log; then \
-	    echo "TICK INTEGRATION TEST: PASS"; \
+	    </dev/null 2>/dev/null | tee /tmp/sched_integ_test.log ; \
+	FAIL=0 ; \
+	for S in $(SENTINELS) ; do \
+	    if grep -q "$$S" /tmp/sched_integ_test.log ; then \
+	        echo "  [PASS] found: $$S" ; \
+	    else \
+	        echo "  [FAIL] missing: $$S" ; \
+	        FAIL=1 ; \
+	    fi ; \
+	done ; \
+	if [ $$FAIL -eq 0 ]; then \
+	    echo "SCHED INTEG TEST: PASS" ; \
 	else \
-	    echo "TICK INTEGRATION TEST: FAIL (sentinel '$(SENTINEL)' not found)"; \
-	    exit 1; \
+	    echo "SCHED INTEG TEST: FAIL" ; \
+	    cat /tmp/sched_integ_test.log ; \
+	    exit 1 ; \
 	fi
 
 clean:
-	rm -f $(TARGET) /tmp/tick_test.log
+	rm -f $(TARGET) /tmp/sched_integ_test.log

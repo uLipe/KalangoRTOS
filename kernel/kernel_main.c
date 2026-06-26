@@ -12,6 +12,7 @@
 #include <ul/config.h>
 #include <ul_arch.h>
 #include <kernel/include/ul_sched.h>
+#include <kernel/include/ul_thread_internal.h>
 #include <kernel/include/ul_irq_internal.h>
 #include <kernel/include/ul_printk.h>
 #include <kernel/syscall/syscall_router.h>
@@ -91,42 +92,29 @@ void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 
 /* =========================================================================
  * Root thread bootstrap
- *
- * root_thread_entry() is the first function executed in the root thread
- * context after the initial context switch.  It calls ul_root_thread()
- * and, if that returns, switches back to the kernel idle context.
  * ========================================================================= */
 
 /*
  * Explicit .bss.* sections: tricore-elf-gcc with -fdata-sections uses the
- * variable name as the section name (e.g. .idle_ctx_g) which is NOT captured
- * by the *(.bss*) linker rule.  Forcing the .bss. prefix fixes placement.
+ * variable name as the section name which is NOT captured by *(.bss*).
+ * Forcing the .bss. prefix fixes placement.
  */
-static ul_arch_ctx_t idle_ctx_g
+static ul_arch_ctx_t  idle_ctx_g
 	__attribute__((section(".bss.idle_ctx_g")));
-static ul_arch_ctx_t root_ctx_g
-	__attribute__((section(".bss.root_ctx_g")));
-static uint8_t root_stack_g[4096]
+static ul_thread_t    root_thread_g
+	__attribute__((section(".bss.root_thread_g")));
+static uint8_t        root_stack_g[4096]
 	__attribute__((aligned(8), section(".bss.root_stack_g")));
-static const ul_boot_info_t *boot_info_g
-	__attribute__((section(".bss.boot_info_g")));
 
-/*
- * Entry point for the root thread context.
- * Runs after ul_arch_ctx_switch(idle_ctx, root_ctx) in ul_kernel_main.
- */
 static void root_thread_entry(void *arg)
 {
-	(void)arg;
 	ul_printk("ulipeMicroKernel: root thread\n");
-	ul_root_thread(boot_info_g);
+	ul_root_thread((const ul_boot_info_t *)arg);
 	/*
-	 * If ul_root_thread() returns (only in test stubs), switch back to
-	 * the kernel idle context so the test can verify that path too.
+	 * ul_root_thread() should not return.  If it does (stub/test path),
+	 * exit cleanly via the scheduler.
 	 */
-	ul_arch_ctx_switch(&root_ctx_g, &idle_ctx_g);
-	for (;;)
-		ul_arch_cpu_idle();
+	ul_thread_exit();
 }
 
 /* =========================================================================
@@ -135,30 +123,34 @@ static void root_thread_entry(void *arg)
 
 void ul_kernel_main(const ul_boot_info_t *info)
 {
-	boot_info_g = info;
+	ul_thread_attr_t root_attr;
 
 	ul_printk("ulipeMicroKernel: kernel entry\n");
 
-	ul_sched_init();
+	ul_sched_init(&idle_ctx_g);
+	ul_sched_set_class(&ul_fifo_rt_class);
 	UL_LOG_DBG("sched init done");
 
 	ul_irq_table_init();
 	UL_LOG_DBG("irq table init done");
 
-	ul_arch_ctx_init(&root_ctx_g,
-			 root_thread_entry,
-			 NULL,
-			 (uintptr_t)(root_stack_g + sizeof(root_stack_g)),
-			 UL_PRIV_KERNEL);
+	root_attr.name      = "root";
+	root_attr.entry     = root_thread_entry;
+	root_attr.arg       = (void *)info;
+	root_attr.priority  = 0;
+	root_attr.stack_size = sizeof(root_stack_g);
+	root_attr.privilege = UL_PRIV_KERNEL;
+
+	ul_thread_init(&root_thread_g, &root_attr, root_stack_g);
 
 	ul_printk("ulipeMicroKernel: switching to root thread\n");
 
 	/*
-	 * First context switch: idle_ctx_g is initialised in-place by
-	 * ul_arch_ctx_switch as it saves the current (kernel-main) PCXI.
-	 * When root_thread_entry switches back, execution resumes here.
+	 * ul_sched_start saves kernel_main's context into idle_ctx_g and
+	 * switches to root_thread_g.  Returns here only when the run queue
+	 * is empty and the scheduler switches back to idle.
 	 */
-	ul_arch_ctx_switch(&idle_ctx_g, &root_ctx_g);
+	ul_sched_start(&idle_ctx_g, &root_thread_g);
 
 	ul_printk("ulipeMicroKernel: idle loop\n");
 	for (;;)
