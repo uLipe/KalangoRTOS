@@ -6,6 +6,9 @@
 *.lst
 build/
 
+# Unit test binaries (host-compiled)
+tests/sched_unit/sched_unit_test
+
 # Python
 __pycache__/
 *.pyc
