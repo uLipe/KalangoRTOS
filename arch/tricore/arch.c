@@ -464,6 +464,94 @@ void ul_arch_syscall_entry(void)
 }
 
 /* =========================================================================
+ * Fault context dump — arch-specific
+ *
+ * Outputs via ul_printk_char_out (board primitive, below the kernel print
+ * layer) to remain safe when called before full kernel initialisation.
+ *
+ * pcxi_to_csa(): SRAM segment 7 only (0x7xxx_xxxx = all DSPR on TC27x).
+ * ========================================================================= */
+
+static void dump_puts(const char *s)
+{
+	while (*s)
+		ul_printk_char_out(*s++);
+}
+
+static void dump_hex32(uint32_t v)
+{
+	int      i;
+	uint8_t  nibble;
+	char     c;
+
+	dump_puts("0x");
+	for (i = 28; i >= 0; i -= 4) {
+		nibble = (uint8_t)((v >> i) & 0xFu);
+		c = (nibble < 10u) ? (char)('0' + nibble)
+				   : (char)('a' + nibble - 10u);
+		ul_printk_char_out(c);
+	}
+}
+
+static void dump_u8(uint8_t v)
+{
+	if (v >= 100u)
+		ul_printk_char_out((char)('0' + v / 100u));
+	if (v >= 10u)
+		ul_printk_char_out((char)('0' + (v / 10u) % 10u));
+	ul_printk_char_out((char)('0' + v % 10u));
+}
+
+static inline uint32_t *pcxi_to_csa(uint32_t pcxi)
+{
+	uint32_t link = pcxi & 0x000FFFFFu;	/* strip PCPN/PIE/UL */
+
+	return (uint32_t *)(((link & 0x70000u) << 12) | ((link & 0xFFFFu) << 6));
+}
+
+void ul_arch_trap_dump(uint8_t trap_class, uint8_t tin)
+{
+	uint32_t  pcxi_here;
+	uint32_t  fcx_val;
+	uint32_t *f_call;
+	uint32_t  pcxi_trap;
+	uint32_t *f_fault;
+	uint32_t  w;
+
+	__asm__ volatile("mfcr %0, 0xFE00" : "=d"(pcxi_here));
+	__asm__ volatile("mfcr %0, 0xFE38" : "=d"(fcx_val));
+
+	dump_puts("  PCXI="); dump_hex32(pcxi_here);
+	dump_puts(" FCX=");   dump_hex32(fcx_val);
+	dump_puts(" class="); dump_u8(trap_class);
+	dump_puts(" tin=");   dump_u8(tin);
+	dump_puts("\n");
+
+	/*
+	 * UC1: upper context saved by "call ul_kernel_trap_fault" in vectors.S.
+	 * UC0: upper context saved by the trap hardware mechanism.
+	 * UC0[3] = A11 = faulting PC (TC1.6.1 §4.5.2).
+	 */
+	f_call    = pcxi_to_csa(pcxi_here);
+	pcxi_trap = f_call[0];
+
+	dump_puts("  UC1 (call frame) at "); dump_hex32((uint32_t)(uintptr_t)f_call);
+	dump_puts(":\n");
+	for (w = 0u; w < 16u; w++) {
+		dump_puts("    ["); dump_u8((uint8_t)w); dump_puts("]=");
+		dump_hex32(f_call[w]); dump_puts("\n");
+	}
+
+	f_fault = pcxi_to_csa(pcxi_trap);
+	dump_puts("  UC0 (hw-trap frame) at "); dump_hex32((uint32_t)(uintptr_t)f_fault);
+	dump_puts(":\n");
+	for (w = 0u; w < 16u; w++) {
+		dump_puts("    ["); dump_u8((uint8_t)w); dump_puts("]=");
+		dump_hex32(f_fault[w]); dump_puts("\n");
+	}
+}
+
+/* =========================================================================
  * Boot entry
  * ========================================================================= */
 

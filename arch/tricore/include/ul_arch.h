@@ -175,6 +175,25 @@ void ul_arch_init(ul_boot_info_t *info);
 
 void ul_arch_syscall_entry(void);
 
+/*
+ * ul_arch_trap_dump — dump arch-specific CPU state after a hardware fault.
+ * @trap_class / @tin: forwarded from the trap vector for context.
+ *
+ * Outputs directly via ul_printk_char_out (a board primitive below the kernel
+ * print layer) so it stays safe even when called before the kernel is fully
+ * initialised.  Called by ul_kernel_trap_fault() in kernel_main.c.
+ */
+void ul_arch_trap_dump(uint8_t trap_class, uint8_t tin);
+
+/*
+ * ul_printk_char_out — single-character output primitive.
+ * Provided by the board (e.g. boards/qemu_tc27x/qemu_console.c) as a weak
+ * symbol.  Both the kernel print subsystem and arch fault handlers may call
+ * this directly; it is declared here so the arch layer can use it without
+ * depending on kernel-internal headers.
+ */
+void ul_printk_char_out(char c);
+
 /* =========================================================================
  * Kernel callbacks — implemented by kernel/, called by arch port
  * (arch_api_spec.md §12)
