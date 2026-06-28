@@ -119,6 +119,12 @@ void ul_arch_irq_src_disable(uint8_t srpn);
 void ul_arch_irq_src_ack(uint8_t srpn);
 bool ul_arch_irq_src_is_pending(uint8_t srpn);
 
+/*
+ * ul_arch_irq_src_trigger — software-raise an IRQ (QEMU / test use only).
+ * Sets the SETR bit in the SRC register for @srpn.
+ */
+void ul_arch_irq_src_trigger(uint8_t srpn);
+
 /* =========================================================================
  * Tick timer — tickless, µs-resolution (arch_api_spec.md §9)
  *

@@ -109,6 +109,7 @@ _trap_class7:
  * ------------------------------------------------------------------------ */
 
     .extern _arch_tick_isr_handler
+    .extern _arch_generic_isr_handler
 
     .section .int_table, "ax"
     .align  8   /* 256-byte aligned BIV base */
@@ -127,3 +128,28 @@ _ul_int_table:
     rslcx
     rfe
     .align  5		/* pad to next 32-byte boundary */
+
+/*
+ * SRPN=2..255 — generic userspace IRQ dispatcher.
+ *
+ * On entry the hardware has already:
+ *   - saved the Upper Context into a fresh CSA frame
+ *   - set ICR.CCPN = SRPN of the fired interrupt
+ *   - cleared ICR.IE
+ *   - switched A10 to ISP (if PSW.IS was 0)
+ *
+ * We save the Lower Context, read ICR.CCPN (= SRPN) via MFCR and
+ * pass it to the C dispatcher, then restore and return.
+ *
+ * Each slot is 32 bytes (hardware constraint with VSS=0 BIV).
+ * The 14-byte stub body is padded to 32 bytes by .align 5.
+ */
+    .rept   254
+    svlcx
+    mfcr    %d4, 0xFE2C		/* ICR: CCPN = SRPN in bits [7:0] */
+    call    _arch_generic_isr_handler
+    disable
+    rslcx
+    rfe
+    .align  5
+    .endr

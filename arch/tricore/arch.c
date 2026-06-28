@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <ul/microkernel.h>
 #include <ul_arch.h>
+#include <kernel/include/ul_printk.h>
 /* =========================================================================
  * CPU control
  * ========================================================================= */
@@ -43,7 +44,7 @@ void ul_arch_cpu_irq_disable(void)
 
 void ul_arch_cpu_idle(void)
 {
-	__asm__ volatile("wait");
+	__asm__ volatile("nop");
 }
 
 void ul_arch_cpu_halt(void)
@@ -212,12 +213,45 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
  * Called when a thread is destroyed.  The chain must not be active
  * (i.e. the thread must be in DEAD state before this is called).
  *
- * TODO: implement — walk the PCXI chain from ctx->pcxi, return each frame
- * to FCX.  Needed for ul_thread_kill / ul_kern_exit.
+ * Walks the PCXI chain starting at ctx->pcxi.  Each frame's word 0 is the
+ * link to the next frame in the chain (with UL/PIE metadata in bits[20:19]).
+ * csa_link_to_addr() strips those bits, so the walk is uniform for upper and
+ * lower context frames.
+ *
+ * Each frame is prepended to the FCX free list.  Interrupts must be disabled
+ * by the caller or the entire operation must be atomic w.r.t. the ISR (both
+ * csa_alloc in the ISR and this function touch FCX).  On single-core QEMU
+ * this is safe because the timer ISR only touches FCX via hardware.
  */
 void ul_arch_ctx_free(ul_arch_ctx_t *ctx)
 {
-	(void)ctx;
+	uint32_t link;
+	uint32_t next_link;
+	uint32_t *frame;
+	uint32_t fcx;
+	uint32_t frame_link;
+
+	if (!ctx)
+		return;
+
+	link = ctx->pcxi;
+	ctx->pcxi = 0u;
+
+	while (link != 0u) {
+		frame     = csa_link_to_addr(link);
+		next_link = frame[0];
+
+		/* Prepend this frame to the FCX free list. */
+		__asm__ volatile("mfcr %0, 0xFE38" : "=d"(fcx));
+		frame[0] = fcx;
+		frame_link = addr_to_csa_link(frame);
+		__asm__ volatile("dsync" ::: "memory");
+		__asm__ volatile("mtcr 0xFE38, %0" :: "d"(frame_link));
+		__asm__ volatile("isync" ::: "memory");
+
+		/* Strip UL (bit 20) and PIE (bit 19) to get the address link. */
+		link = next_link & 0x7FFFFu;
+	}
 }
 
 /* =========================================================================
@@ -269,6 +303,36 @@ bool ul_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
  * IRQ / SRC
  * ========================================================================= */
 
+/* =========================================================================
+ * IRQ / SRC
+ *
+ * QEMU Linumiz TC27x maps Service Request Control registers at:
+ *   IR_SRC_BASE (0xF0038000) + slot_index * 4
+ *
+ * The tick ISR uses slot 0xC0 (configured in arch_config.h).
+ * User-programmable IRQs are allocated sequentially from slot 0xC1.
+ *
+ * SRC register bit layout (tc4x_mode=0 in Linumiz QEMU):
+ *   [7:0]  SRPN — service request priority number
+ *   [10]   SRE  — service request enable (bit 10 for tc4x_mode=0)
+ *   [13:11]TOS  — target CPU (0 = CPU0)
+ *   [24]   SRR  — service request raised (set by hardware/SETR)
+ *   [25]   CLRR — write 1 to clear SRR
+ *   [26]   SETR — write 1 to software-raise SRR (for testing)
+ * ========================================================================= */
+
+#define SRC_BASE        0xF0038000u
+#define SRC_SRE_BIT     (1u << 10)
+#define SRC_TOS_SHIFT   11u
+#define SRC_SRR_BIT     (1u << 24)
+#define SRC_CLRR_BIT    (1u << 25)
+#define SRC_SETR_BIT    (1u << 26)
+
+/* srpn → SRC register address; 0 = unregistered */
+static uint32_t g_src_addr[256];
+/* Next available SRC allocation slot (0xC0 = tick, start from 0xC1) */
+static uint8_t g_next_src_slot = 0xC1u;
+
 void ul_arch_irq_vectors_init(uintptr_t btv, uintptr_t biv, uintptr_t isp_top)
 {
 	uint32_t btv32 = (uint32_t)btv;
@@ -284,31 +348,73 @@ void ul_arch_irq_vectors_init(uintptr_t btv, uintptr_t biv, uintptr_t isp_top)
 
 void ul_arch_irq_src_configure(uint8_t srpn, uint8_t priority, uint8_t cpu_id)
 {
-	(void)srpn;
-	(void)priority;
-	(void)cpu_id;
-	/* Generic SRC configure not implemented; use peripheral-specific init. */
+	uint32_t addr;
+
+	if (srpn == UL_ARCH_TICK_SRPN)
+		return;
+
+	addr = SRC_BASE + (uint32_t)g_next_src_slot * 4u;
+	g_src_addr[srpn] = addr;
+	g_next_src_slot++;
+
+	*(volatile uint32_t *)addr =
+		(uint32_t)priority | ((uint32_t)cpu_id << SRC_TOS_SHIFT);
 }
 
 void ul_arch_irq_src_enable(uint8_t srpn)
 {
-	(void)srpn;
+	uint32_t addr = g_src_addr[srpn];
+
+	if (addr)
+		*(volatile uint32_t *)addr |= SRC_SRE_BIT;
 }
 
 void ul_arch_irq_src_disable(uint8_t srpn)
 {
-	(void)srpn;
+	uint32_t addr = g_src_addr[srpn];
+
+	if (addr)
+		*(volatile uint32_t *)addr &= ~SRC_SRE_BIT;
 }
 
 void ul_arch_irq_src_ack(uint8_t srpn)
 {
-	(void)srpn;
+	uint32_t addr = g_src_addr[srpn];
+
+	if (addr)
+		*(volatile uint32_t *)addr |= SRC_CLRR_BIT;
 }
 
 bool ul_arch_irq_src_is_pending(uint8_t srpn)
 {
-	(void)srpn;
-	return false;
+	uint32_t addr = g_src_addr[srpn];
+
+	if (!addr)
+		return false;
+	return !!(*(volatile uint32_t *)addr & SRC_SRR_BIT);
+}
+
+/*
+ * ul_arch_irq_src_trigger — software-raise an IRQ for testing.
+ * Writes the SETR bit to the SRC register associated with @srpn.
+ * Only useful in test environments (QEMU); the SRC must have been
+ * configured via ul_arch_irq_src_configure first.
+ */
+void ul_arch_irq_src_trigger(uint8_t srpn)
+{
+	uint32_t addr = g_src_addr[srpn];
+
+	if (addr)
+		*(volatile uint32_t *)addr |= SRC_SETR_BIT;
+}
+
+/*
+ * _arch_generic_isr_handler — C entry point for SRPN=2..255 ISR stubs.
+ * Called from vectors.S with ICR in D4; SRPN = ICR[7:0] = ICR.CCPN.
+ */
+void _arch_generic_isr_handler(uint32_t icr_val)
+{
+	ul_kernel_irq_dispatch((uint8_t)(icr_val & 0xFFu));
 }
 
 /* =========================================================================
