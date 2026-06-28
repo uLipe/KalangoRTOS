@@ -82,6 +82,21 @@ void ul_timer_sleep_insert(ul_thread_t *th, uint64_t deadline_us)
 		arm_nearest(ul_timer_now_us());
 }
 
+void ul_timer_sleep_remove(ul_thread_t *th)
+{
+	ul_thread_t **pp = &sleep_head;
+
+	while (*pp && *pp != th)
+		pp = &(*pp)->sleep_next;
+
+	if (!*pp)
+		return;
+
+	*pp = th->sleep_next;
+	th->sleep_next  = NULL;
+	th->sleep_until = 0u;
+}
+
 void ul_timer_tick(void)
 {
 	uint64_t	 now = ul_timer_now_us();

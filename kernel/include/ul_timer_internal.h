@@ -39,6 +39,13 @@ uint64_t ul_timer_now_us(void);
 void ul_timer_sleep_insert(ul_thread_t *th, uint64_t deadline_us);
 
 /*
+ * ul_timer_sleep_remove — remove @th from the sleep queue without waking it.
+ * No-op if @th is not currently in the queue.
+ * Must be called with interrupts disabled (or from syscall context).
+ */
+void ul_timer_sleep_remove(ul_thread_t *th);
+
+/*
  * ul_timer_tick — called from ul_kernel_tick() (timer ISR context).
  * Expires all threads whose deadline has passed, re-arms the hardware
  * for the next entry, and triggers ul_sched_schedule() when the CPU
