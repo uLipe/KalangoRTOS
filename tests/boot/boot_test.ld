@@ -22,7 +22,7 @@ MEMORY {
 }
 
 _ul_kernel_stack_size = 4096;
-_ul_csa_pool_frames   = 64;
+_ul_csa_pool_frames   = 256;
 
 SECTIONS {
     .startup ORIGIN(PFLASH) : {
