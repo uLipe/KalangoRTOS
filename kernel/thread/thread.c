@@ -7,11 +7,13 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include <ul/microkernel.h>
 #include <ul/config.h>
 #include <kernel/include/ul_thread_internal.h>
 #include <kernel/include/ul_sched.h>
 #include <kernel/include/ul_timer_internal.h>
+#include <kernel/include/ul_mem_internal.h>
 #include <kernel/syscall/syscall_router.h>
 #include <ul_arch.h>
 
@@ -24,6 +26,14 @@ static ul_thread_t	*tcb_reg[UL_CONFIG_MAX_THREADS];
 static uint32_t		 tcb_reg_count;
 static ul_tid_t		 tid_counter;
 
+/*
+ * TCB pool for dynamically-created threads (ul_kern_thread_spawn).
+ * Static threads created via ul_thread_init() use caller-provided storage
+ * and are NOT in this pool.
+ */
+static ul_thread_t	 tcb_pool[UL_CONFIG_MAX_THREADS];
+static bool		 tcb_pool_used[UL_CONFIG_MAX_THREADS];
+
 int ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr, void *stack)
 {
 	if (!th || !attr || !stack || !attr->entry)
@@ -33,14 +43,14 @@ int ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr, void *stack)
 	if (tcb_reg_count >= UL_CONFIG_MAX_THREADS)
 		return UL_ENOSPC;
 
-	th->stack_base = (uint8_t *)stack;
-	th->stack_size = attr->stack_size;
-	th->priority   = attr->priority;
-	th->state      = UL_THREAD_STATE_READY;
-	th->privilege  = attr->privilege;
-	th->tid        = tid_counter++;
-	th->next       = NULL;
-	th->sleep_next = NULL;
+	th->stack_base  = (uint8_t *)stack;
+	th->stack_size  = attr->stack_size;
+	th->priority    = attr->priority;
+	th->state       = UL_THREAD_STATE_READY;
+	th->privilege   = attr->privilege;
+	th->tid         = tid_counter++;
+	th->next        = NULL;
+	th->sleep_next  = NULL;
 	th->sleep_until = 0u;
 
 	ul_arch_ctx_init(&th->ctx,
@@ -67,6 +77,25 @@ ul_thread_t *ul_thread_by_tid(ul_tid_t tid)
 void ul_thread_set_state(ul_thread_t *th, uint8_t state)
 {
 	th->state = state;
+}
+
+/* =========================================================================
+ * Internal helpers
+ * ========================================================================= */
+
+/*
+ * Free a pool-allocated TCB slot.  No-op for statically-allocated threads.
+ */
+static void tcb_pool_free(ul_thread_t *th)
+{
+	uint32_t i;
+
+	for (i = 0; i < UL_CONFIG_MAX_THREADS; i++) {
+		if (&tcb_pool[i] == th) {
+			tcb_pool_used[i] = false;
+			return;
+		}
+	}
 }
 
 /* =========================================================================
@@ -108,17 +137,53 @@ uint32_t ul_kern_exit(void)
 	if (cur) {
 		cur->state = UL_THREAD_STATE_DEAD;
 		ul_sched_dequeue(cur);
+		tcb_pool_free(cur);
 	}
 	ul_sched_schedule();
 	for (;;)
 		;
 }
 
+/*
+ * spawn — allocate a TCB from the pool, allocate a stack from the phys pool,
+ * initialise the thread, and enqueue it.  Returns the new TID or a negative
+ * error code cast to uint32_t.
+ */
 uint32_t ul_kern_thread_spawn(uint32_t attr_ptr)
 {
-	(void)attr_ptr;
-	/* TODO: allocate stack from user_pool, initialise TCB, enqueue */
-	return (uint32_t)(int32_t)UL_TID_INVALID;
+	const ul_thread_attr_t	*attr = (const ul_thread_attr_t *)(uintptr_t)attr_ptr;
+	ul_thread_t		*th = NULL;
+	void			*stack;
+	uint32_t		 slot;
+	int			 ret;
+
+	if (!attr || !attr->entry || attr->stack_size == 0)
+		return (uint32_t)(int32_t)UL_EINVAL;
+
+	for (slot = 0; slot < UL_CONFIG_MAX_THREADS; slot++) {
+		if (!tcb_pool_used[slot]) {
+			th = &tcb_pool[slot];
+			tcb_pool_used[slot] = true;
+			break;
+		}
+	}
+	if (!th)
+		return (uint32_t)(int32_t)UL_ENOSPC;
+
+	stack = ul_phys_alloc(attr->stack_size);
+	if (!stack) {
+		tcb_pool_used[slot] = false;
+		return (uint32_t)(int32_t)UL_ENOMEM;
+	}
+
+	ret = ul_thread_init(th, attr, stack);
+	if (ret != UL_OK) {
+		tcb_pool_used[slot] = false;
+		return (uint32_t)(int32_t)ret;
+	}
+
+	ul_sched_enqueue(th);
+	return (uint32_t)th->tid;
 }
 
 uint32_t ul_kern_thread_kill(uint32_t tid)
@@ -128,8 +193,13 @@ uint32_t ul_kern_thread_kill(uint32_t tid)
 	if (!th || th->state == UL_THREAD_STATE_DEAD)
 		return (uint32_t)(int32_t)UL_ESRCH;
 
+	/* If sleeping, cancel the sleep silently. */
+	if (th->sleep_until != 0u)
+		ul_timer_sleep_remove(th);
+
 	th->state = UL_THREAD_STATE_DEAD;
 	ul_sched_dequeue(th);
+	tcb_pool_free(th);
 
 	if (th == ul_sched_current())
 		ul_sched_schedule();
@@ -146,7 +216,7 @@ uint32_t ul_kern_thread_suspend(uint32_t tid)
 	if (th->state == UL_THREAD_STATE_DEAD)
 		return (uint32_t)(int32_t)UL_EINVAL;
 
-	th->state = UL_THREAD_STATE_BLOCKED;
+	th->state = UL_THREAD_STATE_SUSPENDED;
 	ul_sched_dequeue(th);
 
 	if (th == ul_sched_current())
@@ -161,8 +231,7 @@ uint32_t ul_kern_thread_resume(uint32_t tid)
 
 	if (!th)
 		return (uint32_t)(int32_t)UL_ESRCH;
-	if (th->state != UL_THREAD_STATE_BLOCKED &&
-	    th->state != UL_THREAD_STATE_SUSPENDED)
+	if (th->state != UL_THREAD_STATE_SUSPENDED)
 		return (uint32_t)(int32_t)UL_EINVAL;
 
 	ul_sched_enqueue(th);
@@ -177,15 +246,13 @@ uint32_t ul_kern_thread_set_prio(uint32_t tid, uint32_t prio)
 		return (uint32_t)(int32_t)UL_ESRCH;
 
 	if (th->state == UL_THREAD_STATE_READY) {
-		/* Re-insert at new position in run queue. */
 		ul_sched_dequeue(th);
 		th->priority = (uint8_t)prio;
 		ul_sched_enqueue(th);
 	} else {
 		/*
-		 * RUNNING: just update priority; yield/suspend will use the
-		 * new value when the thread re-enters the run queue.
-		 * BLOCKED/SUSPENDED/DEAD: update for when thread is resumed.
+		 * RUNNING, BLOCKED, SUSPENDED, DEAD: update priority for when
+		 * the thread re-enters the run queue.
 		 */
 		th->priority = (uint8_t)prio;
 	}
