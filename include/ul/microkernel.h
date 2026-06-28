@@ -370,4 +370,32 @@ static inline int ul_irq_ack(uint8_t srpn)
 	return (int)r;
 }
 
+/* =========================================================================
+ * Sleep API — docs/api_spec.md §11
+ *
+ * Durations must be non-zero positive values.  The kernel treats duration 0
+ * as an immediate yield (no error).  The 64-bit µs value is split across
+ * two 32-bit argument registers (D4 = low word, D5 = high word).
+ * ========================================================================= */
+
+static inline int ul_usleep(uint64_t us)
+{
+	uint32_t lo = (uint32_t)us;
+	uint32_t hi = (uint32_t)(us >> 32);
+	uint32_t r;
+
+	UL_SYSCALL_2(UL_SYS_SLEEP_US, lo, hi, r);
+	return (int)r;
+}
+
+static inline int ul_msleep(uint32_t ms)
+{
+	return ul_usleep((uint64_t)ms * 1000ULL);
+}
+
+static inline int ul_sleep(uint32_t seconds)
+{
+	return ul_usleep((uint64_t)seconds * 1000000ULL);
+}
+
 #endif /* UL_MICROKERNEL_H */

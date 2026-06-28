@@ -11,6 +11,7 @@
 #include <ul/config.h>
 #include <kernel/include/ul_thread_internal.h>
 #include <kernel/include/ul_sched.h>
+#include <kernel/include/ul_timer_internal.h>
 #include <kernel/syscall/syscall_router.h>
 #include <ul_arch.h>
 
@@ -39,6 +40,8 @@ int ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr, void *stack)
 	th->privilege  = attr->privilege;
 	th->tid        = tid_counter++;
 	th->next       = NULL;
+	th->sleep_next = NULL;
+	th->sleep_until = 0u;
 
 	ul_arch_ctx_init(&th->ctx,
 			 attr->entry,
@@ -196,4 +199,36 @@ uint32_t ul_kern_thread_get_prio(uint32_t tid)
 	if (!th)
 		return (uint32_t)(int32_t)UL_ESRCH;
 	return (uint32_t)th->priority;
+}
+
+/*
+ * ul_kern_sleep_us — block the calling thread for @lo_us | (@hi_us << 32) µs.
+ *
+ * The 64-bit duration is split across two 32-bit syscall argument registers
+ * (D4 = lo, D5 = hi) and reconstructed here.  A zero duration is treated as
+ * an immediate yield.  The thread is inserted into the sleep queue and
+ * ul_sched_schedule() switches to the next ready thread; execution resumes
+ * here after the timer ISR calls ul_sched_enqueue() for this thread.
+ */
+uint32_t ul_kern_sleep_us(uint32_t lo_us, uint32_t hi_us)
+{
+	uint64_t	 duration = ((uint64_t)hi_us << 32) | (uint64_t)lo_us;
+	uint64_t	 deadline;
+	ul_thread_t	*cur = ul_sched_current();
+
+	if (!cur)
+		return (uint32_t)(int32_t)UL_EINVAL;
+
+	if (duration == 0u) {
+		ul_kern_yield();
+		return 0;
+	}
+
+	deadline   = ul_timer_now_us() + duration;
+	cur->state = UL_THREAD_STATE_BLOCKED;
+	ul_sched_dequeue(cur);
+	ul_timer_sleep_insert(cur, deadline);
+	ul_sched_schedule();
+
+	return 0;
 }

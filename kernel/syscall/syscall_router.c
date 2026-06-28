@@ -59,6 +59,9 @@ uint32_t ul_syscall_router(uint32_t nr,
 	case UL_SYS_EXIT:
 		return ul_kern_exit();
 
+	case UL_SYS_SLEEP_US:
+		return ul_kern_sleep_us(a0, a1);
+
 	/* ── Thread query (any privilege) ────────────────────────────── */
 	case UL_SYS_THREAD_SELF:
 		return ul_kern_thread_self();

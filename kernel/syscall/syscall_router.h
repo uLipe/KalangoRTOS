@@ -42,6 +42,7 @@ uint32_t ul_kern_mem_grant(uint32_t addr, uint32_t size,
 uint32_t ul_kern_yield(void);
 uint32_t ul_kern_exit(void);         /* does not return; marks thread dead */
 uint32_t ul_kern_thread_self(void);
+uint32_t ul_kern_sleep_us(uint32_t lo_us, uint32_t hi_us);
 
 /* IPC endpoints */
 uint32_t ul_kern_ep_create(void);

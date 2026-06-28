@@ -28,7 +28,9 @@ typedef struct ul_thread {
 	uint8_t         state;
 	ul_privilege_t  privilege;
 	ul_tid_t        tid;
-	struct ul_thread *next;	/* run-queue linkage */
+	struct ul_thread *next;		/* run-queue linkage */
+	struct ul_thread *sleep_next;	/* sleep-queue linkage */
+	uint64_t          sleep_until;	/* absolute µs deadline (0 = not sleeping) */
 } ul_thread_t;
 
 int          ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr,
