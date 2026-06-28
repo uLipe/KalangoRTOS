@@ -44,6 +44,7 @@ KERNEL_SRCS := \
     $(ROOT)/kernel/ipc/ep.c \
     $(ROOT)/kernel/notif/notif.c \
     $(ROOT)/kernel/syscall/syscall_router.c \
+    $(ROOT)/kernel/timer/timer.c \
     $(ROOT)/stub/board_init_stub.c
 
 # Test-specific overrides
