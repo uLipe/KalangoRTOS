@@ -101,22 +101,24 @@ void ul_timer_tick(void)
 {
 	uint64_t	 now = ul_timer_now_us();
 	ul_thread_t	*th;
-	int		 woke_any = 0;
 
 	while (sleep_head && sleep_head->sleep_until <= now) {
 		th         = sleep_head;
 		sleep_head = th->sleep_next;
 		th->sleep_next = NULL;
 		ul_sched_enqueue(th);
-		woke_any = 1;
 	}
 
 	arm_nearest(now);
 
 	/*
-	 * Trigger a reschedule only when the CPU was idle.  A running thread
-	 * will pick up the woken threads at its next voluntary yield/sleep.
+	 * Do NOT call ul_sched_schedule() here — we are inside the timer ISR,
+	 * which has already done svlcx in vectors.S.  Calling ul_arch_ctx_switch
+	 * from here would push an extra lower-context frame (UL=0) before the
+	 * ISR upper-context frame (UL=1), breaking the lower/upper alternation
+	 * that rslcx+rfe expects when idle is eventually resumed.
+	 *
+	 * The idle loop detects a non-empty run queue after ul_arch_cpu_idle()
+	 * returns and calls ul_sched_schedule() itself (from a clean call frame).
 	 */
-	if (woke_any && ul_sched_current() == NULL)
-		ul_sched_schedule();
 }

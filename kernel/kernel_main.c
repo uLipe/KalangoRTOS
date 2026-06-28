@@ -117,6 +117,15 @@ void ul_kernel_main(const ul_boot_info_t *info)
 	ul_sched_start(&idle_ctx_g, &root_thread_g);
 
 	ul_printk("ulipeMicroKernel: idle loop\n");
-	for (;;)
+	for (;;) {
+		/*
+		 * Check for runnable threads before potentially halting.
+		 * This covers: timer wakeup with wait, and busy-wait with nop.
+		 */
+		if (ul_sched_pick_next() != NULL) {
+			ul_sched_schedule();
+			continue;
+		}
 		ul_arch_cpu_idle();
+	}
 }
