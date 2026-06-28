@@ -59,7 +59,7 @@ typedef int32_t  ul_notif_t;
  * IPC message
  * ========================================================================= */
 
-#define UL_MSG_WORDS	4
+#define UL_MSG_WORDS	6
 
 typedef struct {
 	uint32_t label;

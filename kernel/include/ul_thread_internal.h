@@ -20,17 +20,44 @@
 #define UL_THREAD_STATE_BLOCKED   3
 #define UL_THREAD_STATE_SUSPENDED 4
 
+/* Reason a thread is in UL_THREAD_STATE_BLOCKED. */
+#define UL_BLOCKED_NONE          0
+#define UL_BLOCKED_SLEEP         1
+#define UL_BLOCKED_IPC_CALL      2  /* waiting for server reply */
+#define UL_BLOCKED_IPC_RECV      3  /* waiting for a caller */
+#define UL_BLOCKED_NOTIF         4  /* waiting for notification bits */
+#define UL_BLOCKED_IPC_OR_NOTIF  5  /* ul_ep_recv_or_notif — either */
+
 typedef struct ul_thread {
-	ul_arch_ctx_t   ctx;
-	uint8_t        *stack_base;
-	size_t          stack_size;
-	uint8_t         priority;
-	uint8_t         state;
-	ul_privilege_t  privilege;
-	ul_tid_t        tid;
-	struct ul_thread *next;		/* run-queue linkage */
-	struct ul_thread *sleep_next;	/* sleep-queue linkage */
-	uint64_t          sleep_until;	/* absolute µs deadline (0 = not sleeping) */
+	ul_arch_ctx_t    ctx;
+	uint8_t         *stack_base;
+	size_t           stack_size;
+	uint8_t          priority;
+	uint8_t          saved_prio;      /* priority before inheritance boost */
+	uint8_t          state;
+	uint8_t          blocked_reason;
+	ul_privilege_t   privilege;
+	ul_tid_t         tid;
+	ul_ep_t          blocked_ep;      /* ep blocked on; for cleanup on kill */
+	ul_notif_t       blocked_notif;   /* notif blocked on; recv_or_notif */
+	struct ul_thread *next;           /* run-queue linkage */
+	struct ul_thread *sleep_next;     /* sleep-queue linkage */
+	struct ul_thread *ipc_next;       /* IPC send/recv queue linkage */
+	uint64_t          sleep_until;    /* absolute µs deadline (0 = not sleeping) */
+	ul_msg_t          ipc_msg;        /* in-flight message buffer */
+	ul_tid_t          ipc_sender;     /* sender TID stored by recv for reply */
+	/*
+	 * Output pointers saved in the TCB before a blocking recv.  Written
+	 * back after wakeup so the result survives the RSLCX/RFE context
+	 * switch (local variables on the blocking thread's kernel stack cannot
+	 * be reliably accessed post-switch due to register clobber in RSLCX).
+	 */
+	ul_msg_t         *ipc_msg_outptr;
+	ul_tid_t         *ipc_sender_outptr;
+	uint32_t         *notif_bits_outptr;
+	ul_recv_or_notif_result_t *rn_result_outptr;
+	uint32_t          notif_wait_mask;
+	uint32_t          notif_received; /* bits consumed on notif wakeup */
 } ul_thread_t;
 
 int          ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr,

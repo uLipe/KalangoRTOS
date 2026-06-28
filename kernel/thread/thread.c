@@ -14,6 +14,7 @@
 #include <kernel/include/ul_sched.h>
 #include <kernel/include/ul_timer_internal.h>
 #include <kernel/include/ul_mem_internal.h>
+#include <kernel/include/ul_ep_internal.h>
 #include <kernel/syscall/syscall_router.h>
 #include <ul_arch.h>
 
@@ -46,12 +47,24 @@ int ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr, void *stack)
 	th->stack_base  = (uint8_t *)stack;
 	th->stack_size  = attr->stack_size;
 	th->priority    = attr->priority;
+	th->saved_prio  = attr->priority;
 	th->state       = UL_THREAD_STATE_READY;
+	th->blocked_reason = UL_BLOCKED_NONE;
 	th->privilege   = attr->privilege;
 	th->tid         = tid_counter++;
+	th->blocked_ep  = UL_EP_INVALID;
+	th->blocked_notif = UL_NOTIF_INVALID;
 	th->next        = NULL;
 	th->sleep_next  = NULL;
+	th->ipc_next    = NULL;
 	th->sleep_until = 0u;
+	th->ipc_sender  = UL_TID_INVALID;
+	th->notif_received = 0u;
+	th->notif_wait_mask = 0u;
+	th->ipc_msg_outptr    = NULL;
+	th->ipc_sender_outptr = NULL;
+	th->notif_bits_outptr  = NULL;
+	th->rn_result_outptr   = NULL;
 
 	ul_arch_ctx_init(&th->ctx,
 			 attr->entry,
@@ -193,9 +206,14 @@ uint32_t ul_kern_thread_kill(uint32_t tid)
 	if (!th || th->state == UL_THREAD_STATE_DEAD)
 		return (uint32_t)(int32_t)UL_ESRCH;
 
-	/* If sleeping, cancel the sleep silently. */
+	/* Cancel any pending sleep. */
 	if (th->sleep_until != 0u)
 		ul_timer_sleep_remove(th);
+
+	/* Remove from IPC recv_queue if the thread was waiting for a message. */
+	if (th->blocked_reason == UL_BLOCKED_IPC_RECV ||
+	    th->blocked_reason == UL_BLOCKED_IPC_OR_NOTIF)
+		ul_ep_recv_queue_remove(th);
 
 	th->state = UL_THREAD_STATE_DEAD;
 	ul_sched_dequeue(th);
@@ -292,7 +310,8 @@ uint32_t ul_kern_sleep_us(uint32_t lo_us, uint32_t hi_us)
 	}
 
 	deadline   = ul_timer_now_us() + duration;
-	cur->state = UL_THREAD_STATE_BLOCKED;
+	cur->state          = UL_THREAD_STATE_BLOCKED;
+	cur->blocked_reason = UL_BLOCKED_SLEEP;
 	ul_sched_dequeue(cur);
 	ul_timer_sleep_insert(cur, deadline);
 	ul_sched_schedule();
