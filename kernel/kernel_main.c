@@ -15,8 +15,13 @@
 #include <kernel/include/ul_thread_internal.h>
 #include <kernel/include/ul_irq_internal.h>
 #include <kernel/include/ul_timer_internal.h>
+#include <kernel/include/ul_mem_internal.h>
 #include <kernel/include/ul_printk.h>
 #include <kernel/syscall/syscall_router.h>
+
+/* Linker-provided user pool boundaries (defined in .user_pool section). */
+extern uint8_t _ul_user_pool_start[];
+extern uint8_t _ul_user_pool_end[];
 
 /* =========================================================================
  * Arch callbacks — invoked from arch/tricore/vectors.S
@@ -89,6 +94,9 @@ void ul_kernel_main(const ul_boot_info_t *info)
 	ul_timer_init();
 	ul_arch_cpu_irq_enable();
 	UL_LOG_DBG("timer init done");
+
+	ul_phys_alloc_init((uintptr_t)_ul_user_pool_start,
+			   (uintptr_t)_ul_user_pool_end);
 
 	root_attr.name      = "root";
 	root_attr.entry     = root_thread_entry;

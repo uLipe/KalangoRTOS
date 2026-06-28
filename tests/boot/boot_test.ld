@@ -79,4 +79,12 @@ SECTIONS {
     PROVIDE(end      = __bss_end);
     PROVIDE(__HEAP     = __bss_end);
     PROVIDE(__HEAP_END = ORIGIN(SRAM) + LENGTH(SRAM) - _ul_kernel_stack_size);
+
+    /*
+     * User pool: RAM from the top of the kernel stack (end of all static
+     * sections) to the end of SRAM.  Must NOT start at __bss_end because
+     * .csa_pool and .stack are placed after .bss.
+     */
+    _ul_user_pool_start = _ul_kernel_stack_top;
+    _ul_user_pool_end   = ORIGIN(SRAM) + LENGTH(SRAM);
 }

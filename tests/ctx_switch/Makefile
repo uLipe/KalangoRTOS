@@ -51,6 +51,7 @@ KERNEL_SRCS := \
     $(ROOT)/kernel/notif/notif.c \
     $(ROOT)/kernel/syscall/syscall_router.c \
     $(ROOT)/kernel/timer/timer.c \
+    $(ROOT)/kernel/mem/phys_alloc.c \
     $(ROOT)/stub/board_init_stub.c
 
 BASIC_TEST_SRCS := \
