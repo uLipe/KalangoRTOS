@@ -14,6 +14,7 @@
 #include <kernel/include/ul_sched.h>
 #include <kernel/include/ul_thread_internal.h>
 #include <kernel/include/ul_irq_internal.h>
+#include <kernel/include/ul_timer_internal.h>
 #include <kernel/include/ul_printk.h>
 #include <kernel/syscall/syscall_router.h>
 
@@ -23,7 +24,7 @@
 
 void ul_kernel_tick(void)
 {
-	/* TODO: ul_sched_tick(), software timer expiry */
+	ul_timer_tick();
 }
 
 uint32_t ul_kernel_trap_syscall(uint8_t tin, uint32_t args[4])
@@ -83,6 +84,11 @@ void ul_kernel_main(const ul_boot_info_t *info)
 
 	ul_irq_table_init();
 	UL_LOG_DBG("irq table init done");
+
+	ul_arch_tick_init();
+	ul_timer_init();
+	ul_arch_cpu_irq_enable();
+	UL_LOG_DBG("timer init done");
 
 	root_attr.name      = "root";
 	root_attr.entry     = root_thread_entry;
