@@ -24,8 +24,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <ul/microkernel.h>
-#include <kernel/include/ul_thread_internal.h>
-#include <kernel/include/ul_sched.h>
 #include <kernel/include/ul_printk.h>
 
 extern void qemu_virt_exit(uint32_t code);
@@ -38,18 +36,6 @@ extern void qemu_virt_exit(uint32_t code);
  * ========================================================================= */
 
 static uint32_t g_done_count;
-
-/* =========================================================================
- * Static TCBs and stacks
- * ========================================================================= */
-
-static ul_thread_t a_thread;
-static ul_thread_t b_thread;
-static ul_thread_t c_thread;
-
-static uint8_t a_stack[2048] __attribute__((aligned(8)));
-static uint8_t b_stack[2048] __attribute__((aligned(8)));
-static uint8_t c_stack[2048] __attribute__((aligned(8)));
 
 /* =========================================================================
  * Thread entries
@@ -123,34 +109,24 @@ void ul_root_thread(const ul_boot_info_t *info)
 
 	ul_printk("sleep_integ: start\n");
 
-	/*
-	 * Lower root priority so the three test threads run before root
-	 * blocks waiting (root just exits immediately after spawning).
-	 */
-	ul_thread_priority_set(ul_thread_self(), 200);
+	attr.arg       = NULL;
+	attr.privilege = UL_PRIV_DRIVER;
 
 	attr.name       = "a";
 	attr.entry      = thread_a_entry;
-	attr.arg        = NULL;
 	attr.priority   = 1;
-	attr.stack_size = sizeof(a_stack);
-	attr.privilege  = UL_PRIV_DRIVER;
-	ul_thread_init(&a_thread, &attr, a_stack);
-	ul_sched_enqueue(&a_thread);
+	attr.stack_size = 2048;
+	ul_thread_create(&attr);
 
 	attr.name       = "b";
 	attr.entry      = thread_b_entry;
-	attr.arg        = NULL;
 	attr.priority   = 2;
-	ul_thread_init(&b_thread, &attr, b_stack);
-	ul_sched_enqueue(&b_thread);
+	ul_thread_create(&attr);
 
 	attr.name       = "c";
 	attr.entry      = thread_c_entry;
-	attr.arg        = NULL;
 	attr.priority   = 3;
-	ul_thread_init(&c_thread, &attr, c_stack);
-	ul_sched_enqueue(&c_thread);
+	ul_thread_create(&attr);
 
 	ul_thread_exit();
 }
