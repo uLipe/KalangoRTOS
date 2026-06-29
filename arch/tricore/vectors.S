@@ -138,15 +138,13 @@ _ul_int_table:
  *   - cleared ICR.IE
  *   - switched A10 to ISP (if PSW.IS was 0)
  *
- * We save the Lower Context, read ICR.CCPN (= SRPN) via MFCR and
- * pass it to the C dispatcher, then restore and return.
- *
- * Each slot is 32 bytes (hardware constraint with VSS=0 BIV).
- * The 14-byte stub body is padded to 32 bytes by .align 5.
+ * CSA/CSFR accesses (SVLCX, CALL, RFE, MFCR/MTCR) bypass DPR protection,
+ * so the stub is safe even when running in user PRS (PRS=1).
+ * PRS elevation to kernel (PRS=0) is performed inside _arch_generic_isr_handler
+ * before any data stack access.
  */
     .rept   254
     svlcx
-    mfcr    %d4, 0xFE2C		/* ICR: CCPN = SRPN in bits [7:0] */
     call    _arch_generic_isr_handler
     disable
     rslcx

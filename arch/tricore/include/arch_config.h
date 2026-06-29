@@ -130,6 +130,122 @@
 #define UL_ARCH_STM_TICKS_PER_US	(UL_ARCH_STM_CLOCK_HZ / 1000000u)
 
 /* =========================================================================
+ * Memory map — board-specific QEMU TC27x layout
+ * Used by ul_arch_mpu_init() to configure static DPR/CPR ranges.
+ * Update for real TC27x: FLASH_BASE = 0xA0000000, RAM_BASE = 0x70000000.
+ * ========================================================================= */
+
+#define UL_ARCH_FLASH_BASE	0x80000000u	/* QEMU KERNEL_FLASH origin */
+#define UL_ARCH_FLASH_SIZE	0x00200000u	/* 2 MiB */
+#define UL_ARCH_RAM_BASE	0x90000000u	/* QEMU KERNEL_RAM origin */
+#define UL_ARCH_RAM_SIZE	0x00100000u	/* 1 MiB */
+#define UL_ARCH_PERIPH_BASE	0xF0000000u	/* TC2xx peripheral bus */
+#define UL_ARCH_PERIPH_SIZE	0x10000000u	/* 256 MiB */
+
+/*
+ * QEMU Linumiz tricore_testboard virtual device (0xBF000000).
+ * Provides semihosting-style putchar (0x20), exit (0x28), etc.
+ * QEMU enforces PRS-based write checks even without PROTEN=1, so this
+ * range must be explicitly covered by a DPR for all PRS levels.
+ */
+#define UL_ARCH_QEMU_VIRT_BASE	0xBF000000u
+#define UL_ARCH_QEMU_VIRT_SIZE	0x00001000u	/* 4 KiB */
+
+/* =========================================================================
+ * MPU CSFR addresses — TC2xx data sheet (CPU vol. §3.4)
+ *
+ * Data Protection Ranges:
+ *   DPRn_L = 0xC000 + n*8   (lower bound, bits[31:3])
+ *   DPRn_U = 0xC004 + n*8   (upper bound, bits[31:3])
+ *
+ * Code Protection Ranges:
+ *   CPRn_L = 0xD000 + n*8
+ *   CPRn_U = 0xD004 + n*8
+ *
+ * Enable registers (one per PRS, bit n = DPRn/CPRn enabled for that PRS):
+ *   CPRE_0..3 = 0xE000, 0xE004, 0xE008, 0xE00C   (code read enable)
+ *   DPRE_0..3 = 0xE010, 0xE014, 0xE018, 0xE01C   (data read enable)
+ *   DPWE_0..3 = 0xE020, 0xE024, 0xE028, 0xE02C   (data write enable)
+ *   CPXE_0..3 = 0xE040, 0xE044, 0xE048, 0xE04C   (code execute enable)
+ *
+ * PSW.PRS [13:12] selects the active PRS (0–3).
+ * Note: the microkernel_book_tricore.md erroneously states [15:14]; the ISA
+ * and QEMU source confirm bits [13:12].
+ *
+ * SYSCON.PROTEN = bit 1 at CSFR 0xFE14: set to enable the protection system.
+ * ========================================================================= */
+
+/* DPR lower/upper at slot n */
+#define UL_ARCH_CSFR_DPR_L(n)	(0xC000u + (n) * 8u)
+#define UL_ARCH_CSFR_DPR_U(n)	(0xC004u + (n) * 8u)
+
+/* CPR lower/upper at slot n */
+#define UL_ARCH_CSFR_CPR_L(n)	(0xD000u + (n) * 8u)
+#define UL_ARCH_CSFR_CPR_U(n)	(0xD004u + (n) * 8u)
+
+/* Enable registers (constant CSFR addresses) */
+#define UL_ARCH_CSFR_CPRE_0	0xE000u
+#define UL_ARCH_CSFR_CPRE_1	0xE004u
+#define UL_ARCH_CSFR_CPRE_2	0xE008u
+#define UL_ARCH_CSFR_CPRE_3	0xE00Cu
+
+#define UL_ARCH_CSFR_DPRE_0	0xE010u
+#define UL_ARCH_CSFR_DPRE_1	0xE014u
+#define UL_ARCH_CSFR_DPRE_2	0xE018u
+#define UL_ARCH_CSFR_DPRE_3	0xE01Cu
+
+#define UL_ARCH_CSFR_DPWE_0	0xE020u
+#define UL_ARCH_CSFR_DPWE_1	0xE024u
+#define UL_ARCH_CSFR_DPWE_2	0xE028u
+#define UL_ARCH_CSFR_DPWE_3	0xE02Cu
+
+#define UL_ARCH_CSFR_CPXE_0	0xE040u
+#define UL_ARCH_CSFR_CPXE_1	0xE044u
+#define UL_ARCH_CSFR_CPXE_2	0xE048u
+#define UL_ARCH_CSFR_CPXE_3	0xE04Cu
+
+/* SYSCON.PROTEN = bit 1: enables the protection system */
+#define UL_ARCH_CSFR_SYSCON	0xFE14u
+#define UL_ARCH_SYSCON_PROTEN	(1u << 1)
+
+/*
+ * Static DPR/CPR slot assignments:
+ *   Slot 0: kernel — covers entire address space (PRS 0 R+W)
+ *   Slot 1: peripheral space (PRS 0 R+W; driver threads via UL_MMAP_PERIPH)
+ *   Slot 2: flash read (PRS 1 R — user threads need to read constants)
+ *   Slot 3: QEMU virt device (PRS 0+1 R+W — needed for ul_printk from any PRS)
+ *   Slots 4–5: reserved
+ *   Slots 6–17: per-thread dynamic regions (DPR); configured by mpu_switch()
+ *
+ *   CPR slot 0: all flash execute+read (enabled for PRS 0 and PRS 1)
+ *   CPR slots 1–9: per-thread code regions (reserved for future use)
+ *
+ * PSW.IO field for privilege levels:
+ *   0 = User-0 (IO=0), 1 = User-1/Driver (IO=1), 2 = Supervisor (IO=2)
+ *
+ * PSW.PRS field [13:12]:
+ *   0 = kernel PRS (used by root thread and kernel internals)
+ *   1 = user PRS  (all non-kernel threads)
+ */
+#define UL_ARCH_MPU_KERNEL_DPR	0	/* DPR 0: entire addr-space (kernel + user) */
+#define UL_ARCH_MPU_PERIPH_DPR	1	/* DPR 1: peripheral region */
+#define UL_ARCH_MPU_FLASH_DPR	2	/* DPR 2: flash read */
+#define UL_ARCH_MPU_VIRT_DPR	3	/* DPR 3: QEMU virt console */
+/*
+ * DPR 4: shared RAM — effective only on real TC277 (18 DPR).
+ * QEMU's linumiz TC277 model silently ignores MTCR to CSFR 0xC020/0xC024,
+ * so DPR 4 bounds read back as 0.  PRS-1 RAM access is instead granted via
+ * DPR 0 (full range) in the QEMU build.  On real hardware with 18 DPRs,
+ * DPR 4 and above provide per-domain fine-grained isolation.
+ */
+#define UL_ARCH_MPU_RAM_DPR	4	/* DPR 4: shared RAM (real HW only) */
+#define UL_ARCH_MPU_USER_DPR_BASE 6	/* DPR 6..17: per-thread dynamic */
+#define UL_ARCH_MPU_CPR_ALL	0	/* CPR 0: all flash, execute+read */
+
+/* PSW.PRS value for non-kernel threads */
+#define UL_ARCH_PRS_USER	1u
+
+/* =========================================================================
  * Syscall ABI — register assignments for SYSCALL instruction
  * Syscall number in d15; arguments in d4–d7; return value in d2.
  * ========================================================================= */
