@@ -66,6 +66,16 @@
     .type   ul_arch_ctx_switch, @function
 
 ul_arch_ctx_switch:
+    /*
+     * Mask all maskable interrupts for the duration of the switch.
+     *
+     * Without this, a timer interrupt arriving after "mtcr PCXI, to->pcxi"
+     * but before "rslcx" would prepend its own ISR CSA frames to the
+     * destination thread's chain, corrupting it when that thread next runs.
+     * RFE at the end restores ICR.IE from the upper context's PIE bit,
+     * so the new thread starts with interrupts in the correct state.
+     */
+    disable
     svlcx                        /* save lower context → new CSA frame     */
     mfcr    %d0, 0xFE00          /* d0 = PCXI: head of "from" CSA chain    */
     st.w    [%a4] 0, %d0         /* from->pcxi = PCXI                      */

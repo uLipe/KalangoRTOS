@@ -148,6 +148,22 @@ void ul_sched_schedule(void)
 
 	from = prev ? &prev->ctx : sched_idle;
 
+	/*
+	 * Disable interrupts before committing sched_current = next.
+	 *
+	 * Between this assignment and the actual PCXI swap inside
+	 * ul_arch_ctx_switch(), ul_sched_tick() could fire and see "next" as
+	 * sched_current (state=RUNNING) while the CPU is still executing on
+	 * "prev"'s stack.  The preemptive ISR would then save the wrong PCXI
+	 * into next->ctx.pcxi, corrupting its context chain.
+	 *
+	 * ul_arch_ctx_switch() issues its own "disable" and its terminal "rfe"
+	 * restores ICR.IE from the new thread's PIE bit, so no manual
+	 * re-enable is needed on the switch path.  The early-return path
+	 * (from == to) restores via ul_arch_cpu_irq_restore().
+	 */
+	key = ul_arch_cpu_irq_save();
+
 	if (next) {
 		sched_current        = next;
 		next->state          = UL_THREAD_STATE_RUNNING;
@@ -160,10 +176,23 @@ void ul_sched_schedule(void)
 		ul_arch_mpu_switch(NULL, 0u, 1u);
 	}
 
-	if (from == to)
+	if (from == to) {
+		ul_arch_cpu_irq_enable();
 		return;
+	}
 
 	ul_arch_ctx_switch(from, to);
+	/*
+	 * We return here when THIS thread is re-scheduled.
+	 *
+	 * ul_arch_ctx_switch terminal rfe restores ICR.IE from the saved
+	 * UC PCXI.PIE, which is 0 because irq_save() had disabled IE before
+	 * the call.  Re-enable unconditionally: the scheduler is only ever
+	 * entered with IE=1 (idle loop, syscall trap path after PRS=0
+	 * elevation in ul_arch_syscall_entry).  ENABLE is accessible at
+	 * IO >= 1 and avoids MTCR on ICR which requires IO >= 2.
+	 */
+	ul_arch_cpu_irq_enable();
 }
 
 void ul_sched_enqueue(ul_thread_t *t)
