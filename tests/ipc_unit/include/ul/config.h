@@ -7,3 +7,6 @@
 #define UL_CONFIG_TICK_HZ           1000
 #define UL_CONFIG_DEBUG_PRINTK      0
 #endif
+
+#define UL_CONFIG_SCHED_QUANTUM_US    10000
+#define UL_CONFIG_SCHED_QUANTUM_TICKS 10
