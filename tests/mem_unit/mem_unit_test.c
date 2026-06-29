@@ -1,0 +1,230 @@
+/* SPDX-License-Identifier: MIT */
+/*
+ * Memory allocator unit tests — tests/mem_unit/mem_unit_test.c
+ *
+ * Tests the first-fit free-list allocator in kernel/mem/phys_alloc.c.
+ * Runs on the host (cc), no TriCore toolchain required.
+ */
+
+#include <stdint.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
+#include <stdlib.h>
+
+/* Provide the internal header used by phys_alloc.c */
+#include "../../kernel/include/ul_mem_internal.h"
+
+/* ── test helpers ──────────────────────────────────────────────────────── */
+
+static int g_pass;
+static int g_fail;
+
+#define CHECK(cond, msg) \
+	do { \
+		if (cond) { \
+			printf("  [PASS] %s\n", msg); \
+			g_pass++; \
+		} else { \
+			printf("  [FAIL] %s  (line %d)\n", msg, __LINE__); \
+			g_fail++; \
+		} \
+	} while (0)
+
+/* Allocator pool: 8 KiB on the host stack/heap */
+static uint8_t pool_buf[8192];
+
+static void reset_pool(void)
+{
+	memset(pool_buf, 0xCC, sizeof(pool_buf));
+	ul_phys_alloc_init((uintptr_t)pool_buf,
+			   (uintptr_t)(pool_buf + sizeof(pool_buf)));
+}
+
+/* ── test cases ────────────────────────────────────────────────────────── */
+
+static void test_basic_alloc(void)
+{
+	void *p;
+
+	printf("test_basic_alloc\n");
+	reset_pool();
+
+	p = ul_phys_alloc(64);
+	CHECK(p != NULL, "alloc 64 bytes returns non-NULL");
+	CHECK(((uintptr_t)p % 64) == 0, "returned pointer is 64-byte aligned");
+
+	p = ul_phys_alloc(128);
+	CHECK(p != NULL, "alloc 128 bytes returns non-NULL");
+	CHECK(((uintptr_t)p % 64) == 0, "128-byte alloc is aligned");
+}
+
+static void test_alloc_write(void)
+{
+	uint8_t *p;
+	size_t   i;
+
+	printf("test_alloc_write\n");
+	reset_pool();
+
+	p = (uint8_t *)ul_phys_alloc(256);
+	CHECK(p != NULL, "alloc 256 bytes");
+
+	for (i = 0; i < 256; i++)
+		p[i] = (uint8_t)i;
+
+	for (i = 0; i < 256; i++) {
+		if (p[i] != (uint8_t)i) {
+			CHECK(0, "write-then-read pattern correct");
+			return;
+		}
+	}
+	CHECK(1, "write-then-read pattern correct");
+}
+
+static void test_free_and_realloc(void)
+{
+	void *p1;
+	void *p2;
+	uintptr_t addr1;
+
+	printf("test_free_and_realloc\n");
+	reset_pool();
+
+	p1    = ul_phys_alloc(64);
+	addr1 = (uintptr_t)p1;
+	CHECK(p1 != NULL, "initial alloc succeeds");
+
+	ul_phys_free(p1);
+
+	p2 = ul_phys_alloc(64);
+	CHECK(p2 != NULL, "alloc after free succeeds");
+	CHECK((uintptr_t)p2 == addr1, "reuses freed block (first-fit)");
+}
+
+static void test_coalescing(void)
+{
+	void *p1;
+	void *p2;
+	void *p3;
+	void *big;
+	size_t free_before;
+	size_t free_after;
+
+	printf("test_coalescing\n");
+	reset_pool();
+
+	p1 = ul_phys_alloc(64);
+	p2 = ul_phys_alloc(64);
+	p3 = ul_phys_alloc(64);
+	CHECK(p1 && p2 && p3, "three 64-byte allocs succeed");
+
+	free_before = ul_phys_free_bytes();
+	ul_phys_free(p1);
+	ul_phys_free(p2);
+	ul_phys_free(p3);
+	free_after = ul_phys_free_bytes();
+
+	CHECK(free_after > free_before, "free bytes increased after releasing blocks");
+
+	/* After freeing three adjacent blocks, a large alloc covering their
+	 * combined area should succeed (coalescing merged them). */
+	big = ul_phys_alloc(128);
+	CHECK(big != NULL, "alloc of merged region succeeds after coalescing");
+	(void)big;
+}
+
+static void test_exhaustion(void)
+{
+	void *p;
+	size_t free_start;
+	size_t allocated = 0;
+
+	printf("test_exhaustion\n");
+	reset_pool();
+
+	free_start = ul_phys_free_bytes();
+
+	while ((p = ul_phys_alloc(64)) != NULL)
+		allocated += 64;
+
+	CHECK(allocated > 0, "allocated at least one block before exhaustion");
+	CHECK(allocated <= free_start, "allocated no more than pool capacity");
+
+	p = ul_phys_alloc(64);
+	CHECK(p == NULL, "alloc returns NULL when pool is full");
+}
+
+static void test_null_free(void)
+{
+	printf("test_null_free\n");
+	reset_pool();
+
+	/* Must not crash */
+	ul_phys_free(NULL);
+	CHECK(1, "free(NULL) does not crash");
+}
+
+static void test_multiple_sizes(void)
+{
+	void *ptrs[8];
+	size_t sizes[8] = {64, 128, 256, 64, 512, 64, 128, 64};
+	int   i;
+
+	printf("test_multiple_sizes\n");
+	reset_pool();
+
+	for (i = 0; i < 8; i++) {
+		ptrs[i] = ul_phys_alloc(sizes[i]);
+		CHECK(ptrs[i] != NULL, "alloc of varying size succeeds");
+	}
+
+	/* Free alternates to create holes, then realloc */
+	for (i = 0; i < 8; i += 2)
+		ul_phys_free(ptrs[i]);
+
+	for (i = 0; i < 4; i++) {
+		void *p = ul_phys_alloc(64);
+		CHECK(p != NULL, "realloc into freed holes succeeds");
+		(void)p;
+	}
+}
+
+static void test_alignment_varied_sizes(void)
+{
+	int   odd_sizes[] = {1, 7, 33, 65, 100, 63};
+	int   n = (int)(sizeof(odd_sizes) / sizeof(odd_sizes[0]));
+	void *p;
+	int   i;
+
+	printf("test_alignment_varied_sizes\n");
+	reset_pool();
+
+	for (i = 0; i < n; i++) {
+		p = ul_phys_alloc((size_t)odd_sizes[i]);
+		CHECK(p != NULL, "alloc of non-multiple-of-64 size");
+		CHECK(((uintptr_t)p % 64) == 0,
+		      "result is still 64-byte aligned for odd size");
+		(void)p;
+	}
+}
+
+/* ── main ────────────────────────────────────────────────────────────── */
+
+int main(void)
+{
+	printf("=== mem_unit: first-fit allocator tests ===\n");
+
+	test_basic_alloc();
+	test_alloc_write();
+	test_free_and_realloc();
+	test_coalescing();
+	test_exhaustion();
+	test_null_free();
+	test_multiple_sizes();
+	test_alignment_varied_sizes();
+
+	printf("\n=== Results: %d passed, %d failed ===\n", g_pass, g_fail);
+	return (g_fail == 0) ? 0 : 1;
+}

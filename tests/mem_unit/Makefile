@@ -1,0 +1,32 @@
+CC      := cc
+TARGET  := mem_unit_test
+
+ROOT    := ../..
+STUBINC := include
+
+CFLAGS := \
+    -std=c99 \
+    -Wall -Wextra \
+    -Wno-unused-parameter \
+    -I$(STUBINC) \
+    -I$(ROOT) \
+    -g -O0
+
+SRCS := \
+    mem_unit_test.c \
+    $(ROOT)/kernel/mem/phys_alloc.c
+
+.PHONY: all run clean
+
+all: $(TARGET)
+
+$(TARGET): $(SRCS)
+	$(CC) $(CFLAGS) $^ -o $@
+
+run: $(TARGET)
+	@echo "--- running mem unit tests ---"
+	@./$(TARGET) && echo "MEM UNIT TEST: PASS" || \
+	    { echo "MEM UNIT TEST: FAIL"; exit 1; }
+
+clean:
+	rm -f $(TARGET)
