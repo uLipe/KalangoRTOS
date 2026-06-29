@@ -132,6 +132,15 @@ static void irq_server_entry(void *arg)
  * Trigger thread
  * ========================================================================= */
 
+/*
+ * TC27x SRC register block: SRC_BASE + slot * 4.
+ * ul_arch_irq_src_configure() assigns slots sequentially from SRC_BASE.
+ * The trigger thread needs peripheral write access to this entire block
+ * so it can set the SETR bit for any SRPN via ul_arch_irq_src_trigger().
+ */
+#define TC27X_SRC_BASE	0xF0038000u
+#define TC27X_SRC_SIZE	1024u		/* 256 slots × 4 bytes */
+
 static uint8_t trigger_stack[1024] __attribute__((aligned(8)));
 
 static void trigger_entry(void *arg)
@@ -140,6 +149,19 @@ static void trigger_entry(void *arg)
 	int      i;
 
 	(void)arg;
+
+	/*
+	 * Map the TC27x SRC register block so ul_arch_irq_src_trigger() can
+	 * write the SETR bit from driver context (PRS=1).
+	 * Requires UL_CAP_MAP_PERIPH, which the root thread grants below.
+	 */
+	if (ul_mem_map((void *)TC27X_SRC_BASE, TC27X_SRC_SIZE,
+		       UL_PERM_READ | UL_PERM_WRITE, UL_MMAP_PERIPH)
+	    != (void *)TC27X_SRC_BASE) {
+		ul_printk("irq_integ: trigger map SRC FAIL\n");
+		g_test_result = 0;
+		ul_thread_exit();
+	}
 
 	/* Wait for server to bind and enable */
 	bits = 0;
@@ -206,6 +228,8 @@ static void supervisor_entry(void *arg)
 void ul_root_thread(const ul_boot_info_t *info)
 {
 	ul_thread_attr_t attr;
+	ul_tid_t         srv_tid;
+	ul_tid_t         trig_tid;
 
 	(void)info;
 
@@ -227,7 +251,10 @@ void ul_root_thread(const ul_boot_info_t *info)
 	attr.priority   = 2u;
 	attr.stack_size = sizeof(irq_srv_stack);
 	attr.privilege  = UL_PRIV_DRIVER;
-	ul_thread_create(&attr);
+	srv_tid = ul_thread_create(&attr);
+
+	/* Grant IRQ capability so the server can call ul_irq_bind/enable. */
+	ul_cap_grant(srv_tid, UL_CAP_IRQ);
 
 	/* Trigger — lower priority so server runs first */
 	attr.name       = "trigger";
@@ -236,7 +263,10 @@ void ul_root_thread(const ul_boot_info_t *info)
 	attr.priority   = 8u;
 	attr.stack_size = sizeof(trigger_stack);
 	attr.privilege  = UL_PRIV_DRIVER;
-	ul_thread_create(&attr);
+	trig_tid = ul_thread_create(&attr);
+
+	/* Grant peripheral-map capability so trigger can access SRC registers. */
+	ul_cap_grant(trig_tid, UL_CAP_MAP_PERIPH);
 
 	/* Supervisor — watches for completion */
 	attr.name       = "sup";

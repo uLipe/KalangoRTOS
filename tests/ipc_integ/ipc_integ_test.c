@@ -399,6 +399,10 @@ void ul_root_thread(const ul_boot_info_t *info)
 		.stack_size = 2048,
 		.privilege  = UL_PRIV_DRIVER,
 	};
-	ul_thread_create(&attr);
+	ul_tid_t sup_tid = ul_thread_create(&attr);
+
+	/* Grant spawn capability so the supervisor can create scenario threads. */
+	ul_cap_grant(sup_tid, UL_CAP_SPAWN);
+
 	ul_thread_exit();
 }
