@@ -1,0 +1,41 @@
+---
+description: Mandatory regression testing after every kernel bug fix
+alwaysApply: true
+---
+# Regression Testing Policy
+
+After **every** bug fix or kernel change, run ALL integration tests inside the
+dev container before marking the task done. A task is only complete when every
+test listed below passes.
+
+## Run Order
+
+```bash
+# Inside the dev container (python3 tools/dev.py to enter)
+cd /workspace/tests/boot            && make clean && make gen_config && make run
+cd /workspace/tests/ctx_switch      && make clean && make gen_config && make run
+cd /workspace/tests/sleep_integ     && make clean && make gen_config && make run
+cd /workspace/tests/sched_integ     && make clean && make gen_config && make run
+cd /workspace/tests/ipc_integ       && make clean && make gen_config && make run
+cd /workspace/tests/thread_lifecycle_integ && make clean && make gen_config && make run
+cd /workspace/tests/resource_leak_integ    && make clean && make gen_config && make run
+cd /workspace/tests/preempt_integ   && make clean && make gen_config && make run
+```
+
+## Adding a New Test Makefile
+
+Every integration test `gen_config` target **must** define these symbols or the
+scheduler quantum is undefined and tests will fail:
+
+```makefile
+gen_config:
+	@mkdir -p $(GEN_INC)/ul
+	@printf '#ifndef UL_CONFIG_H\n#define UL_CONFIG_H\n' > $(GEN_INC)/ul/config.h
+	# ... other defines ...
+	@printf '#define UL_CONFIG_SCHED_QUANTUM_US    10000\n' >> $(GEN_INC)/ul/config.h
+	@printf '#define UL_CONFIG_SCHED_QUANTUM_TICKS 10\n'   >> $(GEN_INC)/ul/config.h
+	@printf '#endif\n' >> $(GEN_INC)/ul/config.h
+```
+
+Forgetting `UL_CONFIG_SCHED_QUANTUM_TICKS` leaves `ticks_remaining` undefined
+→ every tick triggers preemption → scheduler-dependent tests fail silently.
