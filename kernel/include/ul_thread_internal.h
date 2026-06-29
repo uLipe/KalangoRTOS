@@ -73,5 +73,6 @@ int          ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr,
 			    void *stack);
 ul_thread_t *ul_thread_by_tid(ul_tid_t tid);
 void         ul_thread_set_state(ul_thread_t *th, uint8_t state);
+void         ul_thread_pool_free(ul_thread_t *th);
 
 #endif /* UL_THREAD_INTERNAL_H */

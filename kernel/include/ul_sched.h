@@ -53,4 +53,14 @@ ul_thread_t	*ul_sched_current(void);
 ul_thread_t	*ul_sched_pick_next(void);
 void		 ul_sched_tick(void);
 
+/*
+ * ul_sched_set_dead_for_cleanup — register a dead thread for deferred
+ * resource release.  Called from ul_kern_exit() and ul_kern_thread_kill()
+ * when the target is the currently-running thread; in that case the CSA
+ * chain is still active in PCXI and must not be freed until after the
+ * next context switch.  ul_sched_schedule() performs the actual release
+ * at its next invocation, when the dead thread is no longer on the CPU.
+ */
+void		 ul_sched_set_dead_for_cleanup(ul_thread_t *th);
+
 #endif /* UL_SCHED_H */

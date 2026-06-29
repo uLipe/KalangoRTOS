@@ -119,8 +119,10 @@ void ul_thread_set_state(ul_thread_t *th, uint8_t state)
 
 /*
  * Free a pool-allocated TCB slot.  No-op for statically-allocated threads.
+ * Exposed via ul_thread_internal.h so the scheduler reaper can call it
+ * after freeing the CSA chain and stack of a deferred dead thread.
  */
-static void tcb_pool_free(ul_thread_t *th)
+void ul_thread_pool_free(ul_thread_t *th)
 {
 	uint32_t i;
 
@@ -163,6 +165,12 @@ uint32_t ul_kern_yield(void)
 /*
  * exit — remove current thread from the run queue and schedule the next one.
  * Execution never returns to the exiting thread.
+ *
+ * CSA chain and stack cannot be freed here: the thread is still executing
+ * and its PCXI chain is live.  We register it for deferred cleanup;
+ * ul_sched_schedule() performs the actual release after the context switch.
+ * tcb_pool_free() is also deferred so the TCB slot is not recycled before
+ * the CSA walk completes.
  */
 uint32_t ul_kern_exit(void)
 {
@@ -171,7 +179,7 @@ uint32_t ul_kern_exit(void)
 	if (cur) {
 		cur->state = UL_THREAD_STATE_DEAD;
 		ul_sched_dequeue(cur);
-		tcb_pool_free(cur);
+		ul_sched_set_dead_for_cleanup(cur);
 	}
 	ul_sched_schedule();
 	for (;;)
@@ -222,7 +230,8 @@ uint32_t ul_kern_thread_spawn(uint32_t attr_ptr)
 
 uint32_t ul_kern_thread_kill(uint32_t tid)
 {
-	ul_thread_t *th = ul_thread_by_tid((ul_tid_t)tid);
+	ul_thread_t      *th = ul_thread_by_tid((ul_tid_t)tid);
+	ul_arch_irq_key_t key;
 
 	if (!th || th->state == UL_THREAD_STATE_DEAD)
 		return (uint32_t)(int32_t)UL_ESRCH;
@@ -238,10 +247,26 @@ uint32_t ul_kern_thread_kill(uint32_t tid)
 
 	th->state = UL_THREAD_STATE_DEAD;
 	ul_sched_dequeue(th);
-	tcb_pool_free(th);
 
-	if (th == ul_sched_current())
+	if (th != ul_sched_current()) {
+		/*
+		 * Target is not on the CPU: its CSA chain is not live
+		 * in PCXI, so we can free everything immediately.
+		 */
+		key = ul_arch_cpu_irq_save();
+		ul_arch_ctx_free(&th->ctx);
+		if (th->stack_base)
+			ul_phys_free(th->stack_base);
+		ul_arch_cpu_irq_restore(key);
+		ul_thread_pool_free(th);
+	} else {
+		/*
+		 * Self-kill: CSA chain is live — defer cleanup to the
+		 * next ul_sched_schedule() call (same as ul_kern_exit).
+		 */
+		ul_sched_set_dead_for_cleanup(th);
 		ul_sched_schedule();
+	}
 
 	return 0;
 }

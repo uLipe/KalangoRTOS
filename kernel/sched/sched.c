@@ -10,11 +10,57 @@
 #include <ul/config.h>
 #include <kernel/include/ul_sched.h>
 #include <kernel/include/ul_thread_internal.h>
+#include <kernel/include/ul_mem_internal.h>
 #include <ul_arch.h>
 
 static const ul_sched_class_t	*sched_class;
 static ul_arch_ctx_t		*sched_idle;
 static ul_thread_t		*sched_current;
+
+/*
+ * Dead-thread reaper slot.
+ *
+ * When a thread calls ul_thread_exit() it is still on the CPU — its CSA
+ * chain is live in the hardware PCXI register.  We cannot walk and free
+ * that chain until after the context switch hands control to the next
+ * thread.  ul_sched_set_dead_for_cleanup() stores the dying thread here;
+ * ul_sched_schedule() frees the CSA chain and stack at the start of its
+ * next invocation, at which point the dead thread's PCXI is saved in its
+ * ctx and is safe to walk.
+ *
+ * Only one slot is needed: a thread can exit at most once, and the next
+ * call to ul_sched_schedule() always drains the slot before any new exit
+ * can enqueue another dying thread.
+ */
+static ul_thread_t *g_sched_dead;
+
+/*
+ * Register a dying thread for deferred CSA/stack cleanup.
+ *
+ * If a thread is already pending (g_sched_dead != NULL), it is reaped
+ * immediately before recording the new one.  This handles the case
+ * where threads exit in rapid succession without another thread
+ * interleaving: the previous dead thread has already been context-
+ * switched out (otherwise we would not be executing in the new one),
+ * so its CSA chain is fully saved and safe to walk and free.
+ *
+ * Called with interrupts enabled; the FCX modification in
+ * ul_arch_ctx_free() is guarded by a local irq_save/restore.
+ */
+void ul_sched_set_dead_for_cleanup(ul_thread_t *th)
+{
+	ul_arch_irq_key_t key;
+
+	key = ul_arch_cpu_irq_save();
+	if (g_sched_dead) {
+		ul_arch_ctx_free(&g_sched_dead->ctx);
+		if (g_sched_dead->stack_base)
+			ul_phys_free(g_sched_dead->stack_base);
+		ul_thread_pool_free(g_sched_dead);
+	}
+	g_sched_dead = th;
+	ul_arch_cpu_irq_restore(key);
+}
 
 void ul_sched_init(ul_arch_ctx_t *idle)
 {
@@ -54,10 +100,40 @@ void ul_sched_start(ul_arch_ctx_t *idle, ul_thread_t *first)
  */
 void ul_sched_schedule(void)
 {
-	ul_thread_t   *prev = sched_current;
-	ul_thread_t   *next = sched_class->pick_next();
-	ul_arch_ctx_t *from;
-	ul_arch_ctx_t *to;
+	ul_thread_t      *prev = sched_current;
+	ul_thread_t      *next;
+	ul_arch_ctx_t    *from;
+	ul_arch_ctx_t    *to;
+	ul_arch_irq_key_t key;
+
+	/*
+	 * Release CSA chain and stack of a previously-dead thread.
+	 *
+	 * The guard `g_sched_dead != prev` is critical: when a thread calls
+	 * ul_kern_exit() it sets g_sched_dead = self and then immediately
+	 * calls ul_sched_schedule().  At that point the thread's CSA chain
+	 * is still live — ul_arch_ctx_switch() is about to execute svlcx,
+	 * which saves the current lower context into a free CSA frame and
+	 * then records the resulting PCXI into g_sched_dead->ctx.pcxi.
+	 * Freeing the chain before that svlcx would return those frames to
+	 * FCX, only for svlcx to immediately re-allocate and corrupt them.
+	 *
+	 * By skipping cleanup when g_sched_dead == prev we defer to the
+	 * NEXT invocation of ul_sched_schedule() from any other thread, at
+	 * which point the context switch has completed and the dead thread's
+	 * PCXI chain is fully recorded and no longer referenced by the CPU.
+	 */
+	if (g_sched_dead && g_sched_dead != prev) {
+		key = ul_arch_cpu_irq_save();
+		ul_arch_ctx_free(&g_sched_dead->ctx);
+		if (g_sched_dead->stack_base)
+			ul_phys_free(g_sched_dead->stack_base);
+		ul_thread_pool_free(g_sched_dead);
+		g_sched_dead = NULL;
+		ul_arch_cpu_irq_restore(key);
+	}
+
+	next = sched_class->pick_next();
 
 	from = prev ? &prev->ctx : sched_idle;
 

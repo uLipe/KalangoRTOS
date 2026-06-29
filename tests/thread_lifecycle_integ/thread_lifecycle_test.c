@@ -195,6 +195,7 @@ static void supervisor_entry(void *arg)
 void ul_root_thread(const ul_boot_info_t *info)
 {
 	ul_thread_attr_t attr;
+	ul_tid_t	 sup_tid;
 
 	(void)info;
 
@@ -205,6 +206,7 @@ void ul_root_thread(const ul_boot_info_t *info)
 	attr.stack_size = 2048;
 	attr.privilege  = UL_PRIV_DRIVER;
 
-	ul_thread_create(&attr);
+	sup_tid = ul_thread_create(&attr);
+	ul_cap_grant(sup_tid, UL_CAP_SPAWN | UL_CAP_KILL);
 	ul_thread_exit();
 }
