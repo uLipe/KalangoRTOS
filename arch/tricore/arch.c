@@ -874,17 +874,43 @@ void _arch_tick_isr_handler(void)
 uint32_t ul_arch_atomic_cas(volatile uint32_t *ptr,
 			    uint32_t expected, uint32_t desired)
 {
-	(void)ptr;
-	(void)expected;
-	(void)desired;
-	return 0; /* TODO: CMPSWAP.W instruction */
+	uint32_t old;
+
+	/*
+	 * Software CAS via DISABLE/ENABLE.
+	 *
+	 * CMPSWAP.W compiles correctly with the %A modifier but the
+	 * QEMU Linumiz TC277 fork treats the instruction as a NOP.
+	 * MFCR/MTCR on ICR (0xFE2C) require IO >= 2 and trap from
+	 * driver threads (IO=1).  DISABLE/ENABLE are accessible at
+	 * IO >= 1 and provide equivalent single-core atomicity.
+	 *
+	 * TODO: use CMPSWAP.W on real TC27x multi-core targets.
+	 */
+	__asm__ __volatile__("disable" ::: "memory");
+	old = *ptr;
+	if (old == expected)
+		*ptr = desired;
+	__asm__ __volatile__("enable" ::: "memory");
+	return old;
 }
 
 uint32_t ul_arch_atomic_add(volatile uint32_t *ptr, uint32_t val)
 {
-	(void)ptr;
-	(void)val;
-	return 0; /* TODO: LDMST or SWAP.W + loop */
+	/*
+	 * TriCore has no native atomic-add; implement via CAS-retry loop.
+	 * On a single-core system only a preempting ISR can race with us,
+	 * so the loop terminates quickly.
+	 */
+	uint32_t old;
+	uint32_t new_val;
+
+	do {
+		old     = *ptr;
+		new_val = old + val;
+	} while (ul_arch_atomic_cas(ptr, old, new_val) != old);
+
+	return old;
 }
 
 /* =========================================================================
