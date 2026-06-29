@@ -87,6 +87,15 @@ void     ul_arch_tick_deadline(uint32_t d) { (void)d; }
 
 void ul_phys_alloc_init(uintptr_t base, uintptr_t end) { (void)base; (void)end; }
 void *ul_phys_alloc(size_t size)   { (void)size; return NULL; }
+void ul_phys_free(void *ptr)       { (void)ptr; }
+
+/* ── Arch stubs ────────────────────────────────────────────────────────────── */
+
+void ul_arch_ctx_free(ul_arch_ctx_t *c)     { (void)c; }
+void ul_arch_mpu_switch(const ul_arch_region_t *r, uint8_t n, uint8_t p)
+{
+	(void)r; (void)n; (void)p;
+}
 
 /* ── Scheduler stubs ───────────────────────────────────────────────────────── */
 
@@ -98,8 +107,13 @@ void ul_sched_enqueue(ul_thread_t *t)
 	g_enqueue_count++;
 }
 
-void ul_sched_dequeue(ul_thread_t *t) { (void)t; g_dequeue_count++; }
-void ul_sched_schedule(void)          { g_schedule_count++; }
+void ul_sched_dequeue(ul_thread_t *t)         { (void)t; g_dequeue_count++; }
+void ul_sched_schedule(void)                  { g_schedule_count++; }
+void ul_sched_set_dead_for_cleanup(ul_thread_t *t) { (void)t; }
+
+/* ── IPC stubs ─────────────────────────────────────────────────────────────── */
+
+void ul_ep_recv_queue_remove(ul_thread_t *t) { (void)t; }
 
 /* ── Timer stubs ───────────────────────────────────────────────────────────── */
 

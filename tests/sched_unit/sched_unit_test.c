@@ -38,6 +38,14 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 	ctx->pcxi = 0;
 }
 
+void ul_arch_ctx_free(ul_arch_ctx_t *c) { (void)c; }
+void ul_arch_mpu_switch(const ul_arch_region_t *r, uint8_t n, uint8_t p)
+{
+	(void)r; (void)n; (void)p;
+}
+void ul_phys_free(void *p)              { (void)p; }
+void ul_thread_pool_free(ul_thread_t *t) { (void)t; }
+
 /* =========================================================================
  * Test harness
  * ========================================================================= */

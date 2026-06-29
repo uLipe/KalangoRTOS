@@ -246,6 +246,12 @@ static void test_tick_wakes_all_expired(void)
 		PASS(name);
 }
 
+/*
+ * ul_timer_tick() no longer calls ul_sched_schedule() directly to avoid
+ * pushing an extra CSA frame inside the timer ISR.  The idle loop detects
+ * a non-empty run queue and calls ul_sched_schedule() itself.  We verify
+ * only that the expired thread is enqueued (state = READY).
+ */
 static void test_idle_triggers_schedule(void)
 {
 	const char *name = "idle_triggers_schedule";
@@ -264,8 +270,8 @@ static void test_idle_triggers_schedule(void)
 	g_stm = 50u;
 	ul_timer_tick();
 
-	if (g_schedule_calls != 1)
-		FAIL(name, "ul_sched_schedule not called from idle");
+	if (ta.state != UL_THREAD_STATE_READY)
+		FAIL(name, "expired thread not enqueued");
 	else
 		PASS(name);
 }
@@ -330,6 +336,11 @@ static void test_rearm_after_partial_wake(void)
 		PASS(name);
 }
 
+/*
+ * arm_nearest() always arms the timer for at least the next quantum period
+ * (TICK_PERIOD_US) so the preemptive scheduler keeps ticking even when no
+ * thread is sleeping.  An empty sleep queue does not suppress re-arming.
+ */
 static void test_empty_queue_no_rearm(void)
 {
 	const char *name = "empty_queue_no_rearm";
@@ -348,13 +359,14 @@ static void test_empty_queue_no_rearm(void)
 	g_stm = 50u;
 	ul_timer_tick();
 
-	/* After the queue empties, set a sentinel and tick again. */
-	g_deadline_armed = 0xDEADu;
+	/* With preemptive scheduling, arm_nearest always re-arms for the
+	 * next quantum period even when the sleep queue is empty. */
+	g_deadline_armed = 0u;
 	g_stm = 100u;
-	ul_timer_tick();	/* queue empty — should not arm */
+	ul_timer_tick();
 
-	if (g_deadline_armed != 0xDEADu)
-		FAIL(name, "deadline armed on empty queue");
+	if (g_deadline_armed == 0u)
+		FAIL(name, "deadline not re-armed for next quantum");
 	else
 		PASS(name);
 }
