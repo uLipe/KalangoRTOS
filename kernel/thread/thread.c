@@ -66,6 +66,7 @@ int ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr, void *stack)
 	th->notif_bits_outptr  = NULL;
 	th->rn_result_outptr   = NULL;
 	th->region_count      = 0u;
+	th->ticks_remaining   = UL_CONFIG_SCHED_QUANTUM_TICKS;
 
 	/*
 	 * Default capability set:

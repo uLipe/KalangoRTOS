@@ -205,7 +205,13 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 	lower_csa  = csa_link_to_addr(lower_link);
 	for (i = 0u; i < 16u; i++)
 		lower_csa[i] = 0u;
-	lower_csa[0] = upper_link | UL_CSA_UL_FLAG;
+	/*
+	 * PIE (bit 21) = 1: the RFE that starts this thread sets ICR.IE=1.
+	 * Without PIE=1, interrupts are left disabled in every new thread
+	 * (ICR.IE comes from PCXI.PIE on RFE), making timer-driven preemption
+	 * impossible while a thread is running.
+	 */
+	lower_csa[0] = upper_link | UL_CSA_UL_FLAG | (1u << 21);
 	lower_csa[1] = (uint32_t)(uintptr_t)_ul_thread_trampoline;
 	lower_csa[8] = (uint32_t)(uintptr_t)arg;	/* A4: pointer arg */
 

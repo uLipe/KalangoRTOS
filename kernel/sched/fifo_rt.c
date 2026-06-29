@@ -61,10 +61,16 @@ static ul_thread_t *fifo_rt_pick_next(void)
 	return rq_head;
 }
 
+static ul_thread_t *fifo_rt_peek_next(void)
+{
+	return rq_head;
+}
+
 const ul_sched_class_t ul_fifo_rt_class = {
 	.name      = "fifo-rt",
 	.init      = fifo_rt_init,
 	.enqueue   = fifo_rt_enqueue,
 	.dequeue   = fifo_rt_dequeue,
 	.pick_next = fifo_rt_pick_next,
+	.peek_next = fifo_rt_peek_next,
 };

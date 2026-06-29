@@ -61,6 +61,8 @@ typedef struct ul_thread {
 	/* MPU regions owned by this thread (configured by mpu_switch on dispatch) */
 	ul_arch_region_t  regions[UL_ARCH_MAX_REGIONS];
 	uint8_t           region_count;
+	/* Preemption time-slice countdown (scheduler ticks). Reset on dispatch. */
+	uint32_t          ticks_remaining;
 	/*
 	 * Capability bitmask — which privileged operations this thread may invoke.
 	 * Checked by the syscall router.  Root thread starts with UL_CAP_ALL.

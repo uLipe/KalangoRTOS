@@ -13,4 +13,12 @@
 #define UL_CONFIG_TICK_HZ          @UL_CONFIG_TICK_HZ@
 #define UL_CONFIG_DEBUG_PRINTK     @UL_CONFIG_DEBUG_PRINTK@
 
+/*
+ * Scheduler time-slice quantum in microseconds.
+ * TICKS = ceiling(QUANTUM_US * TICK_HZ / 1_000_000) — minimum 1 tick.
+ */
+#define UL_CONFIG_SCHED_QUANTUM_US    @UL_CONFIG_SCHED_QUANTUM_US@
+#define UL_CONFIG_SCHED_QUANTUM_TICKS \
+	((UL_CONFIG_SCHED_QUANTUM_US * UL_CONFIG_TICK_HZ + 999999u) / 1000000u)
+
 #endif /* UL_CONFIG_H */

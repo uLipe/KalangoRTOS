@@ -24,6 +24,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <ul/config.h>
 #include <kernel/include/ul_timer_internal.h>
 #include <kernel/include/ul_thread_internal.h>
 #include <kernel/include/ul_sched.h>
@@ -52,17 +53,28 @@ uint64_t ul_timer_now_us(void)
 	return g_mono_us;
 }
 
+/*
+ * arm_nearest — arm the STM one-shot for the next tick event.
+ *
+ * The tick always fires within one scheduler tick period
+ * (1 000 000 / TICK_HZ µs) to drive the preemption quantum counter.
+ * If a sleeping thread expires sooner than that, the deadline is
+ * advanced to wake it earlier.  This turns the formerly tickless timer
+ * into a periodic+tickless hybrid: periodic for running threads,
+ * tickless for pure-sleep scenarios.
+ */
+#define TICK_PERIOD_US (1000000u / UL_CONFIG_TICK_HZ)
+
 static void arm_nearest(uint64_t now)
 {
+	uint64_t deadline = now + TICK_PERIOD_US;
 	uint64_t delta;
 	uint32_t delta32;
 
-	if (!sleep_head)
-		return;
+	if (sleep_head && sleep_head->sleep_until < deadline)
+		deadline = sleep_head->sleep_until;
 
-	delta = (sleep_head->sleep_until > now) ?
-		(sleep_head->sleep_until - now) : 0u;
-
+	delta = deadline > now ? deadline - now : 0u;
 	delta32 = (delta > (uint64_t)UINT32_MAX) ? UINT32_MAX : (uint32_t)delta;
 	ul_arch_tick_deadline(delta32 ? delta32 : 1u);
 }

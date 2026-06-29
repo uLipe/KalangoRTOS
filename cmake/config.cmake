@@ -15,6 +15,9 @@ set(UL_CONFIG_TICK_HZ          1000 CACHE STRING "Kernel tick frequency in Hz")
 # Debug printk: 1 = enabled (default for debug builds), 0 = eliminated at compile time.
 set(UL_CONFIG_DEBUG_PRINTK     1    CACHE STRING "Enable kernel printk (0 = production no-op)")
 
+# Scheduler time-slice quantum in microseconds (default 10 ms).
+set(UL_CONFIG_SCHED_QUANTUM_US 10000 CACHE STRING "Preemptive scheduler time-slice quantum in µs")
+
 # Validate ranges at configure time; fail fast rather than at runtime.
 foreach(sym IN ITEMS
         UL_CONFIG_MAX_THREADS

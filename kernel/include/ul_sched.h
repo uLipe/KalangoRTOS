@@ -25,11 +25,22 @@ typedef struct ul_sched_class {
 	void		 (*init)(void);
 	void		 (*enqueue)(ul_thread_t *t);
 	void		 (*dequeue)(ul_thread_t *t);
-	ul_thread_t	*(*pick_next)(void);
+	ul_thread_t	*(*pick_next)(void);   /* return highest-prio ready thread */
+	ul_thread_t	*(*peek_next)(void);    /* peek without side-effects */
 } ul_sched_class_t;
 
 /* Exported by kernel/sched/fifo_rt.c */
 extern const ul_sched_class_t ul_fifo_rt_class;
+
+/*
+ * Preemption handoff: set by ul_sched_tick() when a preemptive switch is
+ * needed.  Consumed by the tick ISR assembly stub (_arch_tick_preempt_isr)
+ * after the C handler returns, at which point PCXI = L_sv -> U_hw and the
+ * switch can be performed without an extra svlcx.
+ * Both are NULL when no preemption is pending.
+ */
+extern ul_arch_ctx_t *g_preempt_old_ctx;
+extern ul_arch_ctx_t *g_preempt_new_ctx;
 
 /* =========================================================================
  * Scheduler core (kernel/sched/sched.c)

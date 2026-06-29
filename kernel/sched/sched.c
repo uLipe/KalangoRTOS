@@ -7,6 +7,7 @@
  */
 
 #include <stddef.h>
+#include <stdbool.h>
 #include <ul/config.h>
 #include <kernel/include/ul_sched.h>
 #include <kernel/include/ul_thread_internal.h>
@@ -33,6 +34,16 @@ static ul_thread_t		*sched_current;
  * can enqueue another dying thread.
  */
 static ul_thread_t *g_sched_dead;
+
+/*
+ * Preemption handoff pointers: written by ul_sched_tick() and consumed by
+ * the tick ISR assembly stub (_arch_tick_preempt_isr) in vectors.S.
+ * The stub reads them after the C handler returns, at which point
+ * PCXI = L_sv -> U_hw (the interrupted thread's ISR context chain).
+ * Setting g_preempt_new_ctx != NULL signals: "perform a preemptive switch".
+ */
+ul_arch_ctx_t *g_preempt_old_ctx;
+ul_arch_ctx_t *g_preempt_new_ctx;
 
 /*
  * Register a dying thread for deferred CSA/stack cleanup.
@@ -138,8 +149,9 @@ void ul_sched_schedule(void)
 	from = prev ? &prev->ctx : sched_idle;
 
 	if (next) {
-		sched_current = next;
-		next->state   = UL_THREAD_STATE_RUNNING;
+		sched_current        = next;
+		next->state          = UL_THREAD_STATE_RUNNING;
+		next->ticks_remaining = UL_CONFIG_SCHED_QUANTUM_TICKS;
 		to = &next->ctx;
 		ul_arch_mpu_switch(next->regions, next->region_count, 1u);
 	} else {
@@ -176,5 +188,66 @@ ul_thread_t *ul_sched_pick_next(void)
 
 void ul_sched_tick(void)
 {
-	/* No time-slice accounting yet — added when sleep is implemented. */
+	ul_thread_t *cur = sched_current;
+	ul_thread_t *next;
+	bool         need_preempt;
+
+	if (!cur || !sched_class)
+		return;
+
+	/*
+	 * Skip if the current thread is already leaving the CPU
+	 * (BLOCKED, DEAD, etc.).  A syscall like ul_kern_sleep_us sets
+	 * state = BLOCKED then calls ul_sched_schedule(), but the tick ISR
+	 * can fire in between.  Without this guard, the enqueue inside
+	 * the rotation below would call fifo_rt_enqueue() which resets
+	 * state = READY, corrupting the sleep-queue entry.
+	 */
+	if (cur->state != UL_THREAD_STATE_RUNNING)
+		return;
+
+	/* Decrement time-slice counter */
+	if (cur->ticks_remaining > 0)
+		cur->ticks_remaining--;
+
+	/*
+	 * Trigger preemption when the quantum expires OR when a strictly
+	 * higher-priority thread (e.g. woken by ul_timer_tick) is waiting.
+	 */
+	next         = sched_class->peek_next();
+	need_preempt = (cur->ticks_remaining == 0) ||
+	               (next && next != cur && next->priority < cur->priority);
+
+	if (!need_preempt)
+		return;
+
+	/* Reset quantum for the next run of cur */
+	cur->ticks_remaining = UL_CONFIG_SCHED_QUANTUM_TICKS;
+
+	/* Rotate cur to tail of its priority group (FIFO round-robin) */
+	ul_sched_dequeue(cur);
+	ul_sched_enqueue(cur);
+
+	/* Pick the best thread now that cur is at the tail */
+	next = sched_class->pick_next();
+	if (!next || next == cur) {
+		/* cur is the only candidate — keep it running */
+		cur->state    = UL_THREAD_STATE_RUNNING;
+		sched_current = cur;
+		return;
+	}
+
+	/*
+	 * Signal the ISR stub to perform the preemptive context switch.
+	 * The stub reads g_preempt_new_ctx after _arch_tick_isr_handler
+	 * returns, when PCXI = L_sv -> U_hw (the interrupted thread's
+	 * ISR context chain).  It saves that chain to g_preempt_old_ctx->pcxi
+	 * and loads g_preempt_new_ctx->pcxi, then does rslcx + rfe.
+	 */
+	sched_current         = next;
+	next->state           = UL_THREAD_STATE_RUNNING;
+	next->ticks_remaining = UL_CONFIG_SCHED_QUANTUM_TICKS;
+	ul_arch_mpu_switch(next->regions, next->region_count, 1u);
+	g_preempt_old_ctx = &cur->ctx;
+	g_preempt_new_ctx = &next->ctx;
 }

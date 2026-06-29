@@ -30,6 +30,7 @@ extern uint8_t _ul_user_pool_end[];
 void ul_kernel_tick(void)
 {
 	ul_timer_tick();
+	ul_sched_tick();
 }
 
 uint32_t ul_kernel_trap_syscall(uint8_t tin, uint32_t args[4])
