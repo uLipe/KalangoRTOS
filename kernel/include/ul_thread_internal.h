@@ -58,6 +58,15 @@ typedef struct ul_thread {
 	ul_recv_or_notif_result_t *rn_result_outptr;
 	uint32_t          notif_wait_mask;
 	uint32_t          notif_received; /* bits consumed on notif wakeup */
+	/* MPU regions owned by this thread (configured by mpu_switch on dispatch) */
+	ul_arch_region_t  regions[UL_ARCH_MAX_REGIONS];
+	uint8_t           region_count;
+	/*
+	 * Capability bitmask — which privileged operations this thread may invoke.
+	 * Checked by the syscall router.  Root thread starts with UL_CAP_ALL.
+	 * Grant subsets to child threads via ul_cap_grant().
+	 */
+	uint8_t           cap_flags;
 } ul_thread_t;
 
 int          ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr,

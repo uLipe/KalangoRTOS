@@ -65,6 +65,27 @@ int ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr, void *stack)
 	th->ipc_sender_outptr = NULL;
 	th->notif_bits_outptr  = NULL;
 	th->rn_result_outptr   = NULL;
+	th->region_count      = 0u;
+
+	/*
+	 * Default capability set:
+	 *   Kernel threads (root) receive UL_CAP_ALL.
+	 *   Driver/user threads spawned dynamically start with no capabilities;
+	 *   root must explicitly grant via ul_cap_grant().
+	 */
+	th->cap_flags = (attr->privilege == UL_PRIV_KERNEL) ? UL_CAP_ALL : 0u;
+
+	/*
+	 * Every non-kernel thread gets its stack as a default R+W MPU region.
+	 * The kernel thread uses PRS 0 (full access) and needs no DPR entries.
+	 */
+	if (attr->privilege != UL_PRIV_KERNEL) {
+		th->regions[0].base  = (uintptr_t)stack;
+		th->regions[0].size  = attr->stack_size;
+		th->regions[0].perms = UL_PERM_READ | UL_PERM_WRITE;
+		th->regions[0].type  = UL_REGION_STACK;
+		th->region_count     = 1u;
+	}
 
 	ul_arch_ctx_init(&th->ctx,
 			 attr->entry,
@@ -284,6 +305,28 @@ uint32_t ul_kern_thread_get_prio(uint32_t tid)
 	if (!th)
 		return (uint32_t)(int32_t)UL_ESRCH;
 	return (uint32_t)th->priority;
+}
+
+/*
+ * ul_kern_cap_grant — grant a subset of capabilities to another thread.
+ *
+ * Caller must hold UL_CAP_GRANT_CAP and all of the caps being granted.
+ * Prevents privilege escalation: a thread cannot grant caps it does not hold.
+ */
+uint32_t ul_kern_cap_grant(uint32_t target_tid, uint32_t caps)
+{
+	ul_thread_t *cur    = ul_sched_current();
+	ul_thread_t *target = ul_thread_by_tid((ul_tid_t)target_tid);
+
+	if (!cur || !target)
+		return (uint32_t)(int32_t)UL_ESRCH;
+
+	/* Cannot grant capabilities the caller does not hold */
+	if ((cur->cap_flags & (uint8_t)caps) != (uint8_t)caps)
+		return (uint32_t)(int32_t)UL_EPERM;
+
+	target->cap_flags |= (uint8_t)caps;
+	return (uint32_t)UL_OK;
 }
 
 /*

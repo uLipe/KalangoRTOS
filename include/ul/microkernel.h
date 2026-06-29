@@ -113,6 +113,20 @@ typedef struct {
 } ul_domain_desc_t;
 
 /* =========================================================================
+ * Capability flags — bitmask stored in ul_thread_t.cap_flags
+ *
+ * Checked by the syscall router before privileged operations.
+ * Root thread starts with UL_CAP_ALL; grants subsets to children.
+ * ========================================================================= */
+
+#define UL_CAP_SPAWN		(1u << 0)  /* may create threads */
+#define UL_CAP_KILL		(1u << 1)  /* may kill other threads */
+#define UL_CAP_IRQ		(1u << 2)  /* may bind/enable hardware IRQs */
+#define UL_CAP_MAP_PERIPH	(1u << 3)  /* may map peripheral MMIO regions */
+#define UL_CAP_GRANT_CAP	(1u << 4)  /* may grant capabilities to others */
+#define UL_CAP_ALL		0xFFu	   /* all capabilities; root thread initial */
+
+/* =========================================================================
  * Memory map flags
  * ========================================================================= */
 
@@ -367,6 +381,18 @@ static inline int ul_irq_ack(uint8_t srpn)
 {
 	uint32_t r;
 	UL_SYSCALL_1(UL_SYS_IRQ_ACK, srpn, r);
+	return (int)r;
+}
+
+/* =========================================================================
+ * Capability API — docs/api_spec.md §13
+ * Requires UL_CAP_GRANT_CAP.
+ * ========================================================================= */
+
+static inline int ul_cap_grant(ul_tid_t target, uint32_t caps)
+{
+	uint32_t r;
+	UL_SYSCALL_2(UL_SYS_PROC_GRANT_CAP, target, caps, r);
 	return (int)r;
 }
 

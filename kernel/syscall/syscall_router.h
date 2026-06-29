@@ -75,4 +75,7 @@ uint32_t ul_kern_thread_resume(uint32_t tid);
 uint32_t ul_kern_thread_set_prio(uint32_t tid, uint32_t prio);
 uint32_t ul_kern_thread_get_prio(uint32_t tid);
 
+/* Capability management */
+uint32_t ul_kern_cap_grant(uint32_t target_tid, uint32_t caps);
+
 #endif /* UL_SYSCALL_ROUTER_H */

@@ -33,6 +33,14 @@ static inline ul_privilege_t _caller_priv(void)
 			return (uint32_t)(int32_t)UL_EPERM; \
 	} while (0)
 
+/* Capability check — caller must hold @cap in cap_flags */
+#define REQUIRE_CAP(cap) \
+	do { \
+		ul_thread_t *_t = ul_sched_current(); \
+		if (!_t || !(_t->cap_flags & (cap))) \
+			return (uint32_t)(int32_t)UL_EPERM; \
+	} while (0)
+
 uint32_t ul_syscall_router(uint32_t nr,
 			   uint32_t a0, uint32_t a1,
 			   uint32_t a2, uint32_t a3)
@@ -44,6 +52,8 @@ uint32_t ul_syscall_router(uint32_t nr,
 
 	/* ── Memory (any privilege) ──────────────────────────────────── */
 	case UL_SYS_MMAP:
+		if (a3 & UL_MMAP_PERIPH)
+			REQUIRE_CAP(UL_CAP_MAP_PERIPH);
 		return ul_kern_mem_map(a0, a1, a2, a3);
 
 	case UL_SYS_MUNMAP:
@@ -104,6 +114,7 @@ uint32_t ul_syscall_router(uint32_t nr,
 	/* ── IRQ (requires UL_PRIV_DRIVER) ──────────────────────────── */
 	case UL_SYS_IRQ_BIND:
 		REQUIRE_DRIVER(a0);
+		REQUIRE_CAP(UL_CAP_IRQ);
 		return ul_kern_irq_bind(a0, a1, a2);
 
 	case UL_SYS_IRQ_ENABLE:
@@ -121,10 +132,12 @@ uint32_t ul_syscall_router(uint32_t nr,
 	/* ── Thread management (requires UL_PRIV_DRIVER) ─────────────── */
 	case UL_SYS_THREAD_SPAWN:
 		REQUIRE_DRIVER(a0);
+		REQUIRE_CAP(UL_CAP_SPAWN);
 		return ul_kern_thread_spawn(a0);
 
 	case UL_SYS_THREAD_KILL:
 		REQUIRE_DRIVER(a0);
+		REQUIRE_CAP(UL_CAP_KILL);
 		return ul_kern_thread_kill(a0);
 
 	case UL_SYS_THREAD_SUSPEND:
@@ -142,6 +155,12 @@ uint32_t ul_syscall_router(uint32_t nr,
 	case UL_SYS_THREAD_GET_PRIO:
 		REQUIRE_DRIVER(a0);
 		return ul_kern_thread_get_prio(a0);
+
+	/* ── Capability management (requires UL_CAP_GRANT_CAP) ───────── */
+	case UL_SYS_PROC_GRANT_CAP:
+		REQUIRE_DRIVER(a0);
+		REQUIRE_CAP(UL_CAP_GRANT_CAP);
+		return ul_kern_cap_grant(a0, a1);
 
 	default:
 		return (uint32_t)(int32_t)UL_EINVAL;
