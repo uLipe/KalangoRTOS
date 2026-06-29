@@ -32,15 +32,15 @@ void ul_sched_set_class(const ul_sched_class_t *cls)
 /*
  * ul_sched_start — perform the first context switch from idle to a thread.
  *
- * Records first as current, switches the idle context (kernel_main's stack)
- * to the thread.  Returns to the caller only when something later switches
- * back to idle (e.g. schedule() with an empty run queue).
+ * Records first as current, configures MPU for the first thread, then
+ * switches the idle context (kernel_main's stack) to the thread.
  */
 void ul_sched_start(ul_arch_ctx_t *idle, ul_thread_t *first)
 {
 	sched_idle           = idle;
 	sched_current        = first;
 	first->state         = UL_THREAD_STATE_RUNNING;
+	ul_arch_mpu_switch(first->regions, first->region_count, 1u);
 	ul_arch_ctx_switch(idle, &first->ctx);
 }
 
@@ -65,9 +65,11 @@ void ul_sched_schedule(void)
 		sched_current = next;
 		next->state   = UL_THREAD_STATE_RUNNING;
 		to = &next->ctx;
+		ul_arch_mpu_switch(next->regions, next->region_count, 1u);
 	} else {
 		sched_current = NULL;
 		to = sched_idle;
+		ul_arch_mpu_switch(NULL, 0u, 1u);
 	}
 
 	if (from == to)

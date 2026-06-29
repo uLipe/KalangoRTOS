@@ -39,9 +39,29 @@ uint32_t ul_kernel_trap_syscall(uint8_t tin, uint32_t args[4])
 
 void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 {
+	ul_thread_t *cur = ul_sched_current();
+
 	ul_printk("TRAP class=%u tin=%u\n",
 		  (unsigned)trap_class, (unsigned)tin);
 	ul_arch_trap_dump(trap_class, tin);
+
+	/*
+	 * Class 1 — Internal Protection: kill the offending thread and
+	 * reschedule.  This mirrors what an OS page-fault handler would do
+	 * when an unmapped access is detected.
+	 *
+	 * All other trap classes are unrecoverable; spin so the debugger can
+	 * attach.
+	 */
+	if (trap_class == 1u && cur) {
+		ul_printk("TRAP: killing thread tid=%u\n",
+			  (unsigned)cur->tid);
+		cur->state = UL_THREAD_STATE_DEAD;
+		ul_sched_dequeue(cur);
+		ul_sched_schedule();
+		/* ul_sched_schedule does not return when current dies */
+	}
+
 	for (;;)
 		;
 }
@@ -90,6 +110,7 @@ void ul_kernel_main(const ul_boot_info_t *info)
 	ul_irq_table_init();
 	UL_LOG_DBG("irq table init done");
 
+	ul_arch_mpu_init();
 	ul_arch_tick_init();
 	ul_timer_init();
 	ul_arch_cpu_irq_enable();
@@ -106,6 +127,10 @@ void ul_kernel_main(const ul_boot_info_t *info)
 	root_attr.privilege = UL_PRIV_KERNEL;
 
 	ul_thread_init(&root_thread_g, &root_attr, root_stack_g);
+
+	/* Enable MPU after all static threads are created */
+	ul_arch_mpu_enable();
+	UL_LOG_DBG("mpu enabled");
 
 	ul_printk("ulipeMicroKernel: switching to root thread\n");
 
