@@ -28,6 +28,8 @@
 #include <ul/microkernel.h>
 #include <kernel/include/ul_printk.h>
 
+extern void qemu_virt_exit(int code);
+
 /* =========================================================================
  * Thread entry points
  * ========================================================================= */
@@ -107,5 +109,5 @@ void ul_root_thread(const ul_boot_info_t *info)
 	ul_thread_yield();
 
 	ul_printk("sched_integ: PASS\n");
-	ul_thread_exit();
+	qemu_virt_exit(0);
 }
