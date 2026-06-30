@@ -4,14 +4,12 @@
  *
  * QEMU TC27x console — boards/qemu_tc27x/qemu_console.c
  *
- * Provides the strong definition of ul_printk_char_out() for the
- * Linumiz QEMU-AURIX target (qemu-system-tricore -machine KIT_AURIX_TC277_TRB).
+ * Provides ul_printk_char_out() and ul_sim_exit() for the Linumiz QEMU-AURIX
+ * target (qemu-system-tricore -machine KIT_AURIX_TC277_TRB).
  *
  * Linumiz QEMU-AURIX VIRT debug device (hw/tricore/tricore_virt.c):
- *   0xBF000020  uint32_t  write byte → putchar on QEMU stdout; write 0 → fflush
+ *   0xBF000020  uint32_t  write byte → putchar on QEMU stdout
  *   0xBF000028  uint32_t  write code → exit(code) inside QEMU
- *
- * This device does not exist on real TC27x silicon.
  */
 
 #include <stdint.h>
@@ -26,7 +24,9 @@ void ul_printk_char_out(char c)
 	VIRT_PUTCHAR = (uint32_t)(uint8_t)c;
 }
 
-void qemu_virt_exit(uint32_t code)
+__attribute__((noreturn)) void ul_sim_exit(int code)
 {
-	VIRT_EXIT = code;
+	VIRT_EXIT = (uint32_t)code;
+	for (;;)
+		;
 }
