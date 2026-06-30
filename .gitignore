@@ -7,7 +7,15 @@
 build/
 
 # Unit test binaries (host-compiled)
-tests/sched_unit/sched_unit_test
+tests/*_unit/*_unit_test
+
+# TSIM simulation artefacts
+Sim.out
+Sim64.out
+Sim.traceinstr
+Sim.tracepc
+Sim.tracejmps
+Sim.tracels
 
 # Python
 __pycache__/
