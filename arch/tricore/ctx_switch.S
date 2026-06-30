@@ -29,8 +29,8 @@
  *   RFE   → restores upper context (PSW, A10, A11, D8-D11, A12-A15, D12-D15),
  *            frees upper CSA frame, jumps to A11
  *
- * NOTE: QEMU Linumiz CSA layout differs from TC1.6.1 spec:
- *   Upper (CALL/RFE): PCXI PSW A10 A11 D8-D11 A12-A15 D12-D15
+ * TC1.6.1 CSA layout:
+ *   Upper (CALL/RFE):    PCXI PSW A10 A11 D8-D11 A12-A15 D12-D15
  *   Lower (SVLCX/RSLCX): PCXI A11 A2 A3 D0-D3 A4-A7 D4-D7
  *
  * For a freshly fabricated thread "to", ul_arch_ctx_init() builds:
@@ -86,12 +86,11 @@ ul_arch_ctx_switch:
     /*
      * Clear CDC (PSW[6:0]) before RSLCX+RFE.
      *
-     * QEMU Linumiz initialises PSW with CDE=1.  Every CALL accumulates
-     * CDC > 0.  RFE traps NEST when CDC != 0 AND CDE = 1, because we
-     * are calling RFE from a CALL chain rather than from an ISR.
+     * When CDE=1, every CALL increments CDC.  RFE from a CALL chain
+     * (not from an ISR) traps NEST when CDC != 0 and CDE = 1.
      * Zeroing CDC satisfies cdc_zero() and bypasses the NEST check.
-     * After RFE, PSW is restored from the upper CSA frame (fabricated
-     * or previously saved), so this MTCR only affects the RFE check.
+     * After RFE, PSW is restored from the upper CSA frame so this
+     * MTCR only affects the one upcoming RFE.
      */
     mfcr    %d1, 0xFE04          /* d1 = current PSW                       */
     mov     %d2, 0x7f

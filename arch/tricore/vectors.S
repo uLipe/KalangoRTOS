@@ -167,7 +167,7 @@ _ul_int_table:
  *     save PCXI -> g_preempt_old_ctx->pcxi  (records L_sv->U_hw for later resume)
  *     PCXI <- g_preempt_new_ctx->pcxi        (switch to next thread's CSA chain)
  *     clear g_preempt_new_ctx
- *     clear CDC (QEMU NEST check workaround, same as ctx_switch.S)
+ *     clear CDC (prevents NEST trap on RFE from CALL chain, see ctx_switch.S)
  *     rslcx + rfe  -> restore next thread context
  *   else:
  *     rslcx + rfe  -> restore interrupted thread
@@ -215,7 +215,7 @@ _arch_tick_preempt_isr:
     mtcr    0xFE00, %d0
     isync
 
-    /* Clear CDC (avoids QEMU NEST trap on RFE — see ctx_switch.S) */
+    /* Clear CDC before RFE to prevent NEST trap (see ctx_switch.S) */
     mfcr    %d1, 0xFE04
     mov     %d2, 0x7f
     andn    %d1, %d1, %d2

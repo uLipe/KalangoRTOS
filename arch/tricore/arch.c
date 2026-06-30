@@ -44,7 +44,16 @@ void ul_arch_cpu_irq_disable(void)
 
 void ul_arch_cpu_idle(void)
 {
+#if UL_ARCH_IDLE_IS_WAIT
+	/*
+	 * WAIT suspends the pipeline until the next pending interrupt.
+	 * ICR.IE must be 1 before entering WAIT, which is the case for
+	 * any thread context (PIE=1 in the fabricated lower CSA).
+	 */
+	__asm__ volatile("wait" ::: "memory");
+#else
 	__asm__ volatile("nop");
+#endif
 }
 
 void ul_arch_cpu_halt(void)
@@ -55,8 +64,10 @@ void ul_arch_cpu_halt(void)
 
 uint32_t ul_arch_cpu_clz(uint32_t val)
 {
-	(void)val;
-	return 32; /* TODO: CLZ instruction inline */
+	uint32_t result;
+
+	__asm__("clz %0, %1" : "=d"(result) : "d"(val));
+	return result;
 }
 
 /* =========================================================================
@@ -132,14 +143,12 @@ extern void _ul_thread_trampoline(void);
 /*
  * Fabricate the initial two-frame CSA chain for a new thread.
  *
- * IMPORTANT: The QEMU Linumiz fork inverts upper/lower register sets
- * relative to the TC1.6.1 specification:
- *
+ * TC1.6.1 context layout:
  *   Upper context (CALL/RFE): PCXI PSW A10 A11 D8-D11 A12-A15 D12-D15
  *   Lower context (SVLCX/RSLCX): PCXI A11 A2 A3 D0-D3 A4-A7 D4-D7
  *
- * RFE sequence in QEMU: PC = A11 (pre-restore) → load upper context.
- * Therefore lower_csa[1] = trampoline sets the jump target of RFE.
+ * RFE restores the upper context; PC is taken from A11 pre-restore.
+ * lower_csa[1] = trampoline sets the jump target for the first RFE.
  *
  * Fabricated frames:
  *
@@ -176,10 +185,10 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 	 *   IS  = 0  (thread uses A10 / task stack, never ISP)
 	 *   IO       (as requested by caller)
 	 *
-	 * GW and CDE are inherited from the kernel PSW.  QEMU Linumiz starts
-	 * with IS=1 in the reset PSW and never clears it, so we must strip IS
-	 * explicitly; leaving IS=1 causes a class-4 PSE trap after the first
-	 * RFE into a fabricated context.
+	 * GW and CDE are inherited from the kernel PSW.  IS must be stripped
+	 * explicitly because some TriCore startup environments reset with IS=1;
+	 * leaving IS=1 causes a class-4 PSE trap after the first RFE into a
+	 * fabricated context.
 	 */
 	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
 	psw &= ~0x7Fu;					/* clear CDC */
@@ -206,10 +215,9 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 	for (i = 0u; i < 16u; i++)
 		lower_csa[i] = 0u;
 	/*
-	 * PIE (bit 21) = 1: the RFE that starts this thread sets ICR.IE=1.
-	 * Without PIE=1, interrupts are left disabled in every new thread
-	 * (ICR.IE comes from PCXI.PIE on RFE), making timer-driven preemption
-	 * impossible while a thread is running.
+	 * PIE (bit 21) = 1: the RFE that starts this thread sets ICR.IE=1
+	 * (ICR.IE comes from PCXI.PIE on RFE).  Without PIE=1, interrupts
+	 * are left disabled in every new thread, blocking timer preemption.
 	 */
 	lower_csa[0] = upper_link | UL_CSA_UL_FLAG | (1u << 21);
 	lower_csa[1] = (uint32_t)(uintptr_t)_ul_thread_trampoline;
@@ -230,7 +238,7 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
  *
  * Each frame is prepended to the FCX free list.  Interrupts must be disabled
  * by the caller or the entire operation must be atomic w.r.t. the ISR (both
- * csa_alloc in the ISR and this function touch FCX).  On single-core QEMU
+ * csa_alloc in the ISR and this function touch FCX).  On a single-core system
  * this is safe because the timer ISR only touches FCX via hardware.
  */
 void ul_arch_ctx_free(ul_arch_ctx_t *ctx)
@@ -396,7 +404,7 @@ static void mpu_write_enables(uint8_t prs, uint32_t dpre, uint32_t dpwe,
  *   DPR 0: entire 4 GiB address space (kernel PRS 0, R+W)
  *   DPR 1: peripheral region (kernel PRS 0, R+W)
  *   DPR 2: flash region (user PRS 1, R only — needed for const data)
- *   DPR 3: QEMU virt device (PRS 0+1, R+W) — QEMU checks DPR even without PROTEN
+ *   DPR 3: board console device (PRS 0+1, R+W; only when UL_ARCH_QEMU_VIRT_CONSOLE)
  *   DPR 4: shared RAM (BSS..user_pool_end, PRS 1 R+W) — temporary, see arch_config.h
  *   DPR 5: reserved (unused, zeroed)
  *   DPR 6–17: per-thread dynamic (configured by mpu_switch())
@@ -453,20 +461,21 @@ void ul_arch_mpu_init(void)
 		      UL_ARCH_FLASH_BASE + UL_ARCH_FLASH_SIZE - 8u);
 
 	/*
-	 * DPR 3: QEMU virtual device (0xBF000000..0xBF000FFF).
-	 * QEMU's TC2xx model enforces DPR-based write checks based on PSW.PRS
-	 * even when SYSCON.PROTEN = 0.  Without this entry in DPWE_1, any
-	 * ul_printk() call from a PRS=1 thread triggers class-1 tin=3 trap.
+	 * DPR 3: board-specific console MMIO range (conditional).
+	 * Some simulators enforce DPR-based write checks based on PSW.PRS
+	 * even when SYSCON.PROTEN = 0.  This slot covers the console device
+	 * range so ul_printk() can be called from any privilege level.
 	 */
+#if UL_ARCH_QEMU_VIRT_CONSOLE
 	mpu_write_dpr(UL_ARCH_MPU_VIRT_DPR,
 		      UL_ARCH_QEMU_VIRT_BASE,
 		      UL_ARCH_QEMU_VIRT_BASE + UL_ARCH_QEMU_VIRT_SIZE - 8u);
+#endif
 
 	/*
-	 * DPR 4: shared RAM placeholder — writes to DPR 4 CSFR (0xC020/0xC024)
-	 * are silently ignored by QEMU (only DPR 0-3 are implemented).
-	 * Left here so real TC277 hardware (which has 18 DPRs) benefits from
-	 * a fine-grained RAM range once per-domain sections exist.
+	 * DPR 4: kernel RAM range — provides fine-grained isolation on
+	 * TC27x silicon (18 DPRs).  On platforms with fewer DPR slots the
+	 * write to this CSFR address is silently ignored.
 	 */
 	mpu_write_dpr(UL_ARCH_MPU_RAM_DPR,
 		      (uint32_t)(uintptr_t)_ul_kernel_data_start,
@@ -490,29 +499,36 @@ void ul_arch_mpu_init(void)
 			  0x3FFu);	/* CPXE: all 10 CPRs executable */
 
 	/*
-	 * PRS 1 (user/driver threads) — QEMU TC277 limitation: only DPR 0-3
-	 * are implemented; writes to DPR 4+ CSFR addresses are silently ignored.
+	 * PRS 1 (user/driver threads):
+	 *   DPR 0 — full 4 GiB, R+W — covers stacks, heap, globals
+	 *   DPR 1 — peripheral region (R+W)
+	 *   DPR 2 — flash (R only)
+	 *   DPR 3 — board console MMIO (R+W, enabled only when configured)
 	 *
-	 * Available slots (4 total):
-	 *   DPR 0 — full 4 GiB, R+W — covers thread stacks, heap, globals
-	 *   DPR 1 — peripheral region (R+W — drivers map sub-ranges via ul_mem_map)
-	 *   DPR 2 — flash (R only — code + const data)
-	 *   DPR 3 — QEMU virtual console (R+W — ul_printk uses this)
-	 *
-	 * With only 4 DPRs, kernel-RAM vs user-RAM separation is not enforceable
-	 * on QEMU.  On real TC277 (18 DPR), a separate DPR per domain replaces
-	 * the blanket DPR-0 R+W grant, enabling true per-thread write isolation.
+	 * On TC27x silicon (18 DPRs), per-domain DPRs replace the blanket
+	 * DPR-0 grant once domain sections are wired up via ul_mpu_switch().
 	 */
+#if UL_ARCH_QEMU_VIRT_CONSOLE
 	mpu_write_enables(1u,
-			  (1u << UL_ARCH_MPU_KERNEL_DPR) | /* full range */
+			  (1u << UL_ARCH_MPU_KERNEL_DPR) |
 			  (1u << UL_ARCH_MPU_PERIPH_DPR)  |
 			  (1u << UL_ARCH_MPU_FLASH_DPR)   |
-			  (1u << UL_ARCH_MPU_VIRT_DPR),    /* DPRE */
-			  (1u << UL_ARCH_MPU_KERNEL_DPR) | /* full range */
+			  (1u << UL_ARCH_MPU_VIRT_DPR),
+			  (1u << UL_ARCH_MPU_KERNEL_DPR) |
 			  (1u << UL_ARCH_MPU_PERIPH_DPR)  |
-			  (1u << UL_ARCH_MPU_VIRT_DPR),    /* DPWE */
-			  (1u << UL_ARCH_MPU_CPR_ALL),	    /* CPRE */
-			  (1u << UL_ARCH_MPU_CPR_ALL));	    /* CPXE */
+			  (1u << UL_ARCH_MPU_VIRT_DPR),
+			  (1u << UL_ARCH_MPU_CPR_ALL),
+			  (1u << UL_ARCH_MPU_CPR_ALL));
+#else
+	mpu_write_enables(1u,
+			  (1u << UL_ARCH_MPU_KERNEL_DPR) |
+			  (1u << UL_ARCH_MPU_PERIPH_DPR)  |
+			  (1u << UL_ARCH_MPU_FLASH_DPR),
+			  (1u << UL_ARCH_MPU_KERNEL_DPR) |
+			  (1u << UL_ARCH_MPU_PERIPH_DPR),
+			  (1u << UL_ARCH_MPU_CPR_ALL),
+			  (1u << UL_ARCH_MPU_CPR_ALL));
+#endif
 
 	/* PRS 2, 3: remain zeroed (unused) */
 }void ul_arch_mpu_enable(void)
@@ -737,8 +753,7 @@ bool ul_arch_irq_src_is_pending(uint8_t srpn)
 /*
  * ul_arch_irq_src_trigger — software-raise an IRQ for testing.
  * Writes the SETR bit to the SRC register associated with @srpn.
- * Only useful in test environments (QEMU); the SRC must have been
- * configured via ul_arch_irq_src_configure first.
+ * The SRC must have been configured via ul_arch_irq_src_configure first.
  */
 void ul_arch_irq_src_trigger(uint8_t srpn)
 {
@@ -779,8 +794,9 @@ void _arch_generic_isr_handler(void)
 /* =========================================================================
  * Tick timer — STM0 tickless implementation
  *
- * Register accessors map directly to the STM0 MMIO addresses.
- * The QEMU Linumiz fork places STM0 at 0xF0000000 (real TC27x: 0xF0001000).
+ * Register accessors map directly to the STM0 MMIO addresses defined in
+ * arch_config.h (UL_ARCH_STM0_BASE).  The default is the TC27x hardware
+ * address 0xF0001000; override with -DUL_ARCH_STM0_BASE for other targets.
  * ========================================================================= */
 
 static volatile uint32_t g_tick_count __attribute__((section(".bss.g_tick_count")));
@@ -804,15 +820,12 @@ void ul_arch_tick_init(void)
 	stm0_write(UL_ARCH_STM0_CMCON, 0x0000001Fu);
 
 	/*
-	 * Configure SRC_STM0SR0.
-	 * The Linumiz QEMU IR uses slot index 0xC0 for STM0 SR0 (not the
-	 * hardware-correct 0xF0038490).  TC27x machines have tc4x_mode=0 in
-	 * the IR struct, so irq_evaluate checks SRE at bit 10 (not bit 23).
-	 * See arch_config.h for the full Linumiz SRC field layout.
+	 * Configure SRC register for STM0 SR0.
+	 * Address and bit positions are board-specific; see arch_config.h for
+	 * UL_ARCH_SRC_STM0_SR0, UL_ARCH_SRC_SRE_BIT, and UL_ARCH_SRC_CONFIG_VAL.
 	 */
 	*(volatile uint32_t *)UL_ARCH_SRC_STM0_SR0 = UL_ARCH_SRC_CONFIG_VAL;
 
-	/* ICR: leave CMP0EN=0; caller arms with ul_arch_tick_deadline(). */
 	stm0_write(UL_ARCH_STM0_ICR, 0u);
 }
 
@@ -826,10 +839,7 @@ void ul_arch_tick_deadline(uint32_t delta_us)
 	uint32_t now = stm0_read(UL_ARCH_STM0_TIM0);
 	uint32_t target = now + delta_us * UL_ARCH_STM_TICKS_PER_US;
 
-	/* Write CMP0 first — QEMU timer_update arms the QEMU timer on this write. */
 	stm0_write(UL_ARCH_STM0_CMP0, target);
-
-	/* Enable CMP0EN: interrupt fires when TIM0 reaches CMP0. */
 	stm0_write(UL_ARCH_STM0_ICR, 0x00000001u);
 }
 
@@ -846,20 +856,13 @@ void _arch_tick_isr_handler(void)
 {
 	uint32_t psw;
 
-	/*
-	 * Elevate to kernel PRS 0 before any data access.
-	 * CSA (SVLCX/CALL) and CSFR (MTCR) ops bypass DPR, so this is safe.
-	 */
 	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
 	psw &= ~0x3000u;
 	__asm__ volatile("mtcr 0xFE04, %0\n\t"
 			 "isync"
 			 :: "d"(psw) : "memory");
 
-	/* Ack CMP0 match to prevent re-trigger when CMP0EN is re-enabled. */
 	stm0_write(UL_ARCH_STM0_ISCR, 0x00000001u);
-
-	/* Disable CMP0EN: one-shot; caller re-arms via ul_arch_tick_deadline(). */
 	stm0_write(UL_ARCH_STM0_ICR, 0u);
 
 	g_tick_count++;
@@ -877,15 +880,14 @@ uint32_t ul_arch_atomic_cas(volatile uint32_t *ptr,
 	uint32_t old;
 
 	/*
-	 * Software CAS via DISABLE/ENABLE.
+	 * Single-core CAS via DISABLE/ENABLE.
 	 *
-	 * CMPSWAP.W compiles correctly with the %A modifier but the
-	 * QEMU Linumiz TC277 fork treats the instruction as a NOP.
-	 * MFCR/MTCR on ICR (0xFE2C) require IO >= 2 and trap from
-	 * driver threads (IO=1).  DISABLE/ENABLE are accessible at
-	 * IO >= 1 and provide equivalent single-core atomicity.
+	 * DISABLE/ENABLE are accessible at IO >= 1 (driver privilege) and
+	 * provide correct atomicity on a single-core system by preventing
+	 * preemption from ISRs.
 	 *
-	 * TODO: use CMPSWAP.W on real TC27x multi-core targets.
+	 * For multi-core targets, replace with CMPSWAP.W once the SMP
+	 * scheduler is introduced.
 	 */
 	__asm__ __volatile__("disable" ::: "memory");
 	old = *ptr;
@@ -957,13 +959,9 @@ void ul_arch_syscall_entry(void)
 	uint32_t psw;
 
 	/*
-	 * Elevate to kernel context (PRS 0) so that all kernel data structures
-	 * (TCBs, endpoint pool, etc.) are accessible via DPR.  The SYSCALL
-	 * instruction saves the caller's PSW (PRS=1) in the upper CSA before
-	 * jumping here, so RFE in vectors.S restores the user's PRS correctly.
-	 *
-	 * CSA/CSFR accesses bypass DPR, so this inline asm is safe in any PRS.
-	 * No data-stack writes occur before this point.
+	 * Elevate to kernel PRS 0 before any data access.  SYSCALL saves the
+	 * caller's PSW (PRS=1) in the upper CSA; RFE in vectors.S restores it.
+	 * CSA/CSFR accesses bypass DPR so this inline asm is safe in any PRS.
 	 */
 	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
 	psw &= ~0x3000u;	/* PSW.PRS [13:12] = 0 (kernel PRS) */

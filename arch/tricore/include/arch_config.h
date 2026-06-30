@@ -6,6 +6,24 @@
  * Full specification: docs/arch_api_spec.md §4
  *
  * Included transitively via ul/arch.h; do not include directly.
+ *
+ * Board-specific overrides
+ * ------------------------
+ * All peripheral addresses are guarded by #ifndef so that a board's
+ * Makefile can override them via -D flags without patching this file.
+ *
+ * Defaults target TC27x real silicon and the TSIM simulator with a TC27x
+ * MConfig (boards/tsim_tc27x/MConfig).
+ *
+ * For the QEMU Linumiz fork (boards/qemu_tc27x) the following overrides
+ * are required in the board Makefile:
+ *
+ *   -DUL_ARCH_STM0_BASE=0xF0000000u        (QEMU remaps STM0 here)
+ *   -DUL_ARCH_SRC_STM0_SR0=0xF0038300u     (QEMU compressed IR slot 0xC0)
+ *   -DUL_ARCH_SRC_SRE_BIT=10u              (QEMU IR format: SRE at bit 10)
+ *   -DUL_ARCH_RAM_BASE=0x90000000u          (QEMU uses LMU space for RAM)
+ *   -DUL_ARCH_IDLE_IS_WAIT=0               (NOP idle; no STM-driven wakeup)
+ *   -DUL_ARCH_QEMU_VIRT_CONSOLE=1          (enable VIRT device DPR range)
  */
 
 #ifndef UL_ARCH_TRICORE_CONFIG_H
@@ -34,33 +52,21 @@
 /* =========================================================================
  * PSW initial values for fabricated thread contexts.
  *
- * TC1.6.1 PSW bit layout (confirmed from QEMU cpu.h / Ghidra / NuttX):
+ * TC1.6.1 PSW bit layout:
  *   [11:10] IO  — privilege: 00=User-0, 01=User-1, 10=Supervisor
  *   [9]     IS  — interrupt stack indicator (0 = task stack)
  *   [8]     GW  — global address register write permission
  *   [7]     CDE — call depth count enable (0 = disabled)
  *   [6:0]   CDC — call depth counter
  *
- * CDE=0: call depth protection disabled — safe for fabricated contexts.
+ * CDE=1: call depth protection enabled (inherited from kernel PSW).
  * IS=0: thread uses its own stack (A10), not ISP.
  * GW=1: allow writes to small-data global registers (A0, A1, A8, A9).
+ *
+ * NOTE: ul_arch_ctx_init() reads the live kernel PSW and overrides IS=0
+ * and CDC=0 at thread creation time, so these constants are for reference
+ * and test/tooling use only.
  * ========================================================================= */
-/*
- * Reference PSW values for TC1.6.1 fabricated thread contexts.
- * These are NOT used directly by ul_arch_ctx_init — that function reads
- * the runtime kernel PSW via MFCR and strips IS/CDC before applying the IO
- * level, so it inherits GW and CDE from the live kernel state.
- *
- * These constants remain here for documentation and for any future use
- * outside of ctx_init (e.g. unit tests, tooling).
- *
- * Key constraints confirmed against QEMU Linumiz:
- *   IS  = 0  — QEMU starts with IS=1 (reset PSW = 0xB80); threads need IS=0
- *              or RFE into the fabricated context triggers a class-4 PSE trap.
- *   CDE = 1  — inherited from kernel; required for the QEMU peripheral check.
- *   CDC = 0  — fresh counter for the new thread.
- *   GW  = 1  — allow writes to small-data globals (A0/A1/A8/A9).
- */
 #define UL_ARCH_PSW_USER	0x00000180u	/* IO=0, IS=0, GW=1, CDE=1, CDC=0 */
 #define UL_ARCH_PSW_DRIVER	0x00000580u	/* IO=1, IS=0, GW=1, CDE=1, CDC=0 */
 #define UL_ARCH_PSW_SUPER	0x00000980u	/* IO=2, IS=0, GW=1, CDE=1, CDC=0 */
@@ -74,14 +80,15 @@
 #define UL_ARCH_CSA_MIN_COUNT	64	/* minimum frames in the pool */
 
 /* =========================================================================
- * STM0 peripheral registers (TC2xx AURIX)
+ * STM0 peripheral registers (TC27x AURIX)
  *
- * NOTE: The QEMU Linumiz fork maps STM0 at 0xF0000000 (older revision).
- * Real TC27x hardware and the upstream QEMU fix use 0xF0001000.
- * Define UL_ARCH_STM0_BASE to 0xF0001000 when targeting real hardware.
+ * Default: TC27x hardware / TSIM (boards/tsim_tc27x/MConfig STM_BASE_ADDRESS).
+ * Override for QEMU Linumiz: -DUL_ARCH_STM0_BASE=0xF0000000u
  * ========================================================================= */
 
-#define UL_ARCH_STM0_BASE	0xF0000000u	/* STM0 base (QEMU Linumiz fork) */
+#ifndef UL_ARCH_STM0_BASE
+#define UL_ARCH_STM0_BASE	0xF0001000u	/* TC27x hardware / TSIM */
+#endif
 #define UL_ARCH_STM0_TIM0	(UL_ARCH_STM0_BASE + 0x010u)
 #define UL_ARCH_STM0_CMP0	(UL_ARCH_STM0_BASE + 0x030u)
 #define UL_ARCH_STM0_CMCON	(UL_ARCH_STM0_BASE + 0x038u)
@@ -91,27 +98,22 @@
 /*
  * Service Request Control for STM0 channel 0.
  *
- * The QEMU/EFS Linumiz IR maps each device to a compressed SRC slot index.
- * STM0 SR0 uses slot 0xC0 (TC27X_SRC_STM0_SR0 in the SoC QEMU driver).
- * Address = IR_SRC_BASE (0xF0038000) + 0xC0 * 4 = 0xF0038300.
+ * TC27x hardware / TSIM:
+ *   SRC_STM0SR0 = 0xF0038490 (SRC base 0xF0038000 + offset 0x490).
+ *   SRC register layout: [7:0]=SRPN, [11:10]=TOS, [12]=SRE, [25]=SRR,
+ *                        [26]=CLRR, [27]=SETR.
  *
- * NOTE: Real TC27x hardware has SRC_STM0SR0 at 0xF0038490. The QEMU IR
- * uses a compressed index space that does NOT mirror hardware addresses.
- *
- * Linumiz IR SRC field layout for TC27x (tc4x_mode=0 in struct at offset 0x588):
- *   [7:0]  = SRPN  (service request priority number)
- *   [10]   = SRE   (service request enable; irq_evaluate checks this bit when tc4x_mode=0)
- *   [13:11]= TOS   (target CPU index; 0 = CPU0)
- *   [24]   = SRR   (set by irq_handler when interrupt is raised)
- *   [25]   = CLRR  (write 1 to clear SRR)
- *   [26]   = SETR  (write 1 to software-trigger SRR)
- *
- * tc4x_mode=1 shifts SRE to bit 23 and TOS to bits [15:12], but TC27x uses tc4x_mode=0.
+ * QEMU Linumiz override:
+ *   -DUL_ARCH_SRC_STM0_SR0=0xF0038300u  (IR slot 0xC0 × 4)
+ *   -DUL_ARCH_SRC_SRE_BIT=10u           (QEMU IR format: SRE at bit 10)
  */
-#define UL_ARCH_SRC_STM0_SR0	0xF0038300u
+#ifndef UL_ARCH_SRC_STM0_SR0
+#define UL_ARCH_SRC_STM0_SR0	0xF0038490u
+#endif
 
-/* SRC write value: SRPN=UL_ARCH_TICK_SRPN, SRE=bit10=1, TOS=0 (CPU0) */
-#define UL_ARCH_SRC_CONFIG_VAL	(UL_ARCH_TICK_SRPN | (1u << 10))
+#ifndef UL_ARCH_SRC_SRE_BIT
+#define UL_ARCH_SRC_SRE_BIT	12u		/* TC27x: SRE at bit 12 */
+#endif
 
 /*
  * STM SRPN assigned to the kernel tick interrupt.
@@ -119,37 +121,65 @@
  */
 #define UL_ARCH_TICK_SRPN	1u
 
+/* SRC write value: SRPN=UL_ARCH_TICK_SRPN, TOS=0 (CPU0), SRE=1 */
+#ifndef UL_ARCH_SRC_CONFIG_VAL
+#define UL_ARCH_SRC_CONFIG_VAL	(UL_ARCH_TICK_SRPN | (1u << UL_ARCH_SRC_SRE_BIT))
+#endif
+
 /*
- * STM clock frequency.  Derived from f_SPB; QEMU Linumiz sets it to 50 MHz
- * (confirmed from qemu_clock_set call: period = 0x1400000000 in 2^-32 ns
- * units = 20 ns/tick = 50 MHz).  Adjust for real hardware PLL configuration.
+ * STM clock frequency (Hz).
+ * TC27x default: f_SPB = 50 MHz.  Adjust for board PLL configuration.
  */
+#ifndef UL_ARCH_STM_CLOCK_HZ
 #define UL_ARCH_STM_CLOCK_HZ	50000000u
+#endif
 
 /* Ticks per microsecond at UL_ARCH_STM_CLOCK_HZ (integer, rounded) */
 #define UL_ARCH_STM_TICKS_PER_US	(UL_ARCH_STM_CLOCK_HZ / 1000000u)
 
 /* =========================================================================
- * Memory map — board-specific QEMU TC27x layout
+ * CPU idle implementation
+ *
+ * Default: WAIT instruction — suspends the CPU until the next interrupt,
+ * which is the correct low-power idle on TriCore silicon and TSIM.
+ *
+ * Override for QEMU Linumiz: -DUL_ARCH_IDLE_IS_WAIT=0
+ * (QEMU does not reliably wake from WAIT when STM is at the QEMU address;
+ *  NOP avoids a potential deadlock in the scheduler idle loop.)
+ * ========================================================================= */
+#ifndef UL_ARCH_IDLE_IS_WAIT
+#define UL_ARCH_IDLE_IS_WAIT	1
+#endif
+
+/* =========================================================================
+ * Memory map — board-specific TC27x layout
  * Used by ul_arch_mpu_init() to configure static DPR/CPR ranges.
- * Update for real TC27x: FLASH_BASE = 0xA0000000, RAM_BASE = 0x70000000.
  * ========================================================================= */
 
-#define UL_ARCH_FLASH_BASE	0x80000000u	/* QEMU KERNEL_FLASH origin */
+#ifndef UL_ARCH_FLASH_BASE
+#define UL_ARCH_FLASH_BASE	0x80000000u	/* TC27x NC PFlash alias */
+#endif
 #define UL_ARCH_FLASH_SIZE	0x00200000u	/* 2 MiB */
-#define UL_ARCH_RAM_BASE	0x90000000u	/* QEMU KERNEL_RAM origin */
+
+#ifndef UL_ARCH_RAM_BASE
+#define UL_ARCH_RAM_BASE	0x70000000u	/* TC27x DSPR0 / TSIM */
+#endif
+#ifndef UL_ARCH_RAM_SIZE
 #define UL_ARCH_RAM_SIZE	0x00100000u	/* 1 MiB */
+#endif
+
 #define UL_ARCH_PERIPH_BASE	0xF0000000u	/* TC2xx peripheral bus */
 #define UL_ARCH_PERIPH_SIZE	0x10000000u	/* 256 MiB */
 
 /*
- * QEMU Linumiz tricore_testboard virtual device (0xBF000000).
- * Provides semihosting-style putchar (0x20), exit (0x28), etc.
- * QEMU enforces PRS-based write checks even without PROTEN=1, so this
- * range must be explicitly covered by a DPR for all PRS levels.
+ * QEMU Linumiz virtual device (0xBF000000): putchar and exit registers.
+ * Only used when UL_ARCH_QEMU_VIRT_CONSOLE is defined (QEMU builds).
  */
-#define UL_ARCH_QEMU_VIRT_BASE	0xBF000000u
-#define UL_ARCH_QEMU_VIRT_SIZE	0x00001000u	/* 4 KiB */
+#ifndef UL_ARCH_QEMU_VIRT_CONSOLE
+#define UL_ARCH_QEMU_VIRT_CONSOLE	0
+#endif
+#define UL_ARCH_QEMU_VIRT_BASE		0xBF000000u
+#define UL_ARCH_QEMU_VIRT_SIZE		0x00001000u
 
 /* =========================================================================
  * MPU CSFR addresses — TC2xx data sheet (CPU vol. §3.4)
@@ -163,16 +193,13 @@
  *   CPRn_U = 0xD004 + n*8
  *
  * Enable registers (one per PRS, bit n = DPRn/CPRn enabled for that PRS):
- *   CPRE_0..3 = 0xE000, 0xE004, 0xE008, 0xE00C   (code read enable)
- *   DPRE_0..3 = 0xE010, 0xE014, 0xE018, 0xE01C   (data read enable)
- *   DPWE_0..3 = 0xE020, 0xE024, 0xE028, 0xE02C   (data write enable)
- *   CPXE_0..3 = 0xE040, 0xE044, 0xE048, 0xE04C   (code execute enable)
+ *   CPRE_0..3 = 0xE000..0xE00C  (code read enable)
+ *   DPRE_0..3 = 0xE010..0xE01C  (data read enable)
+ *   DPWE_0..3 = 0xE020..0xE02C  (data write enable)
+ *   CPXE_0..3 = 0xE040..0xE04C  (code execute enable)
  *
  * PSW.PRS [13:12] selects the active PRS (0–3).
- * Note: the microkernel_book_tricore.md erroneously states [15:14]; the ISA
- * and QEMU source confirm bits [13:12].
- *
- * SYSCON.PROTEN = bit 1 at CSFR 0xFE14: set to enable the protection system.
+ * SYSCON.PROTEN = bit 1 at CSFR 0xFE14.
  * ========================================================================= */
 
 /* DPR lower/upper at slot n */
@@ -213,41 +240,30 @@
  *   Slot 0: kernel — covers entire address space (PRS 0 R+W)
  *   Slot 1: peripheral space (PRS 0 R+W; driver threads via UL_MMAP_PERIPH)
  *   Slot 2: flash read (PRS 1 R — user threads need to read constants)
- *   Slot 3: QEMU virt device (PRS 0+1 R+W — needed for ul_printk from any PRS)
+ *   Slot 3: QEMU virt device (only when UL_ARCH_QEMU_VIRT_CONSOLE=1)
  *   Slots 4–5: reserved
  *   Slots 6–17: per-thread dynamic regions (DPR); configured by mpu_switch()
  *
  *   CPR slot 0: all flash execute+read (enabled for PRS 0 and PRS 1)
  *   CPR slots 1–9: per-thread code regions (reserved for future use)
  *
- * PSW.IO field for privilege levels:
- *   0 = User-0 (IO=0), 1 = User-1/Driver (IO=1), 2 = Supervisor (IO=2)
- *
  * PSW.PRS field [13:12]:
  *   0 = kernel PRS (used by root thread and kernel internals)
  *   1 = user PRS  (all non-kernel threads)
  */
-#define UL_ARCH_MPU_KERNEL_DPR	0	/* DPR 0: entire addr-space (kernel + user) */
-#define UL_ARCH_MPU_PERIPH_DPR	1	/* DPR 1: peripheral region */
-#define UL_ARCH_MPU_FLASH_DPR	2	/* DPR 2: flash read */
-#define UL_ARCH_MPU_VIRT_DPR	3	/* DPR 3: QEMU virt console */
-/*
- * DPR 4: shared RAM — effective only on real TC277 (18 DPR).
- * QEMU's linumiz TC277 model silently ignores MTCR to CSFR 0xC020/0xC024,
- * so DPR 4 bounds read back as 0.  PRS-1 RAM access is instead granted via
- * DPR 0 (full range) in the QEMU build.  On real hardware with 18 DPRs,
- * DPR 4 and above provide per-domain fine-grained isolation.
- */
-#define UL_ARCH_MPU_RAM_DPR	4	/* DPR 4: shared RAM (real HW only) */
-#define UL_ARCH_MPU_USER_DPR_BASE 6	/* DPR 6..17: per-thread dynamic */
-#define UL_ARCH_MPU_CPR_ALL	0	/* CPR 0: all flash, execute+read */
+#define UL_ARCH_MPU_KERNEL_DPR	0
+#define UL_ARCH_MPU_PERIPH_DPR	1
+#define UL_ARCH_MPU_FLASH_DPR	2
+#define UL_ARCH_MPU_VIRT_DPR	3	/* QEMU virt console slot (conditional) */
+#define UL_ARCH_MPU_RAM_DPR	4
+#define UL_ARCH_MPU_USER_DPR_BASE 6
+#define UL_ARCH_MPU_CPR_ALL	0
 
 /* PSW.PRS value for non-kernel threads */
 #define UL_ARCH_PRS_USER	1u
 
 /* =========================================================================
  * Syscall ABI — register assignments for SYSCALL instruction
- * Syscall number in d15; arguments in d4–d7; return value in d2.
  * ========================================================================= */
 
 #define UL_ARCH_SYSCALL_NR_REG	 "d15"
