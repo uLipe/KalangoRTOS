@@ -12,18 +12,15 @@
  * All peripheral addresses are guarded by #ifndef so that a board's
  * Makefile can override them via -D flags without patching this file.
  *
- * Defaults target TC27x real silicon and the TSIM simulator with a TC27x
- * MConfig (boards/tsim_tc27x/MConfig).
+ * Defaults target TC2xx/TC3xx silicon (STM0 at 0xF0001000).
  *
- * For the QEMU Linumiz fork (boards/qemu_tc27x) the following overrides
- * are required in the board Makefile:
+ * For QEMU Linumiz (boards/qemu_tc3xx) the following overrides apply:
  *
- *   -DUL_ARCH_STM0_BASE=0xF0000000u        (QEMU remaps STM0 here)
- *   -DUL_ARCH_SRC_STM0_SR0=0xF0038300u     (QEMU compressed IR slot 0xC0)
- *   -DUL_ARCH_SRC_SRE_BIT=10u              (QEMU IR format: SRE at bit 10)
- *   -DUL_ARCH_RAM_BASE=0x90000000u          (QEMU uses LMU space for RAM)
- *   -DUL_ARCH_IDLE_IS_WAIT=0               (NOP idle; no STM-driven wakeup)
- *   -DUL_ARCH_QEMU_VIRT_CONSOLE=1          (enable VIRT device DPR range)
+ *   -DUL_ARCH_SRC_STM0_SR0=0xF0038300u  (IR slot 0xC0, SRE at bit 10)
+ *   -DUL_ARCH_SRC_SRE_BIT=10u
+ *   -DUL_ARCH_RAM_BASE=0x70000000u       (CPU0 DSPR)
+ *   -DUL_ARCH_IDLE_IS_WAIT=0             (NOP idle in QEMU)
+ *   -DUL_ARCH_QEMU_VIRT_CONSOLE=1        (enable VIRT device DPR range)
  */
 
 #ifndef UL_ARCH_TRICORE_CONFIG_H
@@ -80,14 +77,14 @@
 #define UL_ARCH_CSA_MIN_COUNT	64	/* minimum frames in the pool */
 
 /* =========================================================================
- * STM0 peripheral registers (TC27x AURIX)
+ * STM0 peripheral registers
  *
- * Default: TC27x hardware / TSIM (boards/tsim_tc27x/MConfig STM_BASE_ADDRESS).
- * Override for QEMU Linumiz: -DUL_ARCH_STM0_BASE=0xF0000000u
+ * Default: TC3xx / TC2xx hardware address 0xF0001000.
+ * Override via -DUL_ARCH_STM0_BASE if a board maps it elsewhere.
  * ========================================================================= */
 
 #ifndef UL_ARCH_STM0_BASE
-#define UL_ARCH_STM0_BASE	0xF0001000u	/* TC27x hardware / TSIM */
+#define UL_ARCH_STM0_BASE	0xF0001000u
 #endif
 #define UL_ARCH_STM0_TIM0	(UL_ARCH_STM0_BASE + 0x010u)
 #define UL_ARCH_STM0_CMP0	(UL_ARCH_STM0_BASE + 0x030u)
@@ -98,21 +95,16 @@
 /*
  * Service Request Control for STM0 channel 0.
  *
- * TC27x hardware / TSIM:
- *   SRC_STM0SR0 = 0xF0038490 (SRC base 0xF0038000 + offset 0x490).
- *   SRC register layout: [7:0]=SRPN, [11:10]=TOS, [12]=SRE, [25]=SRR,
- *                        [26]=CLRR, [27]=SETR.
- *
- * QEMU Linumiz override:
- *   -DUL_ARCH_SRC_STM0_SR0=0xF0038300u  (IR slot 0xC0 × 4)
- *   -DUL_ARCH_SRC_SRE_BIT=10u           (QEMU IR format: SRE at bit 10)
+ * TC27x hardware: SRC_STM0SR0 = 0xF0038490, SRE at bit 12.
+ * QEMU Linumiz (TC3xx): IR slot 0xC0 → 0xF0038300, SRE at bit 10.
+ * Override via -DUL_ARCH_SRC_STM0_SR0 and -DUL_ARCH_SRC_SRE_BIT.
  */
 #ifndef UL_ARCH_SRC_STM0_SR0
 #define UL_ARCH_SRC_STM0_SR0	0xF0038490u
 #endif
 
 #ifndef UL_ARCH_SRC_SRE_BIT
-#define UL_ARCH_SRC_SRE_BIT	12u		/* TC27x: SRE at bit 12 */
+#define UL_ARCH_SRC_SRE_BIT	12u
 #endif
 
 /*
@@ -143,10 +135,9 @@
  * Default: WAIT instruction — suspends the CPU until the next interrupt,
  * which is the correct low-power idle on TriCore silicon.
  *
- * Both QEMU Linumiz and TSIM standalone mode (-s) treat a CPU in WAIT state
- * as "no progress" and time out before the timer interrupt fires.  Use
- * -DUL_ARCH_IDLE_IS_WAIT=0 in all simulator builds (NOP busy-wait keeps the
- * instruction counter advancing so the simulator does not stall-detect).
+ * QEMU Linumiz treats a CPU in WAIT state as "no progress" and may stall
+ * before the timer interrupt fires.  Use -DUL_ARCH_IDLE_IS_WAIT=0 in all
+ * QEMU builds (NOP busy-wait keeps the instruction counter advancing).
  * ========================================================================= */
 #ifndef UL_ARCH_IDLE_IS_WAIT
 #define UL_ARCH_IDLE_IS_WAIT	1
@@ -163,7 +154,7 @@
 #define UL_ARCH_FLASH_SIZE	0x00200000u	/* 2 MiB */
 
 #ifndef UL_ARCH_RAM_BASE
-#define UL_ARCH_RAM_BASE	0x70000000u	/* TC27x DSPR0 / TSIM */
+#define UL_ARCH_RAM_BASE	0x70000000u	/* TC2xx/TC3xx CPU0 DSPR */
 #endif
 #ifndef UL_ARCH_RAM_SIZE
 #define UL_ARCH_RAM_SIZE	0x00100000u	/* 1 MiB */

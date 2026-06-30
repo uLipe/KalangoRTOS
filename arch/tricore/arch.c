@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <ul/microkernel.h>
+#include <ul/config.h>
 #include <ul_arch.h>
 #include <kernel/include/ul_printk.h>
 /* =========================================================================
@@ -792,14 +793,20 @@ void _arch_generic_isr_handler(void)
 }
 
 /* =========================================================================
- * Tick timer — STM0 tickless implementation
+ * Tick timer — STM0 periodic (ticked) implementation
  *
  * Register accessors map directly to the STM0 MMIO addresses defined in
- * arch_config.h (UL_ARCH_STM0_BASE).  The default is the TC27x hardware
- * address 0xF0001000; override with -DUL_ARCH_STM0_BASE for other targets.
+ * arch_config.h (UL_ARCH_STM0_BASE).
+ *
+ * CMP0 is re-armed in the ISR by adding the fixed period to the previous
+ * compare value, avoiding drift accumulation over time.
  * ========================================================================= */
 
-static volatile uint32_t g_tick_count __attribute__((section(".bss.g_tick_count")));
+/*
+ * Number of STM0 counter ticks per kernel tick period.
+ * Derived from the board STM clock and the kernel tick rate.
+ */
+#define TICK_PERIOD_TICKS	(UL_ARCH_STM_CLOCK_HZ / UL_CONFIG_TICK_HZ)
 
 static inline uint32_t stm0_read(uint32_t reg_addr)
 {
@@ -813,39 +820,23 @@ static inline void stm0_write(uint32_t reg_addr, uint32_t val)
 
 void ul_arch_tick_init(void)
 {
+	uint32_t now;
+
 	/*
-	 * CMCON: MSTART0=0, MSIZE0=31 → compare all 32 bits of TIM0 against CMP0.
-	 * Write before enabling SRC so no spurious match fires.
+	 * CMCON: MSTART0=0, MSIZE0=31 — compare all 32 bits of TIM0 against CMP0.
+	 * Configure SRC and arm the first compare before enabling interrupts.
 	 */
 	stm0_write(UL_ARCH_STM0_CMCON, 0x0000001Fu);
-
-	/*
-	 * Configure SRC register for STM0 SR0.
-	 * Address and bit positions are board-specific; see arch_config.h for
-	 * UL_ARCH_SRC_STM0_SR0, UL_ARCH_SRC_SRE_BIT, and UL_ARCH_SRC_CONFIG_VAL.
-	 */
 	*(volatile uint32_t *)UL_ARCH_SRC_STM0_SR0 = UL_ARCH_SRC_CONFIG_VAL;
 
-	stm0_write(UL_ARCH_STM0_ICR, 0u);
+	now = stm0_read(UL_ARCH_STM0_TIM0);
+	stm0_write(UL_ARCH_STM0_CMP0, now + TICK_PERIOD_TICKS);
+	stm0_write(UL_ARCH_STM0_ICR, 0x00000001u);
 }
 
 uint32_t ul_arch_tick_get(void)
 {
 	return stm0_read(UL_ARCH_STM0_TIM0) / UL_ARCH_STM_TICKS_PER_US;
-}
-
-void ul_arch_tick_deadline(uint32_t delta_us)
-{
-	uint32_t now = stm0_read(UL_ARCH_STM0_TIM0);
-	uint32_t target = now + delta_us * UL_ARCH_STM_TICKS_PER_US;
-
-	stm0_write(UL_ARCH_STM0_CMP0, target);
-	stm0_write(UL_ARCH_STM0_ICR, 0x00000001u);
-}
-
-uint32_t ul_arch_tick_count(void)
-{
-	return g_tick_count;
 }
 
 /*
@@ -855,6 +846,7 @@ uint32_t ul_arch_tick_count(void)
 void _arch_tick_isr_handler(void)
 {
 	uint32_t psw;
+	uint32_t next_cmp;
 
 	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
 	psw &= ~0x3000u;
@@ -863,12 +855,19 @@ void _arch_tick_isr_handler(void)
 			 :: "d"(psw) : "memory");
 
 	stm0_write(UL_ARCH_STM0_ISCR, 0x00000001u);
-	stm0_write(UL_ARCH_STM0_ICR, 0u);
 
-	g_tick_count++;
+	/*
+	 * Re-arm by adding the period to the previous CMP0 value.
+	 * Reading CMP0 (not TIM0) avoids drift: each period starts exactly
+	 * TICK_PERIOD_TICKS after the previous one regardless of ISR latency.
+	 */
+	next_cmp = stm0_read(UL_ARCH_STM0_CMP0) + TICK_PERIOD_TICKS;
+	stm0_write(UL_ARCH_STM0_CMP0, next_cmp);
+	stm0_write(UL_ARCH_STM0_ICR, 0x00000001u);
 
 	ul_kernel_tick();
 }
+
 
 /* =========================================================================
  * Atomic operations
