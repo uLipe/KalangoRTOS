@@ -1,1 +1,1 @@
--tc162p -disable-watchdog
+-tc162p -disable-watchdog -x 0

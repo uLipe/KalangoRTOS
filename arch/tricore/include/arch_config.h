@@ -141,11 +141,12 @@
  * CPU idle implementation
  *
  * Default: WAIT instruction — suspends the CPU until the next interrupt,
- * which is the correct low-power idle on TriCore silicon and TSIM.
+ * which is the correct low-power idle on TriCore silicon.
  *
- * Override for QEMU Linumiz: -DUL_ARCH_IDLE_IS_WAIT=0
- * (QEMU does not reliably wake from WAIT when STM is at the QEMU address;
- *  NOP avoids a potential deadlock in the scheduler idle loop.)
+ * Both QEMU Linumiz and TSIM standalone mode (-s) treat a CPU in WAIT state
+ * as "no progress" and time out before the timer interrupt fires.  Use
+ * -DUL_ARCH_IDLE_IS_WAIT=0 in all simulator builds (NOP busy-wait keeps the
+ * instruction counter advancing so the simulator does not stall-detect).
  * ========================================================================= */
 #ifndef UL_ARCH_IDLE_IS_WAIT
 #define UL_ARCH_IDLE_IS_WAIT	1
