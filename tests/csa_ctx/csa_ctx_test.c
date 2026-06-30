@@ -16,11 +16,11 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <ul/microkernel.h>
 #include <ul_arch.h>
 #include <kernel/include/ul_printk.h>
 
-extern void qemu_virt_exit(uint32_t code);
 
 /* Arbitrary non-trivial pointer used as the test argument. */
 #define EXPECTED_ARG	((void *)0xC0FFEE42u)
@@ -64,14 +64,14 @@ void ul_root_thread(const ul_boot_info_t *info)
 		ul_printk("csa_ctx_test: arg pass — OK (got 0x%lx)\n",
 			  (unsigned long)g_received_arg);
 		ul_printk("csa_ctx_test: PASS\n");
-		qemu_virt_exit(0);
+		ul_sim_exit(0);
 	} else {
 		ul_printk("csa_ctx_test: arg pass — FAIL "
 			  "(expected 0x%lx, got 0x%lx)\n",
 			  (unsigned long)(uintptr_t)EXPECTED_ARG,
 			  (unsigned long)g_received_arg);
 		ul_printk("csa_ctx_test: FAIL\n");
-		qemu_virt_exit(1);
+		ul_sim_exit(1);
 	}
 
 	for (;;)

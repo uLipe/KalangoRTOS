@@ -32,10 +32,10 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <ul/microkernel.h>
 #include <kernel/include/ul_printk.h>
 
-extern void qemu_virt_exit(uint32_t code);
 
 /* =========================================================================
  * Protocol constants
@@ -307,7 +307,7 @@ static void supervisor_entry(void *arg)
 			  "(done=%d%d%d)\n",
 			  g_fire_done[0], g_fire_done[1], g_fire_done[2]);
 		ul_printk("driver_integ: FAIL\n");
-		qemu_virt_exit(1);
+		ul_sim_exit(1);
 	}
 
 	for (i = 0; i < 2; i++) {
@@ -317,13 +317,13 @@ static void supervisor_entry(void *arg)
 				  i, (unsigned)g_fire_tick[i],
 				  i + 1, (unsigned)g_fire_tick[i + 1]);
 			ul_printk("driver_integ: FAIL\n");
-			qemu_virt_exit(1);
+			ul_sim_exit(1);
 		}
 	}
 
 	ul_printk("driver_integ: ordering PASS\n");
 	ul_printk("driver_integ: PASS\n");
-	qemu_virt_exit(0);
+	ul_sim_exit(0);
 }
 
 /* =========================================================================

@@ -35,11 +35,11 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <stddef.h>
 #include <ul/microkernel.h>
 #include <kernel/include/ul_printk.h>
 
-extern void qemu_virt_exit(uint32_t code);
 
 /* =========================================================================
  * Shared flags — no atomics needed (single-core cooperative).
@@ -185,7 +185,7 @@ static void supervisor_entry(void *arg)
 	(void)tid_a;
 	(void)tid_b;
 
-	qemu_virt_exit(0);
+	ul_sim_exit(0);
 }
 
 /* =========================================================================

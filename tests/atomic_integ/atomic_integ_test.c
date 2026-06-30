@@ -21,12 +21,12 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <stddef.h>
 #include <ul/microkernel.h>
 #include <ul_arch.h>
 #include <kernel/include/ul_printk.h>
 
-extern void qemu_virt_exit(uint32_t code);
 
 /* =========================================================================
  * Phase 1 — Atomic counter
@@ -113,7 +113,7 @@ static void supervisor_entry(void *arg)
 		ul_printk("atomic_integ: phase1 workers did not finish "
 			  "(done=%d)\n", g_phase1_done);
 		ul_printk("atomic_integ: FAIL\n");
-		qemu_virt_exit(1);
+		ul_sim_exit(1);
 	}
 
 	if (g_counter != 2u * ATOMIC_ITERS) {
@@ -122,7 +122,7 @@ static void supervisor_entry(void *arg)
 			  (unsigned long)g_counter,
 			  (unsigned long)(2u * ATOMIC_ITERS));
 		ul_printk("atomic_integ: FAIL\n");
-		qemu_virt_exit(1);
+		ul_sim_exit(1);
 	}
 	ul_printk("atomic_integ: phase1 PASS (counter=%lu)\n",
 		  (unsigned long)g_counter);
@@ -154,12 +154,12 @@ static void supervisor_entry(void *arg)
 		ul_printk("atomic_integ: phase2 not all workers done "
 			  "(done=%d/%d)\n", g_ctx_done, CTX_WORKERS);
 		ul_printk("atomic_integ: FAIL\n");
-		qemu_virt_exit(1);
+		ul_sim_exit(1);
 	}
 	ul_printk("atomic_integ: phase2 PASS\n");
 
 	ul_printk("atomic_integ: PASS\n");
-	qemu_virt_exit(0);
+	ul_sim_exit(0);
 }
 
 /* =========================================================================

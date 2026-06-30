@@ -18,11 +18,11 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <ul/microkernel.h>
 #include <ul_arch.h>
 #include <kernel/include/ul_printk.h>
 
-#define VIRT_EXIT           (*(volatile uint32_t *)0xBF000028U)
 /*
  * Pool budget with the SVLCX/RSLCX/RFE context-switch implementation:
  *   - RSLCX and RFE free CSA frames via hardware, so there is no net
@@ -38,10 +38,8 @@
  * write every iteration.  At ~1 switch/s in this emulator, 56 switches
  * takes ~56 s — within the 120 s QEMU_TIMEOUT in the Makefile.
  *
- * QEMU VIRT console line-buffer limit: the VIRT debug device buffers at
- * most 64 output lines.  Boot messages occupy 7 lines, leaving 57 for the
- * test.  STRESS_TARGET=56 yields 55 progress lines + 1 PASS line = 56
- * test lines total, safely within the 57-line budget (63 lines overall).
+ * Console line-buffer budget: boot messages occupy ~7 lines.
+ * STRESS_TARGET=56 yields 55 progress lines + 1 PASS line = 56 test lines.
  */
 #define STRESS_TARGET       56u
 #define STRESS_PRINT_EVERY  1u
@@ -75,9 +73,7 @@ static void thread_a_fn(void *arg)
 		if (g_count >= STRESS_TARGET) {
 			ul_printk("ctx_stress: PASS count=%u\n",
 				  (unsigned int)g_count);
-			VIRT_EXIT = 0U;
-			for (;;)
-				;
+			ul_sim_exit(0);
 		}
 		if ((g_count % STRESS_PRINT_EVERY) == 0u)
 			ul_printk("ctx_stress: [%u/%u]\n",
@@ -95,9 +91,7 @@ static void thread_b_fn(void *arg)
 		if (g_count >= STRESS_TARGET) {
 			ul_printk("ctx_stress: PASS count=%u\n",
 				  (unsigned int)g_count);
-			VIRT_EXIT = 0U;
-			for (;;)
-				;
+			ul_sim_exit(0);
 		}
 		if ((g_count % STRESS_PRINT_EVERY) == 0u)
 			ul_printk("ctx_stress: [%u/%u]\n",
@@ -123,7 +117,7 @@ void ul_root_thread(const ul_boot_info_t *info)
 	/*
 	 * Launch thread_a.  g_ctx_root captures the current (root thread)
 	 * SP+RA so this context could be resumed, but in practice thread_a
-	 * or thread_b will call VIRT_EXIT before switching back here.
+	 * or thread_b will call ul_sim_exit before switching back here.
 	 */
 	ul_arch_ctx_switch(&g_ctx_root, &g_ctx_a);
 

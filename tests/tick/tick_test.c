@@ -17,11 +17,11 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <ul/microkernel.h>
 #include <ul_arch.h>
 #include <kernel/include/ul_printk.h>
 
-extern void qemu_virt_exit(uint32_t code);
 
 #define TICK_TARGET	50u
 #define DEADLINE_US	500u
@@ -48,5 +48,5 @@ void ul_root_thread(const ul_boot_info_t *info)
 	}
 
 	ul_printk("tick_test: PASS (50 ticks counted)\n");
-	qemu_virt_exit(0);
+	ul_sim_exit(0);
 }

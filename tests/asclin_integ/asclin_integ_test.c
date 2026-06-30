@@ -24,16 +24,21 @@
  *   connection is not yet wired in the emulated tc27xd_soc).
  *
  * In QEMU -nographic mode ASCLIN0 is connected to serial_hd(0) = stdio,
- * so bytes written via TXDATA appear on QEMU stdout alongside printk.
+ * so bytes written via TXDATA appear on QEMU stdout.
+ *
+ * On TSIM (ASCLIN not modelled): ul_mem_map succeeds (SFR window covers
+ * 0xF0000000+), TXDATA writes are accepted but discarded, and FLAGS.TFL
+ * never asserts → the driver uses FLAGS poll mode with TX_POLL_LOOPS
+ * timeout per byte.  The test still reaches PASS via printk sentinels.
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <stddef.h>
 #include <ul/microkernel.h>
 #include <kernel/include/ul_printk.h>
 
 /* Provided by boards/qemu_tc27x/qemu_console.c */
-extern void qemu_virt_exit(uint32_t code);
 
 /* -------------------------------------------------------------------------
  * ASCLIN0 hardware constants
@@ -69,8 +74,15 @@ extern void qemu_virt_exit(uint32_t code);
 #define SRC_IDX_ASCLIN0_TX	0x14U
 #define SRC_IDX_ASCLIN0_RX	0x15U
 
-/* SRC register value: SRPN | SRE(bit10) | TOS=0(CPU0) */
-#define SRC_VAL(srpn)		((srpn) | (1u << 10))
+/*
+ * SRC register value: SRPN | SRE | TOS=0(CPU0).
+ * Default: TC27x / TSIM (SRE at bit 12).
+ * QEMU Linumiz override: -DASCLIN_SRC_SRE_BIT=10u
+ */
+#ifndef ASCLIN_SRC_SRE_BIT
+#define ASCLIN_SRC_SRE_BIT	12u	/* TC27x hardware */
+#endif
+#define SRC_VAL(srpn)		((srpn) | (1u << ASCLIN_SRC_SRE_BIT))
 
 /* TX poll timeout before giving up and moving on */
 #define TX_POLL_LOOPS		50000U
@@ -252,7 +264,7 @@ static void uart_driver_entry(void *arg)
 
 			if (g_clients_done >= NUM_CLIENTS) {
 				ul_printk("asclin_integ: PASS\n");
-				qemu_virt_exit(0);
+				ul_sim_exit(0);
 				ul_thread_exit();
 			}
 		}

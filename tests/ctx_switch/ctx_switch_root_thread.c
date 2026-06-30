@@ -11,9 +11,9 @@
  */
 
 #include <ul/microkernel.h>
+#include "../test_support.h"
 #include <kernel/include/ul_printk.h>
 
-#define VIRT_EXIT  (*(volatile unsigned int *)0xBF000028U)
 
 void ul_root_thread(const ul_boot_info_t *info)
 {
@@ -28,7 +28,5 @@ void ul_root_thread(const ul_boot_info_t *info)
 	 * For the integration test we exit QEMU here to avoid blocking
 	 * on the idle wait instruction (no tick IRQ configured yet).
 	 */
-	VIRT_EXIT = 0U;
-	for (;;)
-		;
+	ul_sim_exit(0);
 }

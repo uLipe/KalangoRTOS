@@ -10,7 +10,7 @@
  * context switches back to the threads.
  *
  * Expected outcome: all three threads complete their 50 sleeps and the
- * last one prints the PASS sentinel before calling qemu_virt_exit(0).
+ * last one prints the PASS sentinel before calling ul_sim_exit(0).
  *
  * Sentinels verified by the Makefile:
  *   sleep_integ: start
@@ -22,11 +22,11 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <stddef.h>
 #include <ul/microkernel.h>
 #include <kernel/include/ul_printk.h>
 
-extern void qemu_virt_exit(uint32_t code);
 
 #define SLEEP_COUNT	50u
 #define SLEEP_MS	10u		/* 10 ms per sleep */
@@ -56,7 +56,7 @@ static void thread_a_entry(void *arg)
 	g_done_count++;
 	if (g_done_count == 3u) {
 		ul_printk("sleep_integ: PASS\n");
-		qemu_virt_exit(0);
+		ul_sim_exit(0);
 	}
 	ul_thread_exit();
 }
@@ -74,7 +74,7 @@ static void thread_b_entry(void *arg)
 	g_done_count++;
 	if (g_done_count == 3u) {
 		ul_printk("sleep_integ: PASS\n");
-		qemu_virt_exit(0);
+		ul_sim_exit(0);
 	}
 	ul_thread_exit();
 }
@@ -92,7 +92,7 @@ static void thread_c_entry(void *arg)
 	g_done_count++;
 	if (g_done_count == 3u) {
 		ul_printk("sleep_integ: PASS\n");
-		qemu_virt_exit(0);
+		ul_sim_exit(0);
 	}
 	ul_thread_exit();
 }

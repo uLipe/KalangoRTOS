@@ -19,11 +19,10 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <ul/microkernel.h>
 #include <kernel/include/ul_printk.h>
 
-/* QEMU VIRT device exit register (hw/tricore/tricore_virt.c +0x28). */
-#define VIRT_EXIT  (*(volatile uint32_t *)0xBF000028U)
 
 /*
  * Canary variables: no initialiser → placed in BSS by the compiler.
@@ -51,7 +50,5 @@ void ul_root_thread(const ul_boot_info_t *info)
 	ul_printk("boot_test: bss zero check — %s\n", bss_ok ? "OK" : "FAIL");
 	ul_printk("boot_test: root thread reached — BOOT OK\n");
 
-	VIRT_EXIT = 0U;
-	for (;;)
-		;
+	ul_sim_exit(0);
 }

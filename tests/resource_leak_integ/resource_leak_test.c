@@ -25,11 +25,11 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <stddef.h>
 #include <ul/microkernel.h>
 #include <kernel/include/ul_printk.h>
 
-extern void qemu_virt_exit(uint32_t code);
 
 #define WAVES			20
 #define THREADS_PER_WAVE	8
@@ -115,7 +115,7 @@ static void supervisor_entry(void *arg)
 			  WAVES * THREADS_PER_WAVE, g_total_threads);
 	}
 
-	qemu_virt_exit(0);
+	ul_sim_exit(0);
 }
 
 /* =========================================================================

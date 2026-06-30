@@ -19,19 +19,20 @@
  * Hardware/emulator path selection
  * ---------------------------------
  * At startup the driver probes STM1.TIM0.  If the free-running counter is
- * advancing (QEMU Linumiz implements STM1), the full hardware path is used
- * and the test ends with "PASS".
+ * advancing (TC27x silicon or simulator with STM1 support), the full
+ * hardware path is used and the test ends with "PASS".
  *
- * If STM1.TIM0 remains zero (STM1 not modelled by the emulator), the driver
- * falls back to a software tick server thread (same pattern as driver_integ).
- * In that case the peripheral-mapping and irq-bind code paths still execute,
- * validating those kernel primitives, and the test also ends with "PASS"
- * while printing a note about the fallback.
+ * If STM1.TIM0 remains zero (STM1 not modelled), the driver falls back to
+ * a software tick server thread.  The peripheral-mapping and irq-bind code
+ * paths still execute, and the test also ends with "PASS".
  *
- * QEMU-specific addresses (Linumiz fork):
- *   STM1 base:    0xF0001000  (real TC27x: 0xF0002000)
- *   STM1 SR0 SRC: 0xF0038308  (slot 0xC2 in QEMU IR model)
+ * Default addresses (TC27x hardware / TSIM):
+ *   STM1 base:    0xF0002000
+ *   STM1 SR0 SRC: 0xF0038494 (SRC_STM1SR0)
  *   STM clock:    50 MHz
+ *
+ * QEMU Linumiz overrides (-D defines in Makefile):
+ *   STM1_BASE=0xF0001000u  STM1_SR0_SRC_OFF='(0xC2u*4u)'  SRC_SRE_BIT='(1u<<10)'
  *
  * Expected sentinel output:
  *   "driver_integ2: start"
@@ -44,16 +45,21 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <ul/microkernel.h>
 #include <kernel/include/ul_printk.h>
 
-extern void qemu_virt_exit(uint32_t code);
 
 /* =========================================================================
- * STM1 register layout (TC27x AURIX, QEMU base 0xF0001000)
+ * STM1 register layout (TC27x AURIX)
+ *
+ * Default: TC27x hardware address 0xF0002000 / TSIM (not simulated → fallback).
+ * QEMU Linumiz override: -DSTM1_BASE=0xF0001000u (remapped from real address).
  * ========================================================================= */
 
-#define STM1_BASE	0xF0001000u
+#ifndef STM1_BASE
+#define STM1_BASE	0xF0002000u	/* TC27x hardware / TSIM */
+#endif
 #define STM1_SIZE	0x100u
 
 #define STM1_TIM0_OFF	0x010u
@@ -67,13 +73,21 @@ extern void qemu_virt_exit(uint32_t code);
 #define STM1_ISCR_CMP0IRC	(1u << 0)	/* write 1 to clear match flag */
 
 /* =========================================================================
- * STM1 SR0 SRC register (QEMU slot 0xC2 = 0xF0038308)
+ * STM1 SR0 SRC register
+ *
+ * Default: TC27x / TSIM (SRC_STM1SR0 at 0xF0038494, SRE at bit 12).
+ * QEMU Linumiz override: -DSTM1_SR0_SRC_OFF='(0xC2u*4u)' -DSRC_SRE_BIT='(1u<<10)'
  * ========================================================================= */
 
 #define SRC_BASE		0xF0038000u
 #define SRC_REGION_SIZE		0x400u
-#define STM1_SR0_SRC_OFF	(0xC2u * 4u)	/* slot 0xC2 → 0x308 */
-#define SRC_SRE_BIT		(1u << 10)
+
+#ifndef STM1_SR0_SRC_OFF
+#define STM1_SR0_SRC_OFF	0x494u		/* TC27x STM1 SR0 = SRC + 0x494 */
+#endif
+#ifndef SRC_SRE_BIT
+#define SRC_SRE_BIT		(1u << 12)	/* TC27x: SRE at bit 12 */
+#endif
 
 /* =========================================================================
  * Driver configuration
@@ -475,7 +489,7 @@ static void supervisor_entry(void *arg)
 		ul_printk("driver_integ2: timeout (done=%d%d%d)\n",
 			  g_fire_done[0], g_fire_done[1], g_fire_done[2]);
 		ul_printk("driver_integ2: FAIL\n");
-		qemu_virt_exit(1);
+		ul_sim_exit(1);
 	}
 
 	for (i = 0; i < 2; i++) {
@@ -485,13 +499,13 @@ static void supervisor_entry(void *arg)
 				  i, (unsigned)g_fire_tick[i],
 				  i + 1, (unsigned)g_fire_tick[i + 1]);
 			ul_printk("driver_integ2: FAIL\n");
-			qemu_virt_exit(1);
+			ul_sim_exit(1);
 		}
 	}
 
 	ul_printk("driver_integ2: ordering PASS\n");
 	ul_printk("driver_integ2: PASS\n");
-	qemu_virt_exit(0);
+	ul_sim_exit(0);
 }
 
 /* =========================================================================

@@ -15,11 +15,11 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <stddef.h>
 #include <ul/microkernel.h>
 #include <kernel/include/ul_printk.h>
 
-extern void qemu_virt_exit(int code);
 
 /* -------------------------------------------------------------------------
  * Shared state (volatile: modified by worker threads, read by supervisor)
@@ -102,7 +102,7 @@ static void supervisor(void *arg)
 			  (unsigned)a, (unsigned)b);
 	}
 
-	qemu_virt_exit(0);
+	ul_sim_exit(0);
 }
 
 /* -------------------------------------------------------------------------

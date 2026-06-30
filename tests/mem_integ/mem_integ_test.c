@@ -20,11 +20,11 @@
  */
 
 #include <stdint.h>
+#include "../test_support.h"
 #include <ul/microkernel.h>
 #include <kernel/include/ul_printk.h>
 #include <ul_arch.h>
 
-extern void qemu_virt_exit(uint32_t code);
 
 /* =========================================================================
  * Shared state
@@ -280,10 +280,10 @@ static void supervisor_entry(void *arg)
 done:
 	if (g_test_result == 1) {
 		ul_printk("mem_integ: PASS\n");
-		qemu_virt_exit(0);
+		ul_sim_exit(0);
 	} else {
 		ul_printk("mem_integ: FAIL\n");
-		qemu_virt_exit(1);
+		ul_sim_exit(1);
 	}
 }
 
@@ -306,7 +306,7 @@ void ul_root_thread(const ul_boot_info_t *info)
 	if (g_grant_a_ready == UL_NOTIF_INVALID ||
 	    g_grant_b_done == UL_NOTIF_INVALID) {
 		ul_printk("mem_integ: notif_create FAIL\n");
-		qemu_virt_exit(1);
+		ul_sim_exit(1);
 	}
 
 	attr.name       = "anon";

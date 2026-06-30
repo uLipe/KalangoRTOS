@@ -7,6 +7,18 @@ TARGET  := test.elf
 PLAT_DIR  := ../tools/hello
 UNITY_DIR := /opt/unity
 
+# EMU: tsim (default when TSIM_PATH is set) or qemu
+TSIM_PATH ?=
+TSIM_BIN  := $(TSIM_PATH)/bin/tsim16p_e
+HAS_TSIM  := $(if $(TSIM_PATH),$(shell test -x "$(TSIM_BIN)" && echo 1 || echo 0),0)
+ifeq ($(EMU),)
+  ifeq ($(HAS_TSIM),1)
+    EMU := tsim
+  else
+    EMU := qemu
+  endif
+endif
+
 CFLAGS := -mcpu=tc27xx \
           -ffunction-sections \
           -fdata-sections \
@@ -16,6 +28,15 @@ CFLAGS := -mcpu=tc27xx \
           -I$(UNITY_DIR) \
           -O0 -g
 
+ifeq ($(EMU),tsim)
+PLATFORM_SRC := $(PLAT_DIR)/platform_tsim.c
+TSIM_MCFG    := ../boards/tsim_tc27x/MConfig
+TSIM_OCFG    := ../boards/tsim_tc27x/OConfig
+else
+PLATFORM_SRC := $(PLAT_DIR)/platform.c
+CFLAGS       += -DUL_ARCH_QEMU_VIRT_CONSOLE=1
+endif
+
 LDFLAGS := -T $(PLAT_DIR)/linker.ld \
            -mcpu=tc27xx \
            -nostartfiles \
@@ -24,7 +45,7 @@ LDFLAGS := -T $(PLAT_DIR)/linker.ld \
 LIBS := -lc -lgcc
 
 PLAT_SRCS := $(PLAT_DIR)/startup.S \
-             $(PLAT_DIR)/platform.c
+             $(PLATFORM_SRC)
 
 UNITY_SRC := $(UNITY_DIR)/unity.c
 
@@ -47,24 +68,27 @@ $(TARGET): $(SRCS) $(PLAT_DIR)/linker.ld
 	$(CC) $(CFLAGS) $(SRCS) $(LDFLAGS) $(LIBS) -o $@
 	tricore-elf-size $@
 
-# Interactive run — press Ctrl-A X to exit QEMU.
-run: $(TARGET)
+ifeq ($(EMU),tsim)
+run: run_tsim
+ci: run_tsim
+else
+run: run_qemu
+ci: run_qemu
+endif
+
+run_tsim: $(TARGET)
+	@timeout 60 $(TSIM_BIN) \
+	    -MConfig $(TSIM_MCFG) \
+	    -OConfig $(TSIM_OCFG) \
+	    -s -H -disable-watchdog \
+	    -o $(TARGET)
+
+run_qemu: $(TARGET)
 	$(QEMU) \
 	    -machine $(MACHINE) \
 	    -kernel $(TARGET) \
 	    -nographic \
 	    -d guest_errors
-
-# CI run — QEMU exits when the test binary calls _exit(); propagate the code.
-ci: $(TARGET)
-	@$(QEMU) \
-	    -machine $(MACHINE) \
-	    -kernel $(TARGET) \
-	    -nographic \
-	    -d guest_errors ; \
-	EXIT=$$? ; \
-	echo "--- QEMU exited: $$EXIT ---" ; \
-	exit $$EXIT
 
 debug: $(TARGET)
 	$(QEMU) \
@@ -81,4 +105,4 @@ debug: $(TARGET)
 clean:
 	rm -f $(TARGET)
 
-.PHONY: all run ci debug clean
+.PHONY: all run run_tsim run_qemu ci debug clean

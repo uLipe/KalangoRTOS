@@ -33,9 +33,9 @@
  */
 
 #include <ul/microkernel.h>
+#include "../test_support.h"
 #include <kernel/include/ul_printk.h>
 
-extern void qemu_virt_exit(uint32_t code);
 
 /* =========================================================================
  * Scenario 1 — Ping-pong
@@ -382,7 +382,7 @@ static void supervisor_entry(void *arg)
 	ul_msleep(200);
 
 	ul_printk("ipc_integ: PASS\n");
-	qemu_virt_exit(0);
+	ul_sim_exit(0);
 }
 
 /* =========================================================================
