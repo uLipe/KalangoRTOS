@@ -1,0 +1,39 @@
+---
+description: QEMU Linumiz emulation capabilities and constraints
+globs:
+alwaysApply: true
+---
+# QEMU Linumiz — TriCore Emulation Reference
+
+## Confirmed capabilities
+
+The QEMU Linumiz fork (`qemu-system-tricore`) correctly emulates a TriCore AURIX SoC:
+
+- **STM0**: free-running counter and CMP0 compare-match interrupt work correctly.
+  Ticked timer via `CMP0 += period` re-arm in the ISR is the canonical approach.
+- **MPU**: data and code protection ranges enforced; access violations raise class 1 traps.
+- **Atomic instructions**: `LDMST`, `SWAP.W`, `CMPSWAP.W` behave correctly.
+
+## Machine
+
+```
+KIT_AURIX_TC397B_TRB   (TC3xx, QEMU -machine flag)
+```
+
+## Address map (TC397B)
+
+| Region | Base | Size | Note |
+|---|---|---|---|
+| PFlash (NC) | 0x80000000 | 2 MB | code |
+| CPU0 DSPR | 0x70000000 | 240 KB | kernel RAM |
+| STM0 | 0xF0001000 | — | system timer |
+| SRC IR base | 0xF0038000 | — | `TC39X_SRC_STM0_SR0 = offset 0xC0 → 0xF0038300` |
+| QEMU virt console | 0xBF000000 | 4 KB | putchar / exit |
+
+## Rules
+
+- **No polling fallback**: timer interrupts are mandatory. `UL_ARCH_IDLE_IS_WAIT=0`
+  (NOP idle) is required in all QEMU builds to keep the instruction counter advancing.
+- **No TSIM**: TSIM has been removed. QEMU is the sole emulation environment.
+- **No workarounds**: QEMU emulates TriCore correctly; no software emulation of
+  hardware features is permitted.
