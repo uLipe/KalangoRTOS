@@ -3,6 +3,7 @@ CC      := cc
 # ---------------------------------------------------------------------------
 # Simulator selection: EMU=tsim (default when TSIM_PATH is set) or EMU=qemu
 # ---------------------------------------------------------------------------
+ROOT    := ../..
 TSIM_PATH   ?=
 TSIM_BIN    := $(TSIM_PATH)/bin/tsim16p_e
 TSIM_TC27X  := $(ROOT)/boards/tsim_tc27x
@@ -18,7 +19,6 @@ ifeq ($(EMU),)
 endif
 TARGET  := ipc_unit_test
 
-ROOT    := ../..
 STUBINC := include
 
 CFLAGS := \
@@ -32,7 +32,7 @@ CFLAGS := \
 # Per-simulator console source and arch overrides
 ifeq ($(EMU),tsim)
 CONSOLE_SRC := $(ROOT)/boards/tsim_tc27x/tsim_console.c
-CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=1
+CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=0
 else
 CONSOLE_SRC := $(ROOT)/boards/qemu_tc27x/qemu_console.c
 CFLAGS      += -DUL_ARCH_QEMU_VIRT_CONSOLE=1

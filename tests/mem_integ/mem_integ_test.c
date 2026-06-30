@@ -261,7 +261,14 @@ static void supervisor_entry(void *arg)
 		waited += 10u;
 	}
 
-	ul_msleep(200);
+	/*
+	 * Yield once in case trigger is preempted between setting
+	 * g_fault_progress=1 and the faulting write.  On any single-core
+	 * system the write (and potential trap) complete before the next
+	 * scheduler tick, so one yield is sufficient to observe the final
+	 * state without requiring a long timer-driven sleep.
+	 */
+	ul_thread_yield();
 
 	if (g_fault_progress == 1) {
 		ul_printk("mem_integ: scenario 3 (MPU fault) PASS "

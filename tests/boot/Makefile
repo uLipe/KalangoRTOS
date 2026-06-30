@@ -5,6 +5,7 @@ MACHINE := KIT_AURIX_TC277_TRB
 # ---------------------------------------------------------------------------
 # Simulator selection: EMU=tsim (default when TSIM_PATH is set) or EMU=qemu
 # ---------------------------------------------------------------------------
+ROOT    := ../..
 TSIM_PATH   ?=
 TSIM_BIN    := $(TSIM_PATH)/bin/tsim16p_e
 TSIM_TC27X  := $(ROOT)/boards/tsim_tc27x
@@ -20,7 +21,6 @@ ifeq ($(EMU),)
 endif
 TARGET  := boot_test.elf
 
-ROOT    := ../..
 GEN_INC := /tmp/gen
 
 CFLAGS := \
@@ -39,7 +39,7 @@ CFLAGS := \
 # Per-simulator console source and arch overrides
 ifeq ($(EMU),tsim)
 CONSOLE_SRC := $(ROOT)/boards/tsim_tc27x/tsim_console.c
-CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=1
+CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=0
 else
 CONSOLE_SRC := $(ROOT)/boards/qemu_tc27x/qemu_console.c
 CFLAGS      += -DUL_ARCH_QEMU_VIRT_CONSOLE=1
@@ -122,8 +122,8 @@ run_tsim: $(TARGET)
 	@timeout 60 $(TSIM_BIN) \
 	    -MConfig $(TSIM_MCFG) \
 	    -OConfig $(TSIM_OCFG) \
-	    -s -H -disable-watchdog \
-	    -o $(TARGET) </dev/null 2>/dev/null | tee /tmp/boot_test.log ; \
+	    -s -H -disable-watchdog -x 0 \
+	    -o $(TARGET) </dev/null 2>&1 | tee /tmp/boot_test.log ; \
 	PASS=1; \
 	if ! grep -q "$(SENTINEL_BSS)" /tmp/boot_test.log; then \
 	    echo "BOOT: FAIL (sentinel '$(SENTINEL_BSS)' missing)"; \
@@ -141,7 +141,7 @@ run_qemu: $(TARGET)
 	    -machine $(MACHINE) \
 	    -kernel $(TARGET) \
 	    -nographic \
-	    </dev/null 2>/dev/null | tee /tmp/boot_test.log ; \
+	    </dev/null 2>&1 | tee /tmp/boot_test.log ; \
 	PASS=1; \
 	if ! grep -q "$(SENTINEL_BSS)" /tmp/boot_test.log; then \
 	    echo "BOOT INTEGRATION TEST: FAIL (sentinel '$(SENTINEL_BSS)' not found)"; \

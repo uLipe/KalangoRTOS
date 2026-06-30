@@ -80,7 +80,7 @@ run_tsim: $(TARGET)
 	@timeout 60 $(TSIM_BIN) \
 	    -MConfig $(TSIM_MCFG) \
 	    -OConfig $(TSIM_OCFG) \
-	    -s -H -disable-watchdog \
+	    -s -H -disable-watchdog -x 0 \
 	    -o $(TARGET)
 
 run_qemu: $(TARGET)

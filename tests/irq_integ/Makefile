@@ -5,6 +5,7 @@ MACHINE := KIT_AURIX_TC277_TRB
 # ---------------------------------------------------------------------------
 # Simulator selection: EMU=tsim (default when TSIM_PATH is set) or EMU=qemu
 # ---------------------------------------------------------------------------
+ROOT    := ../..
 TSIM_PATH   ?=
 TSIM_BIN    := $(TSIM_PATH)/bin/tsim16p_e
 TSIM_TC27X  := $(ROOT)/boards/tsim_tc27x
@@ -20,7 +21,6 @@ ifeq ($(EMU),)
 endif
 TARGET  := irq_integ_test.elf
 
-ROOT    := ../..
 GEN_INC := /tmp/gen
 
 CFLAGS := \
@@ -39,7 +39,7 @@ CFLAGS := \
 # Per-simulator console source and arch overrides
 ifeq ($(EMU),tsim)
 CONSOLE_SRC := $(ROOT)/boards/tsim_tc27x/tsim_console.c
-CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=1
+CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=0
 else
 CONSOLE_SRC := $(ROOT)/boards/qemu_tc27x/qemu_console.c
 CFLAGS      += -DUL_ARCH_QEMU_VIRT_CONSOLE=1
@@ -127,8 +127,8 @@ run_tsim: $(TARGET)
 	@timeout 60 $(TSIM_BIN) \
 	    -MConfig $(TSIM_MCFG) \
 	    -OConfig $(TSIM_OCFG) \
-	    -s -H -disable-watchdog \
-	    -o $(TARGET) </dev/null 2>/dev/null | tee /tmp/irq_integ_test.log ; \
+	    -s -H -disable-watchdog -x 0 \
+	    -o $(TARGET) </dev/null 2>&1 | tee /tmp/irq_integ_test.log ; \
 	PASS=1; \
 	if [ "$$PASS" = "1" ]; then echo "IRQ INTEG: PASS"; else exit 1; fi
 
