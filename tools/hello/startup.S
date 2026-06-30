@@ -97,6 +97,13 @@ _start:
     /* 5. Run application; propagate exit code. */
     call    main
     mov     %d4, %d2                        /* D2 = main() return value; D4 = _exit() arg */
+    /*
+     * Pre-load D15 with the TSIM "test passed" sentinel (0x900d).
+     * CALL preserves live D-registers across the call boundary; the first
+     * instruction of _exit reads D15 to set A14 before TSIM checks it.
+     * For QEMU builds this is a harmless no-op (VIRT device handles exit).
+     */
+    mov.u   %d15, 0x900d
     call    _exit
 
 .L_hang:
