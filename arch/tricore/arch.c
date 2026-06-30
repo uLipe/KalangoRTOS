@@ -1078,7 +1078,7 @@ void ul_arch_trap_dump(uint8_t trap_class, uint8_t tin)
  */
 extern char _trap_class0[];	/* BTV: base of .trap_table section */
 extern char _ul_int_table[];	/* BIV: base of .int_table section  */
-extern char _ul_kernel_stack_top[];	/* ISP: top of kernel stack    */
+extern char _ul_isr_stack_top[];	/* ISP: top of ISR stack (separate from kernel stack) */
 
 void ul_arch_init(ul_boot_info_t *info)
 {
@@ -1087,5 +1087,5 @@ void ul_arch_init(ul_boot_info_t *info)
 	ul_arch_irq_vectors_init(
 		(uintptr_t)_trap_class0,
 		(uintptr_t)_ul_int_table,
-		(uintptr_t)_ul_kernel_stack_top);
+		(uintptr_t)_ul_isr_stack_top);
 }

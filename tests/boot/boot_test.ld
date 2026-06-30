@@ -22,6 +22,7 @@ MEMORY {
 }
 
 _ul_kernel_stack_size = 4096;
+_ul_isr_stack_size    = 2048;
 _ul_csa_pool_frames   = 256;
 
 SECTIONS {
@@ -44,14 +45,24 @@ SECTIONS {
     __ul_kernel_data_load = LOADADDR(.kernel_data);
     .kernel_data : {
         _ul_kernel_data_start = .;
-        *(.data*)
+        *(.data .data.*)
+        *(.sdata .sdata.*)
+        /*
+         * TriCore GCC -fdata-sections creates one section per global variable
+         * with the variable name as the section name (e.g. .sched_current,
+         * .tcb_pool).  These WA PROGBITS sections are not matched by .data*
+         * above.  The catch-all below collects them; by this point .text* and
+         * .rodata* have already been consumed by earlier rules.
+         */
+        *(*)
         . = ALIGN(4);
         _ul_kernel_data_end = .;
     } > SRAM AT > PFLASH
 
     .bss (NOLOAD) : {
         _ul_kernel_bss_start = .;
-        *(.bss*)
+        *(.bss .bss.*)
+        *(.sbss .sbss.*)
         *(COMMON)
         . = ALIGN(4);
         _ul_kernel_bss_end = .;
@@ -70,6 +81,12 @@ SECTIONS {
         _ul_kernel_stack_top = .;
     } > SRAM
 
+    .isr_stack (NOLOAD) : ALIGN(8) {
+        _ul_isr_stack_bottom = .;
+        . += _ul_isr_stack_size;
+        _ul_isr_stack_top = .;
+    } > SRAM
+
     /* Small-data anchors — point to base of SRAM; no real small-data in test. */
     _small_data_  = ORIGIN(SRAM);
     _small_data2_ = ORIGIN(SRAM);
@@ -81,10 +98,10 @@ SECTIONS {
     PROVIDE(__HEAP_END = ORIGIN(SRAM) + LENGTH(SRAM) - _ul_kernel_stack_size);
 
     /*
-     * User pool: RAM from the top of the kernel stack (end of all static
+     * User pool: RAM from the top of the ISR stack (end of all static
      * sections) to the end of SRAM.  Must NOT start at __bss_end because
-     * .csa_pool and .stack are placed after .bss.
+     * .csa_pool, .stack and .isr_stack are placed after .bss.
      */
-    _ul_user_pool_start = _ul_kernel_stack_top;
+    _ul_user_pool_start = _ul_isr_stack_top;
     _ul_user_pool_end   = ORIGIN(SRAM) + LENGTH(SRAM);
 }

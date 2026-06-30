@@ -7,6 +7,7 @@
  * Does not return.
  */
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <ul/microkernel.h>
 #include <ul/config.h>
@@ -41,20 +42,36 @@ uint32_t ul_kernel_trap_syscall(uint8_t tin, uint32_t args[4])
 void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 {
 	ul_thread_t *cur = ul_sched_current();
+	uint32_t psw;
+	bool recoverable;
 
 	ul_printk("TRAP class=%u tin=%u\n",
 		  (unsigned)trap_class, (unsigned)tin);
 	ul_arch_trap_dump(trap_class, tin);
 
 	/*
-	 * Class 1 — Internal Protection: kill the offending thread and
-	 * reschedule.  This mirrors what an OS page-fault handler would do
-	 * when an unmapped access is detected.
+	 * Read PSW to determine context:
+	 *   PSW.IS (bit 9) = 1 → trap fired inside an ISR (ISP active)
+	 *   PSW.IS (bit 9) = 0 → trap fired in thread context
 	 *
-	 * All other trap classes are unrecoverable; spin so the debugger can
-	 * attach.
+	 * On TriCore, traps do not change PSW, so MFCR reflects the exact
+	 * PSW state at the point of the fault (only CDC increments on CALL).
 	 */
-	if (trap_class == 1u && cur) {
+	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
+
+	/*
+	 * Class 1 (Internal Protection): MPU violation in thread context.
+	 *
+	 * Class 4 tin 2 (DSE — Data Access Synchronous Error): TSIM raises
+	 * this for data access protection violations that real TC2xx silicon
+	 * reports as class 1.  Only treat as recoverable when IS=0 (thread
+	 * context); a class-4 in ISR context (IS=1) is an unrecoverable
+	 * kernel fault — spin so a debugger can attach.
+	 */
+	recoverable = (trap_class == 1u) ||
+		      (trap_class == 4u && tin == 2u && !(psw & 0x200u));
+
+	if (recoverable && cur) {
 		ul_printk("TRAP: killing thread tid=%u\n",
 			  (unsigned)cur->tid);
 		cur->state = UL_THREAD_STATE_DEAD;
