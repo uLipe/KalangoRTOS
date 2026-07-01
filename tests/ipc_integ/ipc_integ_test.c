@@ -172,7 +172,7 @@ static ul_notif_t g_notif;
 static void notif_producer_entry(void *arg)
 {
 	(void)arg;
-	ul_msleep(5);   /* ensure consumer is blocked first */
+	ul_msleep(1);   /* ensure consumer is blocked first */
 	ul_notif_signal(g_notif, NOTIF_BIT_A | NOTIF_BIT_B);
 	ul_printk("ipc_integ: notif producer signalled\n");
 	ul_thread_exit();
@@ -239,7 +239,7 @@ static void rn_ipc_client_entry(void *arg)
 	ul_msg_t msg = { .label = LABEL_RN_IPC };
 
 	(void)arg;
-	ul_msleep(5);
+	ul_msleep(1);
 	ul_ep_call(g_rn_ep, &msg);
 	ul_printk("ipc_integ: rn ipc client done\n");
 	ul_thread_exit();
@@ -248,7 +248,7 @@ static void rn_ipc_client_entry(void *arg)
 static void rn_notif_signaller_entry(void *arg)
 {
 	(void)arg;
-	ul_msleep(20);
+	ul_msleep(2);
 	ul_notif_signal(g_rn_notif, NOTIF_BIT_RN);
 	ul_printk("ipc_integ: rn notif signaller done\n");
 	ul_thread_exit();
@@ -265,7 +265,7 @@ static void supervisor_entry(void *arg)
 	(void)arg;
 	ul_printk("ipc_integ: start\n");
 
-	ul_msleep(200);
+	ul_msleep(1);
 	ul_printk("ipc_integ: timer works after root_thread\n");
 
 	/* ── Scenario 1: ping-pong ─────────────────────────────────────── */
@@ -285,7 +285,7 @@ static void supervisor_entry(void *arg)
 	};
 	ul_thread_create(&attr);
 
-	ul_msleep(50);
+	ul_msleep(1);
 	ul_printk("ipc_integ: sleep after pp DONE\n");
 
 	/* ── Scenario 2: multi-client ──────────────────────────────────── */
@@ -331,8 +331,8 @@ static void supervisor_entry(void *arg)
 		ul_printk("ipc_integ: mc_cliC tid=%d\n", (int)t);
 	}
 
-	ul_printk("ipc_integ: spawned all mc threads, sleeping 100ms\n");
-	ul_msleep(100);
+	ul_printk("ipc_integ: spawned all mc threads, sleeping 2ms\n");
+	ul_msleep(2);
 	ul_printk("ipc_integ: after mc sleep\n");
 
 	/* ── Scenario 3: notification ──────────────────────────────────── */
@@ -352,7 +352,7 @@ static void supervisor_entry(void *arg)
 	};
 	ul_thread_create(&attr);
 
-	ul_msleep(100);
+	ul_msleep(2);
 
 	/* ── Scenario 4: recv_or_notif ─────────────────────────────────── */
 	g_rn_ep    = ul_ep_create();
@@ -379,7 +379,7 @@ static void supervisor_entry(void *arg)
 	};
 	ul_thread_create(&attr);
 
-	ul_msleep(200);
+	ul_msleep(3);
 
 	ul_printk("ipc_integ: PASS\n");
 	ul_sim_exit(0);
