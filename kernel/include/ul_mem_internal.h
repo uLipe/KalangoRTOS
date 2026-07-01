@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2024-2026 Felipe Neves
  *
- * Kernel memory allocator — kernel/include/ul_mem_internal.h
+ * Kernel heap and section-placement utilities — kernel/include/ul_mem_internal.h
  * Not part of the public API.
  */
 
@@ -12,9 +12,33 @@
 #include <stddef.h>
 #include <stdint.h>
 
-void   ul_phys_alloc_init(uintptr_t base, uintptr_t end);
-void  *ul_phys_alloc(size_t size);
-void   ul_phys_free(void *ptr);
-size_t ul_phys_free_bytes(void);
+/* =========================================================================
+ * Kernel section placement attributes (approach B: explicit annotation).
+ *
+ * Defined as no-ops for now; all kernel globals land in the default BSS/DATA
+ * sections, which are already in kernel-only SRAM (protected by PRS selection
+ * in the MPU: only PRS 0/kernel can access the full address space).
+ *
+ * When production linker scripts are wired up with explicit .kernel.bss
+ * and .kernel.data regions, these can be activated by defining:
+ *   #define UL_KERNEL_DATA  __attribute__((section(".kernel.data")))
+ *   #define UL_KERNEL_BSS   __attribute__((section(".kernel.bss")))
+ * ========================================================================= */
+
+#define UL_KERNEL_DATA  /* placed in default .data */
+#define UL_KERNEL_BSS   /* placed in default .bss  */
+
+/* =========================================================================
+ * TLSF heap API — backed by kernel/mem/tlsf.c
+ *
+ * All allocations are aligned to 64 bytes so they can be used directly as
+ * MPU regions without re-alignment.  Supports pools up to ~512 MB.
+ * ========================================================================= */
+
+void   ul_heap_init(uintptr_t base, size_t size);
+void  *ul_heap_alloc(size_t size);
+void   ul_heap_free(void *ptr);
+void  *ul_heap_aligned_alloc(size_t align, size_t size);
+size_t ul_heap_free_bytes(void);
 
 #endif /* UL_MEM_INTERNAL_H */

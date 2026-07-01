@@ -61,6 +61,31 @@ static int thread_remove_region(ul_thread_t *th, uintptr_t base)
 	return UL_EINVAL;
 }
 
+/*
+ * Heap syscall handlers — expose TLSF heap to userspace.
+ * Allocated memory is NOT automatically granted as an MPU region;
+ * caller must use UL_SYS_MMAP / UL_SYS_MEM_GRANT for that.
+ */
+uint32_t ul_kern_heap_alloc(uint32_t size)
+{
+	void *p = ul_heap_alloc((size_t)size);
+
+	return (uint32_t)(uintptr_t)p;
+}
+
+uint32_t ul_kern_heap_free(uint32_t ptr)
+{
+	ul_heap_free((void *)(uintptr_t)ptr);
+	return 0u;
+}
+
+uint32_t ul_kern_heap_aligned_alloc(uint32_t align, uint32_t size)
+{
+	void *p = ul_heap_aligned_alloc((size_t)align, (size_t)size);
+
+	return (uint32_t)(uintptr_t)p;
+}
+
 uint32_t ul_kern_mem_map(uint32_t hint, uint32_t size,
 			 uint32_t perms, uint32_t flags)
 {
@@ -91,14 +116,14 @@ uint32_t ul_kern_mem_map(uint32_t hint, uint32_t size,
 	}
 
 	if (flags & UL_MMAP_ANON) {
-		mem = ul_phys_alloc(size);
+		mem = ul_heap_alloc(size);
 		if (!mem)
 			return (uint32_t)(int32_t)UL_ENOMEM;
 
 		base = (uintptr_t)mem;
 		rc   = thread_add_region(cur, base, size, perms, UL_REGION_HEAP);
 		if (rc != UL_OK) {
-			ul_phys_free(mem);
+			ul_heap_free(mem);
 			return (uint32_t)(int32_t)rc;
 		}
 
@@ -125,7 +150,7 @@ uint32_t ul_kern_mem_unmap(uint32_t addr, uint32_t size)
 			continue;
 
 		if (r->type == UL_REGION_HEAP)
-			ul_phys_free((void *)(uintptr_t)addr);
+			ul_heap_free((void *)(uintptr_t)addr);
 
 		thread_remove_region(cur, (uintptr_t)addr);
 		(void)size;
