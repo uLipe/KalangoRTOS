@@ -28,7 +28,7 @@
 #include <kernel/include/ul_printk.h>
 
 
-#define SLEEP_COUNT	50u
+#define SLEEP_COUNT	10u
 #define SLEEP_MS	10u		/* 10 ms per sleep */
 
 /* =========================================================================

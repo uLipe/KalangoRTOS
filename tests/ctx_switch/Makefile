@@ -1,28 +1,12 @@
 CC      := tricore-elf-gcc
 QEMU    := qemu-system-tricore
-MACHINE := KIT_AURIX_TC277_TRB
-
-# ---------------------------------------------------------------------------
-# Simulator selection: EMU=tsim (default when TSIM_PATH is set) or EMU=qemu
-# ---------------------------------------------------------------------------
+MACHINE := KIT_AURIX_TC397B_TRB
 ROOT    := ../..
-TSIM_PATH   ?=
-TSIM_BIN    := $(TSIM_PATH)/bin/tsim16p_e
-TSIM_TC27X  := $(ROOT)/boards/tsim_tc27x
-TSIM_MCFG   := $(TSIM_TC27X)/MConfig
-TSIM_OCFG   := $(TSIM_TC27X)/OConfig
-HAS_TSIM    := $(if $(TSIM_PATH),$(shell test -x "$(TSIM_BIN)" && echo 1 || echo 0),0)
-ifeq ($(EMU),)
-  ifeq ($(HAS_TSIM),1)
-    EMU := tsim
-  else
-    EMU := qemu
-  endif
-endif
 TARGET  := ctx_switch_test.elf
 STRESS  := ctx_stress_test.elf
-
 GEN_INC := /tmp/gen
+
+CONSOLE_SRC := $(ROOT)/boards/qemu_tc3xx/qemu_console.c
 
 CFLAGS := \
     -mcpu=tc27xx \
@@ -35,21 +19,11 @@ CFLAGS := \
     -I$(ROOT)/arch/tricore/include \
     -I$(ROOT) \
     -I$(GEN_INC) \
-    -O0 -g
-
-# Per-simulator console source and arch overrides
-ifeq ($(EMU),tsim)
-CONSOLE_SRC := $(ROOT)/boards/tsim_tc27x/tsim_console.c
-CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=0
-else
-CONSOLE_SRC := $(ROOT)/boards/qemu_tc27x/qemu_console.c
-CFLAGS      += -DUL_ARCH_QEMU_VIRT_CONSOLE=1
-CFLAGS      += -DUL_ARCH_STM0_BASE=0xF0000000u
-CFLAGS      += -DUL_ARCH_SRC_STM0_SR0=0xF0038300u
-CFLAGS      += -DUL_ARCH_SRC_SRE_BIT=10u
-CFLAGS      += -DUL_ARCH_RAM_BASE=0x90000000u
-CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=0
-endif
+    -O0 -g \
+    -DUL_ARCH_QEMU_VIRT_CONSOLE=1 \
+    -DUL_ARCH_SRC_STM0_SR0=0xF0038300u \
+    -DUL_ARCH_SRC_SRE_BIT=10u \
+    -DUL_ARCH_IDLE_IS_WAIT=0
 
 LDFLAGS := \
     -T ../boot/boot_test.ld \
@@ -57,12 +31,6 @@ LDFLAGS := \
     -nostartfiles \
     -Wl,--gc-sections \
     -Wl,--no-warn-rwx-segments
-
-# SVLCX/RSLCX/RFE implementation: RSLCX and RFE free CSA frames via hardware
-# instructions — no mtcr FCX required and no per-switch leak in QEMU.
-# The stress test intentionally uses the same 64-frame default pool so that
-# any regression (leak) causes FCU trap → hang → timeout → FAIL.
-STRESS_LDFLAGS := $(LDFLAGS)
 
 LIBS := -lc -lgcc
 
@@ -93,11 +61,9 @@ STRESS_TEST_SRCS := \
     ctx_switch_stress.c \
     $(CONSOLE_SRC)
 
-SENTINELS       := "switching to root thread" "ROOT THREAD RUNNING"
+SENTINELS        := "switching to root thread" "ROOT THREAD RUNNING"
 STRESS_SENTINELS := "ctx_stress: start" "ctx_stress: PASS"
 
-# Timeout before QEMU is killed.  --kill-after sends SIGKILL if SIGTERM is
-# ignored (QEMU AURIX TCG loop can block signal delivery).
 QEMU_TIMEOUT := 120
 TIMEOUT_CMD  := timeout --kill-after=5 $(QEMU_TIMEOUT)
 
@@ -123,27 +89,11 @@ $(TARGET): $(KERNEL_SRCS) $(BASIC_TEST_SRCS)
 	tricore-elf-size $@
 
 $(STRESS): $(KERNEL_SRCS) $(STRESS_TEST_SRCS)
-	$(CC) $(CFLAGS) $^ $(STRESS_LDFLAGS) $(LIBS) -o $@
+	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LIBS) -o $@
 	tricore-elf-size $@
 
-ifeq ($(EMU),tsim)
-run: run_tsim
-else
-run: run_qemu
-endif
-
-run_tsim: $(TARGET)
-	@echo "--- running ctx switch (TSIM) ---"
-	@timeout 180 $(TSIM_BIN) \
-	    -MConfig $(TSIM_MCFG) \
-	    -OConfig $(TSIM_OCFG) \
-	    -s -H -disable-watchdog -x 0 \
-	    -o $(TARGET) </dev/null 2>&1 | tee /tmp/ctx_switch_test.log ; \
-	PASS=1; \
-	if [ "$$PASS" = "1" ]; then echo "CTX SWITCH: PASS"; else exit 1; fi
-
-run_qemu: $(TARGET)
-	@echo "--- running ctx_switch integration test ---"
+run: $(TARGET)
+	@echo "--- running ctx_switch integration test (timeout=$(QEMU_TIMEOUT)s) ---"
 	@$(TIMEOUT_CMD) $(QEMU) \
 	    -machine $(MACHINE) \
 	    -kernel $(TARGET) \

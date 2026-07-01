@@ -41,8 +41,4 @@ void ul_arch_ctx_free(ul_arch_ctx_t *ctx);
 void ul_arch_mpu_switch(const ul_arch_region_t *regions, uint8_t count,
 			uint8_t prs);
 
-/* Timer primitives — implementations provided in sleep_unit_test.c */
-uint32_t ul_arch_tick_get(void);
-void     ul_arch_tick_deadline(uint32_t delta_us);
-
 #endif /* UL_ARCH_H */

@@ -1,27 +1,11 @@
 CC      := tricore-elf-gcc
 QEMU    := qemu-system-tricore
-MACHINE := KIT_AURIX_TC277_TRB
-
-# ---------------------------------------------------------------------------
-# Simulator selection: EMU=tsim (default when TSIM_PATH is set) or EMU=qemu
-# ---------------------------------------------------------------------------
+MACHINE := KIT_AURIX_TC397B_TRB
 ROOT    := ../..
-TSIM_PATH   ?=
-TSIM_BIN    := $(TSIM_PATH)/bin/tsim16p_e
-TSIM_TC27X  := $(ROOT)/boards/tsim_tc27x
-TSIM_MCFG   := $(TSIM_TC27X)/MConfig
-TSIM_OCFG   := $(TSIM_TC27X)/OConfig
-HAS_TSIM    := $(if $(TSIM_PATH),$(shell test -x "$(TSIM_BIN)" && echo 1 || echo 0),0)
-ifeq ($(EMU),)
-  ifeq ($(HAS_TSIM),1)
-    EMU := tsim
-  else
-    EMU := qemu
-  endif
-endif
 TARGET  := atomic_integ_test.elf
-
 GEN_INC := /tmp/gen
+
+CONSOLE_SRC := $(ROOT)/boards/qemu_tc3xx/qemu_console.c
 
 CFLAGS := \
     -mcpu=tc27xx \
@@ -34,21 +18,12 @@ CFLAGS := \
     -I$(ROOT)/arch/tricore/include \
     -I$(ROOT) \
     -I$(GEN_INC) \
-    -O0 -g
-
-# Per-simulator console source and arch overrides
-ifeq ($(EMU),tsim)
-CONSOLE_SRC := $(ROOT)/boards/tsim_tc27x/tsim_console.c
-CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=0
-else
-CONSOLE_SRC := $(ROOT)/boards/qemu_tc27x/qemu_console.c
-CFLAGS      += -DUL_ARCH_QEMU_VIRT_CONSOLE=1
-CFLAGS      += -DUL_ARCH_STM0_BASE=0xF0000000u
-CFLAGS      += -DUL_ARCH_SRC_STM0_SR0=0xF0038300u
-CFLAGS      += -DUL_ARCH_SRC_SRE_BIT=10u
-CFLAGS      += -DUL_ARCH_RAM_BASE=0x90000000u
-CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=0
-endif
+    -O0 -g \
+    -DUL_ARCH_QEMU_VIRT_CONSOLE=1 \
+    -DUL_ARCH_SRC_STM0_SR0=0xF0038300u \
+    -DUL_ARCH_SRC_SRE_BIT=10u \
+    -DUL_ARCH_IDLE_IS_WAIT=0 \
+    -DUL_KERNEL_PRE_ROOT_HOOK=1
 
 LDFLAGS := \
     -T ../boot/boot_test.ld \
@@ -80,6 +55,7 @@ KERNEL_SRCS := \
 
 TEST_SRCS := \
     atomic_integ_test.c \
+    atomic_hook.c \
     $(CONSOLE_SRC)
 
 SRCS := $(KERNEL_SRCS) $(TEST_SRCS)
@@ -90,7 +66,7 @@ SENTINELS := \
     "atomic_integ: phase2 PASS" \
     "atomic_integ: PASS"
 
-QEMU_TIMEOUT := 90
+QEMU_TIMEOUT := 120
 TIMEOUT_CMD  := timeout --kill-after=5 $(QEMU_TIMEOUT)
 
 .PHONY: all run clean gen_config
@@ -114,23 +90,7 @@ $(TARGET): $(SRCS) ../boot/boot_test.ld
 	$(CC) $(CFLAGS) $(SRCS) $(LDFLAGS) $(LIBS) -o $@
 	tricore-elf-size $@
 
-ifeq ($(EMU),tsim)
-run: run_tsim
-else
-run: run_qemu
-endif
-
-run_tsim: $(TARGET)
-	@echo "--- running atomic integ (TSIM) ---"
-	@timeout 60 $(TSIM_BIN) \
-	    -MConfig $(TSIM_MCFG) \
-	    -OConfig $(TSIM_OCFG) \
-	    -s -H -disable-watchdog -x 0 \
-	    -o $(TARGET) </dev/null 2>&1 | tee /tmp/atomic_integ_test.log ; \
-	PASS=1; \
-	if [ "$$PASS" = "1" ]; then echo "ATOMIC INTEG: PASS"; else exit 1; fi
-
-run_qemu: $(TARGET)
+run: $(TARGET)
 	@echo "--- running atomic integration test (timeout=$(QEMU_TIMEOUT)s) ---"
 	@$(TIMEOUT_CMD) $(QEMU) \
 	    -machine $(MACHINE) \

@@ -1,25 +1,22 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * sleep_unit_test.c — host unit tests for kernel/timer/timer.c
+ * sleep_unit_test.c — host unit tests for kernel/timer/timer.c (ticked mode)
  *
- * Tests are self-contained: timer.c is compiled in directly with stubs for
- * all arch and scheduler primitives.  No QEMU or hardware required.
+ * In ticked mode, monotonic time advances strictly through ul_timer_tick()
+ * calls.  Each call increments an internal counter; ul_timer_now_us()
+ * converts that counter to microseconds via the configured tick rate.
  *
- * g_mono_us is static inside timer.c and accumulates across tests.  Each
- * test therefore obtains a baseline via ul_timer_now_us() immediately after
- * ul_timer_init() and expresses all deadlines as (base + offset) so that
- * they are always in the future regardless of accumulated prior state.
+ * There is no STM counter manipulation, no ul_arch_tick_deadline(), and no
+ * re-arm logic — the hardware timer fires periodically at UL_CONFIG_TICK_HZ.
  *
  * Test plan:
- *   1. Monotonic time advances correctly (no wrap).
- *   2. Wrap detection: STM counter goes 0xFFFFFFF0 → 0x00000010.
- *   3. Insert order: threads inserted out-of-deadline order are sorted.
- *   4. ul_timer_tick wakes threads whose deadline <= now.
- *   5. After waking one, remaining threads keep their place.
- *   6. When idle (sched_current==NULL) and threads are woken: schedule called.
- *   7. When a thread is running (sched_current!=NULL): schedule NOT called.
- *   8. Queue empty after all threads woken: deadline not re-armed.
- *   9. Same deadline: both threads woken on the same tick (FIFO).
+ *   1. Monotonic time advances one TICK_PERIOD_US per ul_timer_tick().
+ *   2. Insert order: threads inserted out-of-deadline order are sorted.
+ *   3. ul_timer_tick() wakes all threads whose deadline <= now.
+ *   4. After a partial wake, remaining threads are still sleeping.
+ *   5. Threads with the same deadline wake together in FIFO order.
+ *   6. When idle (sched_current==NULL), expired threads are enqueued.
+ *   7. When a thread is running, ul_sched_schedule is NOT called from tick.
  */
 
 #include <stdint.h>
@@ -37,23 +34,7 @@
 #include "../../kernel/include/ul_sched.h"
 #include "../../kernel/include/ul_timer_internal.h"
 
-/* Controllable fake STM counter. */
-static uint32_t g_stm;
-
-uint32_t ul_arch_tick_get(void)
-{
-	return g_stm;
-}
-
-/* Records last programmed deadline delta. */
-static uint32_t g_deadline_armed;
-
-void ul_arch_tick_deadline(uint32_t delta_us)
-{
-	g_deadline_armed = delta_us;
-}
-
-/* Stubs for context switch (unused by timer tests). */
+/* Context switch stubs (unused by timer tests). */
 void ul_arch_ctx_switch(ul_arch_ctx_t *f, ul_arch_ctx_t *t) { (void)f; (void)t; }
 void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 		      void (*entry)(void *), void *arg,
@@ -62,13 +43,13 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 	(void)ctx; (void)entry; (void)arg; (void)sp; (void)priv;
 }
 
-/* Scheduler stubs — the timer only calls enqueue, current, schedule. */
+/* Scheduler stubs. */
 static ul_thread_t	*g_current;
 static ul_thread_t	*g_last_enqueued;
 static int		 g_schedule_calls;
 
-ul_thread_t *ul_sched_current(void)        { return g_current; }
-void         ul_sched_schedule(void)        { g_schedule_calls++; }
+ul_thread_t *ul_sched_current(void)          { return g_current; }
+void         ul_sched_schedule(void)          { g_schedule_calls++; }
 void         ul_sched_dequeue(ul_thread_t *t) { (void)t; }
 void         ul_sched_enqueue(ul_thread_t *t)
 {
@@ -76,14 +57,15 @@ void         ul_sched_enqueue(ul_thread_t *t)
 	g_last_enqueued = t;
 }
 
-/* Unused sched functions required by the linker due to ul_sched.h. */
-void         ul_sched_init(ul_arch_ctx_t *i)                   { (void)i; }
-void         ul_sched_set_class(const ul_sched_class_t *c)     { (void)c; }
-void         ul_sched_start(ul_arch_ctx_t *i, ul_thread_t *f)  { (void)i; (void)f; }
-ul_thread_t *ul_sched_pick_next(void)                          { return NULL; }
-void         ul_sched_tick(void)                               {}
+void         ul_sched_init(ul_arch_ctx_t *i)                  { (void)i; }
+void         ul_sched_set_class(const ul_sched_class_t *c)    { (void)c; }
+void         ul_sched_start(ul_arch_ctx_t *i, ul_thread_t *f) { (void)i; (void)f; }
+ul_thread_t *ul_sched_pick_next(void)                         { return NULL; }
+void         ul_sched_tick(void)                              {}
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
+
+#define TICK_PERIOD_US	(1000000u / UL_CONFIG_TICK_HZ)
 
 #define PASS(name) printf("  [PASS] %s\n", name)
 #define FAIL(name, msg) do { \
@@ -93,15 +75,8 @@ void         ul_sched_tick(void)                               {}
 
 static int failures;
 
-/*
- * Reset per-test observable state.  g_mono_us / g_last_stm inside timer.c
- * are NOT reset — tests must derive deadlines from ul_timer_now_us() to
- * stay correct regardless of accumulated prior state.
- */
 static void reset_stubs(void)
 {
-	g_stm            = 0;
-	g_deadline_armed = 0;
 	g_current        = NULL;
 	g_last_enqueued  = NULL;
 	g_schedule_calls = 0;
@@ -118,53 +93,39 @@ static ul_thread_t make_thread(uint8_t prio)
 
 /* ── Tests ────────────────────────────────────────────────────────────────── */
 
+/*
+ * Each ul_timer_tick() call must advance ul_timer_now_us() by exactly
+ * TICK_PERIOD_US microseconds.
+ */
 static void test_monotonic_advance(void)
 {
 	const char *name = "monotonic_advance";
-	uint64_t t0, t1;
+	uint64_t t0, t1, t2;
 
 	reset_stubs();
-	g_stm = 1000u;
 	ul_timer_init();
 
-	g_stm = 2000u;
-	t0 = ul_timer_now_us();		/* delta = 1000 */
-
-	g_stm = 5000u;
-	t1 = ul_timer_now_us();		/* delta = 3000 from t0 */
+	t0 = ul_timer_now_us();
+	ul_timer_tick();
+	t1 = ul_timer_now_us();
+	ul_timer_tick();
+	ul_timer_tick();
+	t2 = ul_timer_now_us();
 
 	if (t1 <= t0)
-		FAIL(name, "time did not advance");
-	else if (t1 - t0 != 3000u)
-		FAIL(name, "wrong delta");
+		FAIL(name, "time did not advance after one tick");
+	else if (t1 - t0 != TICK_PERIOD_US)
+		FAIL(name, "wrong delta for one tick");
+	else if (t2 - t0 != 3u * TICK_PERIOD_US)
+		FAIL(name, "wrong delta for three ticks");
 	else
 		PASS(name);
 }
 
-static void test_wrap_detection(void)
-{
-	const char *name = "wrap_detection";
-	uint64_t before_wrap, after_wrap;
-
-	reset_stubs();
-	g_stm = 0xFFFFFFF0u;
-	ul_timer_init();
-
-	g_stm = 0xFFFFFFFFu;
-	before_wrap = ul_timer_now_us();	/* delta = 0x0F */
-
-	/* Simulate counter wrap: 0xFFFFFFFF → 0 → ... → 0x10 (0x11 steps). */
-	g_stm = 0x00000010u;
-	after_wrap = ul_timer_now_us();
-
-	if (after_wrap <= before_wrap)
-		FAIL(name, "monotonic violated after wrap");
-	else if (after_wrap - before_wrap != (uint64_t)0x00000011u)
-		FAIL(name, "wrap delta mismatch");
-	else
-		PASS(name);
-}
-
+/*
+ * Threads inserted out-of-deadline order must be sorted in ascending
+ * deadline order.  Each one wakes on the correct tick boundary.
+ */
 static void test_insert_sorted(void)
 {
 	const char *name = "insert_sorted";
@@ -172,51 +133,45 @@ static void test_insert_sorted(void)
 	ul_thread_t ta, tb, tc;
 
 	reset_stubs();
-	g_stm = 0u;
 	ul_timer_init();
-	base = ul_timer_now_us();	/* establish baseline */
+	base = ul_timer_now_us();
 
 	ta = make_thread(0);
 	tb = make_thread(1);
 	tc = make_thread(2);
 
-	/* Insert out of order; expected queue: ta(base+10), tb(+20), tc(+30). */
-	ul_timer_sleep_insert(&tc, base + 30u);
-	ul_timer_sleep_insert(&ta, base + 10u);
-	ul_timer_sleep_insert(&tb, base + 20u);
+	ul_timer_sleep_insert(&tc, base + 3u * TICK_PERIOD_US);
+	ul_timer_sleep_insert(&ta, base + 1u * TICK_PERIOD_US);
+	ul_timer_sleep_insert(&tb, base + 2u * TICK_PERIOD_US);
 
-	if (g_deadline_armed == 0)
-		FAIL(name, "no deadline armed after insert");
-	else
-		PASS(name);
-
-	/* g_last_stm = 0 after the inserts (g_stm unchanged).
-	 * Setting g_stm = N gives delta = N from the last ul_timer_now_us call. */
-	g_stm = 10u;
+	/* Tick 1: ta should wake */
 	g_last_enqueued = NULL;
-	ul_timer_tick();	/* should wake ta only */
+	ul_timer_tick();
 	if (g_last_enqueued != &ta)
-		FAIL(name, "ta not woken at base+10");
+		FAIL(name, "ta not woken on tick 1");
 	else
 		PASS(name);
 
-	g_stm = 20u;
+	/* Tick 2: tb should wake */
 	g_last_enqueued = NULL;
-	ul_timer_tick();	/* should wake tb only */
+	ul_timer_tick();
 	if (g_last_enqueued != &tb)
-		FAIL(name, "tb not woken at base+20");
+		FAIL(name, "tb not woken on tick 2");
 	else
 		PASS(name);
 
-	g_stm = 30u;
+	/* Tick 3: tc should wake */
 	g_last_enqueued = NULL;
-	ul_timer_tick();	/* should wake tc */
+	ul_timer_tick();
 	if (g_last_enqueued != &tc)
-		FAIL(name, "tc not woken at base+30");
+		FAIL(name, "tc not woken on tick 3");
 	else
 		PASS(name);
 }
 
+/*
+ * A single tick past multiple deadlines must wake all expired threads.
+ */
 static void test_tick_wakes_all_expired(void)
 {
 	const char *name = "tick_wakes_all_expired";
@@ -224,18 +179,15 @@ static void test_tick_wakes_all_expired(void)
 	ul_thread_t ta, tb;
 
 	reset_stubs();
-	g_stm = 0u;
 	ul_timer_init();
 	base = ul_timer_now_us();
 
 	ta = make_thread(0);
 	tb = make_thread(1);
 
-	ul_timer_sleep_insert(&ta, base + 100u);
-	ul_timer_sleep_insert(&tb, base + 200u);
+	ul_timer_sleep_insert(&ta, base + 1u * TICK_PERIOD_US);
+	ul_timer_sleep_insert(&tb, base + 1u * TICK_PERIOD_US);
 
-	/* Advance past both deadlines in one tick. */
-	g_stm = 250u;
 	ul_timer_tick();
 
 	if (ta.state != UL_THREAD_STATE_READY)
@@ -247,27 +199,53 @@ static void test_tick_wakes_all_expired(void)
 }
 
 /*
- * ul_timer_tick() no longer calls ul_sched_schedule() directly to avoid
- * pushing an extra CSA frame inside the timer ISR.  The idle loop detects
- * a non-empty run queue and calls ul_sched_schedule() itself.  We verify
- * only that the expired thread is enqueued (state = READY).
+ * When a thread remains in the sleep queue after a partial wake, it must
+ * still be sleeping (not enqueued).
  */
-static void test_idle_triggers_schedule(void)
+static void test_partial_wake_remainder(void)
+{
+	const char *name = "partial_wake_remainder";
+	uint64_t base;
+	ul_thread_t ta, tb;
+
+	reset_stubs();
+	ul_timer_init();
+	base = ul_timer_now_us();
+
+	ta = make_thread(0);
+	tb = make_thread(1);
+
+	ul_timer_sleep_insert(&ta, base + 1u * TICK_PERIOD_US);
+	ul_timer_sleep_insert(&tb, base + 3u * TICK_PERIOD_US);
+
+	/* One tick: only ta expires */
+	ul_timer_tick();
+
+	if (ta.state != UL_THREAD_STATE_READY)
+		FAIL(name, "ta not woken");
+	else if (tb.state != UL_THREAD_STATE_BLOCKED)
+		FAIL(name, "tb woken too early");
+	else
+		PASS(name);
+}
+
+/*
+ * Expired thread is enqueued when in idle context (no running thread).
+ */
+static void test_idle_triggers_enqueue(void)
 {
 	const char *name = "idle_triggers_schedule";
 	uint64_t base;
 	ul_thread_t ta;
 
 	reset_stubs();
-	g_stm      = 0u;
-	g_current  = NULL;	/* idle */
+	g_current = NULL;
 	ul_timer_init();
 	base = ul_timer_now_us();
 
 	ta = make_thread(0);
-	ul_timer_sleep_insert(&ta, base + 50u);
+	ul_timer_sleep_insert(&ta, base + 1u * TICK_PERIOD_US);
 
-	g_stm = 50u;
 	ul_timer_tick();
 
 	if (ta.state != UL_THREAD_STATE_READY)
@@ -276,6 +254,10 @@ static void test_idle_triggers_schedule(void)
 		PASS(name);
 }
 
+/*
+ * ul_timer_tick() must NOT call ul_sched_schedule() directly — the idle
+ * loop handles reschedule after returning from ul_arch_cpu_idle().
+ */
 static void test_running_no_schedule(void)
 {
 	const char *name = "running_no_schedule";
@@ -283,7 +265,6 @@ static void test_running_no_schedule(void)
 	ul_thread_t cur, sleeping;
 
 	reset_stubs();
-	g_stm = 0u;
 	ul_timer_init();
 	base = ul_timer_now_us();
 
@@ -291,11 +272,10 @@ static void test_running_no_schedule(void)
 	sleeping = make_thread(1);
 
 	cur.state = UL_THREAD_STATE_RUNNING;
-	g_current = &cur;	/* a thread is running — not idle */
+	g_current = &cur;
 
-	ul_timer_sleep_insert(&sleeping, base + 50u);
+	ul_timer_sleep_insert(&sleeping, base + 1u * TICK_PERIOD_US);
 
-	g_stm = 50u;
 	ul_timer_tick();
 
 	if (g_schedule_calls != 0)
@@ -306,71 +286,9 @@ static void test_running_no_schedule(void)
 		PASS(name);
 }
 
-static void test_rearm_after_partial_wake(void)
-{
-	const char *name = "rearm_after_partial_wake";
-	uint64_t base;
-	ul_thread_t ta, tb;
-
-	reset_stubs();
-	g_stm = 0u;
-	ul_timer_init();
-	base = ul_timer_now_us();
-
-	ta = make_thread(0);
-	tb = make_thread(1);
-
-	ul_timer_sleep_insert(&ta, base + 100u);
-	ul_timer_sleep_insert(&tb, base + 200u);
-
-	/* Wake ta only; tb should still be in queue → deadline re-armed. */
-	g_stm = 100u;
-	g_deadline_armed = 0u;
-	ul_timer_tick();
-
-	if (ta.state != UL_THREAD_STATE_READY)
-		FAIL(name, "ta not woken");
-	else if (g_deadline_armed == 0u)
-		FAIL(name, "deadline not re-armed for tb");
-	else
-		PASS(name);
-}
-
 /*
- * arm_nearest() always arms the timer for at least the next quantum period
- * (TICK_PERIOD_US) so the preemptive scheduler keeps ticking even when no
- * thread is sleeping.  An empty sleep queue does not suppress re-arming.
+ * Two threads with the same deadline must both wake on the same tick.
  */
-static void test_empty_queue_no_rearm(void)
-{
-	const char *name = "empty_queue_no_rearm";
-	uint64_t base;
-	ul_thread_t ta;
-
-	reset_stubs();
-	g_stm = 0u;
-	ul_timer_init();
-	base = ul_timer_now_us();
-
-	ta = make_thread(0);
-	ul_timer_sleep_insert(&ta, base + 50u);
-
-	/* Wake ta → queue becomes empty. */
-	g_stm = 50u;
-	ul_timer_tick();
-
-	/* With preemptive scheduling, arm_nearest always re-arms for the
-	 * next quantum period even when the sleep queue is empty. */
-	g_deadline_armed = 0u;
-	g_stm = 100u;
-	ul_timer_tick();
-
-	if (g_deadline_armed == 0u)
-		FAIL(name, "deadline not re-armed for next quantum");
-	else
-		PASS(name);
-}
-
 static void test_same_deadline_fifo(void)
 {
 	const char *name = "same_deadline_fifo";
@@ -378,18 +296,15 @@ static void test_same_deadline_fifo(void)
 	ul_thread_t ta, tb;
 
 	reset_stubs();
-	g_stm = 0u;
 	ul_timer_init();
 	base = ul_timer_now_us();
 
 	ta = make_thread(0);
 	tb = make_thread(1);
 
-	/* Same deadline: ta inserted first → ta is head, both should wake together. */
-	ul_timer_sleep_insert(&ta, base + 100u);
-	ul_timer_sleep_insert(&tb, base + 100u);
+	ul_timer_sleep_insert(&ta, base + 1u * TICK_PERIOD_US);
+	ul_timer_sleep_insert(&tb, base + 1u * TICK_PERIOD_US);
 
-	g_stm = 100u;
 	ul_timer_tick();
 
 	if (ta.state != UL_THREAD_STATE_READY)
@@ -407,13 +322,11 @@ int main(void)
 	printf("sleep unit tests\n");
 
 	test_monotonic_advance();
-	test_wrap_detection();
 	test_insert_sorted();
 	test_tick_wakes_all_expired();
-	test_idle_triggers_schedule();
+	test_partial_wake_remainder();
+	test_idle_triggers_enqueue();
 	test_running_no_schedule();
-	test_rearm_after_partial_wake();
-	test_empty_queue_no_rearm();
 	test_same_deadline_fifo();
 
 	if (failures) {

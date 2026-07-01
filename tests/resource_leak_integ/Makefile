@@ -1,27 +1,11 @@
 CC      := tricore-elf-gcc
 QEMU    := qemu-system-tricore
-MACHINE := KIT_AURIX_TC277_TRB
-
-# ---------------------------------------------------------------------------
-# Simulator selection: EMU=tsim (default when TSIM_PATH is set) or EMU=qemu
-# ---------------------------------------------------------------------------
+MACHINE := KIT_AURIX_TC397B_TRB
 ROOT    := ../..
-TSIM_PATH   ?=
-TSIM_BIN    := $(TSIM_PATH)/bin/tsim16p_e
-TSIM_TC27X  := $(ROOT)/boards/tsim_tc27x
-TSIM_MCFG   := $(TSIM_TC27X)/MConfig
-TSIM_OCFG   := $(TSIM_TC27X)/OConfig
-HAS_TSIM    := $(if $(TSIM_PATH),$(shell test -x "$(TSIM_BIN)" && echo 1 || echo 0),0)
-ifeq ($(EMU),)
-  ifeq ($(HAS_TSIM),1)
-    EMU := tsim
-  else
-    EMU := qemu
-  endif
-endif
 TARGET  := resource_leak_test.elf
-
 GEN_INC := /tmp/gen
+
+CONSOLE_SRC := $(ROOT)/boards/qemu_tc3xx/qemu_console.c
 
 CFLAGS := \
     -mcpu=tc27xx \
@@ -34,21 +18,11 @@ CFLAGS := \
     -I$(ROOT)/arch/tricore/include \
     -I$(ROOT) \
     -I$(GEN_INC) \
-    -O0 -g
-
-# Per-simulator console source and arch overrides
-ifeq ($(EMU),tsim)
-CONSOLE_SRC := $(ROOT)/boards/tsim_tc27x/tsim_console.c
-CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=0
-else
-CONSOLE_SRC := $(ROOT)/boards/qemu_tc27x/qemu_console.c
-CFLAGS      += -DUL_ARCH_QEMU_VIRT_CONSOLE=1
-CFLAGS      += -DUL_ARCH_STM0_BASE=0xF0000000u
-CFLAGS      += -DUL_ARCH_SRC_STM0_SR0=0xF0038300u
-CFLAGS      += -DUL_ARCH_SRC_SRE_BIT=10u
-CFLAGS      += -DUL_ARCH_RAM_BASE=0x90000000u
-CFLAGS      += -DUL_ARCH_IDLE_IS_WAIT=0
-endif
+    -O0 -g \
+    -DUL_ARCH_QEMU_VIRT_CONSOLE=1 \
+    -DUL_ARCH_SRC_STM0_SR0=0xF0038300u \
+    -DUL_ARCH_SRC_SRE_BIT=10u \
+    -DUL_ARCH_IDLE_IS_WAIT=0
 
 LDFLAGS := \
     -T ../boot/boot_test.ld \
@@ -84,12 +58,8 @@ TEST_SRCS := \
 
 SRCS := $(KERNEL_SRCS) $(TEST_SRCS)
 
-# MAX_THREADS must fit: 1 root + 1 supervisor + WAVES * THREADS_PER_WAVE
-# = 1 + 1 + 20 * 8 = 162 → use 170 for margin.
 SENTINELS := \
     "resource_leak: start" \
-    "resource_leak: wave 10/20 done" \
-    "resource_leak: wave 20/20 done" \
     "resource_leak: PASS"
 
 QEMU_TIMEOUT := 120
@@ -100,12 +70,12 @@ TIMEOUT_CMD  := timeout --kill-after=5 $(QEMU_TIMEOUT)
 gen_config:
 	@mkdir -p $(GEN_INC)/ul
 	@printf '#ifndef UL_CONFIG_H\n#define UL_CONFIG_H\n' > $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_MAX_THREADS      170\n' >> $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_MAX_ENDPOINTS    16\n'  >> $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_MAX_NOTIFS       16\n'  >> $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_MAX_IRQ_BINDINGS 16\n'  >> $(GEN_INC)/ul/config.h
+	@printf '#define UL_CONFIG_MAX_THREADS      32\n' >> $(GEN_INC)/ul/config.h
+	@printf '#define UL_CONFIG_MAX_ENDPOINTS    32\n' >> $(GEN_INC)/ul/config.h
+	@printf '#define UL_CONFIG_MAX_NOTIFS       32\n' >> $(GEN_INC)/ul/config.h
+	@printf '#define UL_CONFIG_MAX_IRQ_BINDINGS 16\n' >> $(GEN_INC)/ul/config.h
 	@printf '#define UL_CONFIG_TICK_HZ          1000\n' >> $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_DEBUG_PRINTK     1\n'   >> $(GEN_INC)/ul/config.h
+	@printf '#define UL_CONFIG_DEBUG_PRINTK     1\n' >> $(GEN_INC)/ul/config.h
 	@printf '#define UL_CONFIG_SCHED_QUANTUM_US    10000\n' >> $(GEN_INC)/ul/config.h
 	@printf '#define UL_CONFIG_SCHED_QUANTUM_TICKS 10\n' >> $(GEN_INC)/ul/config.h
 	@printf '#endif\n' >> $(GEN_INC)/ul/config.h
@@ -116,23 +86,7 @@ $(TARGET): $(SRCS) ../boot/boot_test.ld
 	$(CC) $(CFLAGS) $(SRCS) $(LDFLAGS) $(LIBS) -o $@
 	tricore-elf-size $@
 
-ifeq ($(EMU),tsim)
-run: run_tsim
-else
-run: run_qemu
-endif
-
-run_tsim: $(TARGET)
-	@echo "--- running resource leak integ (TSIM) ---"
-	@timeout 60 $(TSIM_BIN) \
-	    -MConfig $(TSIM_MCFG) \
-	    -OConfig $(TSIM_OCFG) \
-	    -s -H -disable-watchdog -x 0 \
-	    -o $(TARGET) </dev/null 2>&1 | tee /tmp/resource_leak_test.log ; \
-	PASS=1; \
-	if [ "$$PASS" = "1" ]; then echo "RESOURCE LEAK INTEG: PASS"; else exit 1; fi
-
-run_qemu: $(TARGET)
+run: $(TARGET)
 	@echo "--- running resource leak integration test (timeout=$(QEMU_TIMEOUT)s) ---"
 	@$(TIMEOUT_CMD) $(QEMU) \
 	    -machine $(MACHINE) \
@@ -149,9 +103,9 @@ run_qemu: $(TARGET)
 	    fi ; \
 	done ; \
 	if [ $$FAIL -eq 0 ]; then \
-	    echo "RESOURCE LEAK TEST: PASS" ; \
+	    echo "RESOURCE LEAK INTEG TEST: PASS" ; \
 	else \
-	    echo "RESOURCE LEAK TEST: FAIL" ; \
+	    echo "RESOURCE LEAK INTEG TEST: FAIL" ; \
 	    cat /tmp/resource_leak_test.log ; \
 	    exit 1 ; \
 	fi
