@@ -20,8 +20,10 @@
 
 /*
  * Thread registry: linear array for ul_thread_by_tid().
- * Populated by ul_thread_init(); never shrinks (dead threads stay registered
- * so their TID remains valid for diagnostic purposes).
+ * Populated by ul_thread_init().  When a TCB from tcb_pool is recycled
+ * (same struct pointer reused), ul_thread_init() updates the existing
+ * slot rather than appending a new one, so the registry count stays
+ * bounded by the pool size.
  */
 static ul_thread_t	*tcb_reg[UL_CONFIG_MAX_THREADS];
 static uint32_t		 tcb_reg_count;
@@ -94,7 +96,27 @@ int ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr, void *stack)
 			 (uintptr_t)stack + attr->stack_size,
 			 attr->privilege);
 
-	tcb_reg[tcb_reg_count++] = th;
+	/*
+	 * Register in the lookup table.  If this TCB struct already has an
+	 * entry (pool reuse: same pointer was freed then reallocated), update
+	 * it in place so the count stays bounded by the pool size.
+	 */
+	{
+		uint32_t i;
+		bool found = false;
+
+		for (i = 0; i < tcb_reg_count; i++) {
+			if (tcb_reg[i] == th) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			if (tcb_reg_count >= UL_CONFIG_MAX_THREADS)
+				return UL_ENOSPC;
+			tcb_reg[tcb_reg_count++] = th;
+		}
+	}
 	return UL_OK;
 }
 
