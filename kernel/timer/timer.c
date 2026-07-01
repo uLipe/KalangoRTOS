@@ -2,24 +2,17 @@
 /*
  * Copyright (c) 2024-2026 Felipe Neves
  *
- * kernel/timer/timer.c — tickless sleep queue
+ * kernel/timer/timer.c — periodic tick-based sleep queue
  *
- * Monotonic time: 64-bit µs built from the 32-bit ul_arch_tick_get()
- * counter.  Wrap events (every ~4294 s) are detected by comparing the
- * current reading against the last known value; ul_timer_now_us() must
- * be called at least once per wrap period to stay accurate.
+ * Monotonic time is maintained as a tick counter incremented once per
+ * hardware tick interrupt.  ul_timer_now_us() converts this to
+ * microseconds using the configured tick rate; precision is ±1 tick.
  *
- * Sleep queue: singly-linked list sorted by sleep_until ascending.
- * The hardware is armed (via ul_arch_tick_deadline) for the nearest
- * expiry; subsequent entries are chained and armed as each fires.
+ * Sleep queue: singly-linked list sorted by sleep_until (absolute µs)
+ * ascending.  ul_timer_tick() is called from the tick ISR via
+ * ul_kernel_tick() and expires all threads whose deadline has passed.
  *
- * ISR wakeup model (cooperative + idle-preempt):
- *   - If a thread is currently running, woken threads are enqueued and
- *     will be scheduled at the next voluntary yield/sleep.
- *   - If the CPU is idle (sched_current == NULL), ul_sched_schedule()
- *     is called directly from the ISR to switch to the woken thread.
- *     This is safe on TriCore: the idle CSA chain includes the ISR
- *     frames and unwinds correctly when idle is eventually resumed.
+ * The hardware timer is periodic — no re-arming from this layer.
  */
 
 #include <stdint.h>
@@ -28,55 +21,26 @@
 #include <kernel/include/ul_timer_internal.h>
 #include <kernel/include/ul_thread_internal.h>
 #include <kernel/include/ul_sched.h>
-#include <ul_arch.h>
+
+#define TICK_PERIOD_US	(1000000u / UL_CONFIG_TICK_HZ)
 
 static ul_thread_t	*sleep_head;
-static uint32_t		 g_last_stm;
-static uint64_t		 g_mono_us;
+static volatile uint32_t g_tick_count;
 
 void ul_timer_init(void)
 {
-	g_last_stm = ul_arch_tick_get();
+	g_tick_count = 0;
+	sleep_head   = NULL;
+}
+
+uint32_t ul_timer_get_tick_count(void)
+{
+	return g_tick_count;
 }
 
 uint64_t ul_timer_now_us(void)
 {
-	uint32_t now = ul_arch_tick_get();
-
-	if (now < g_last_stm) {
-		/* 32-bit wrap: add the distance to 2^32 then the new value. */
-		g_mono_us += (uint64_t)(UINT32_MAX - g_last_stm) + (uint64_t)now + 1u;
-	} else {
-		g_mono_us += (uint64_t)(now - g_last_stm);
-	}
-	g_last_stm = now;
-	return g_mono_us;
-}
-
-/*
- * arm_nearest — arm the STM one-shot for the next tick event.
- *
- * The tick always fires within one scheduler tick period
- * (1 000 000 / TICK_HZ µs) to drive the preemption quantum counter.
- * If a sleeping thread expires sooner than that, the deadline is
- * advanced to wake it earlier.  This turns the formerly tickless timer
- * into a periodic+tickless hybrid: periodic for running threads,
- * tickless for pure-sleep scenarios.
- */
-#define TICK_PERIOD_US (1000000u / UL_CONFIG_TICK_HZ)
-
-static void arm_nearest(uint64_t now)
-{
-	uint64_t deadline = now + TICK_PERIOD_US;
-	uint64_t delta;
-	uint32_t delta32;
-
-	if (sleep_head && sleep_head->sleep_until < deadline)
-		deadline = sleep_head->sleep_until;
-
-	delta = deadline > now ? deadline - now : 0u;
-	delta32 = (delta > (uint64_t)UINT32_MAX) ? UINT32_MAX : (uint32_t)delta;
-	ul_arch_tick_deadline(delta32 ? delta32 : 1u);
+	return (uint64_t)g_tick_count * TICK_PERIOD_US;
 }
 
 void ul_timer_sleep_insert(ul_thread_t *th, uint64_t deadline_us)
@@ -89,9 +53,6 @@ void ul_timer_sleep_insert(ul_thread_t *th, uint64_t deadline_us)
 	th->sleep_until = deadline_us;
 	th->sleep_next  = *pp;
 	*pp = th;
-
-	if (sleep_head == th)
-		arm_nearest(ul_timer_now_us());
 }
 
 void ul_timer_sleep_remove(ul_thread_t *th)
@@ -111,8 +72,11 @@ void ul_timer_sleep_remove(ul_thread_t *th)
 
 void ul_timer_tick(void)
 {
-	uint64_t	 now = ul_timer_now_us();
+	uint64_t	 now;
 	ul_thread_t	*th;
+
+	g_tick_count++;
+	now = (uint64_t)g_tick_count * TICK_PERIOD_US;
 
 	while (sleep_head && sleep_head->sleep_until <= now) {
 		th         = sleep_head;
@@ -121,16 +85,9 @@ void ul_timer_tick(void)
 		ul_sched_enqueue(th);
 	}
 
-	arm_nearest(now);
-
 	/*
-	 * Do NOT call ul_sched_schedule() here — we are inside the timer ISR,
-	 * which has already done svlcx in vectors.S.  Calling ul_arch_ctx_switch
-	 * from here would push an extra lower-context frame (UL=0) before the
-	 * ISR upper-context frame (UL=1), breaking the lower/upper alternation
-	 * that rslcx+rfe expects when idle is eventually resumed.
-	 *
-	 * The idle loop detects a non-empty run queue after ul_arch_cpu_idle()
-	 * returns and calls ul_sched_schedule() itself (from a clean call frame).
+	 * Do NOT call ul_sched_schedule() here — the idle loop detects a
+	 * non-empty run queue after ul_arch_cpu_idle() returns and calls
+	 * ul_sched_schedule() itself from a clean call frame.
 	 */
 }

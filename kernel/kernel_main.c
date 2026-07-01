@@ -60,16 +60,10 @@ void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
 
 	/*
-	 * Class 1 (Internal Protection): MPU violation in thread context.
-	 *
-	 * Class 4 tin 2 (DSE — Data Access Synchronous Error): TSIM raises
-	 * this for data access protection violations that real TC2xx silicon
-	 * reports as class 1.  Only treat as recoverable when IS=0 (thread
-	 * context); a class-4 in ISR context (IS=1) is an unrecoverable
-	 * kernel fault — spin so a debugger can attach.
+	 * Class 1 (Internal Protection): MPU violation in thread context —
+	 * recoverable: kill the offending thread and reschedule.
 	 */
-	recoverable = (trap_class == 1u) ||
-		      (trap_class == 4u && tin == 2u && !(psw & 0x200u));
+	recoverable = (trap_class == 1u);
 
 	if (recoverable && cur) {
 		ul_printk("TRAP: killing thread tid=%u\n",
@@ -145,6 +139,13 @@ void ul_kernel_main(const ul_boot_info_t *info)
 	root_attr.privilege = UL_PRIV_KERNEL;
 
 	ul_thread_init(&root_thread_g, &root_attr, root_stack_g);
+
+#ifdef UL_KERNEL_PRE_ROOT_HOOK
+	{
+		extern void ul_kernel_pre_root_hook(void);
+		ul_kernel_pre_root_hook();
+	}
+#endif
 
 	/* Enable MPU after all static threads are created */
 	ul_arch_mpu_enable();
