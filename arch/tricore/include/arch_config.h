@@ -118,16 +118,6 @@
 #define UL_ARCH_SRC_CONFIG_VAL	(UL_ARCH_TICK_SRPN | (1u << UL_ARCH_SRC_SRE_BIT))
 #endif
 
-/*
- * STM clock frequency (Hz).
- * TC27x default: f_SPB = 50 MHz.  Adjust for board PLL configuration.
- */
-#ifndef UL_ARCH_STM_CLOCK_HZ
-#define UL_ARCH_STM_CLOCK_HZ	50000000u
-#endif
-
-/* Ticks per microsecond at UL_ARCH_STM_CLOCK_HZ (integer, rounded) */
-#define UL_ARCH_STM_TICKS_PER_US	(UL_ARCH_STM_CLOCK_HZ / 1000000u)
 
 /* =========================================================================
  * CPU idle implementation

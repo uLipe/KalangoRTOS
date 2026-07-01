@@ -21,4 +21,11 @@
 #define UL_CONFIG_SCHED_QUANTUM_TICKS \
 	((UL_CONFIG_SCHED_QUANTUM_US * UL_CONFIG_TICK_HZ + 999999u) / 1000000u)
 
+/*
+ * Machine clock frequency in Hz fed to the arch tick timer.
+ * The specific peripheral used is arch-defined; this value must match
+ * the board PLL/clock configuration.  Always set per-board.
+ */
+#define UL_CONFIG_HW_SYS_CLOCK_HZ    @UL_CONFIG_HW_SYS_CLOCK_HZ@
+
 #endif /* UL_CONFIG_H */

@@ -804,9 +804,9 @@ void _arch_generic_isr_handler(void)
 
 /*
  * Number of STM0 counter ticks per kernel tick period.
- * Derived from the board STM clock and the kernel tick rate.
+ * UL_CONFIG_HW_SYS_CLOCK_HZ is the machine clock fed into STM0 on this arch.
  */
-#define TICK_PERIOD_TICKS	(UL_ARCH_STM_CLOCK_HZ / UL_CONFIG_TICK_HZ)
+#define TICK_PERIOD_TICKS	(UL_CONFIG_HW_SYS_CLOCK_HZ / UL_CONFIG_TICK_HZ)
 
 static inline uint32_t stm0_read(uint32_t reg_addr)
 {
@@ -836,7 +836,7 @@ void ul_arch_tick_init(void)
 
 uint32_t ul_arch_tick_get(void)
 {
-	return stm0_read(UL_ARCH_STM0_TIM0) / UL_ARCH_STM_TICKS_PER_US;
+	return stm0_read(UL_ARCH_STM0_TIM0) / (UL_CONFIG_HW_SYS_CLOCK_HZ / 1000000u);
 }
 
 /*

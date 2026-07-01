@@ -9,6 +9,8 @@
 #define UL_CONFIG_TICK_HZ          1000
 #define UL_CONFIG_DEBUG_PRINTK     0
 
+#define UL_CONFIG_HW_SYS_CLOCK_HZ    50000000
+
 #endif /* UL_CONFIG_H */
 
 #define UL_CONFIG_SCHED_QUANTUM_US    10000
