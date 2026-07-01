@@ -83,11 +83,13 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 uint32_t ul_arch_tick_get(void)          { return 0; }
 void     ul_arch_tick_deadline(uint32_t d) { (void)d; }
 
-/* ── Phys allocator stub ───────────────────────────────────────────────────── */
+/* ── Heap stubs (kernel heap not needed for unit tests) ──────────────────── */
 
-void ul_phys_alloc_init(uintptr_t base, uintptr_t end) { (void)base; (void)end; }
-void *ul_phys_alloc(size_t size)   { (void)size; return NULL; }
-void ul_phys_free(void *ptr)       { (void)ptr; }
+void   ul_heap_init(uintptr_t base, size_t size) { (void)base; (void)size; }
+void  *ul_heap_alloc(size_t size)                { (void)size; return NULL; }
+void   ul_heap_free(void *ptr)                   { (void)ptr; }
+void  *ul_heap_aligned_alloc(size_t a, size_t s) { (void)a; (void)s; return NULL; }
+size_t ul_heap_free_bytes(void)                  { return 0u; }
 
 /* ── Arch stubs ────────────────────────────────────────────────────────────── */
 

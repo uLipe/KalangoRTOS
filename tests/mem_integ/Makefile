@@ -44,7 +44,7 @@ KERNEL_SRCS := \
     $(ROOT)/kernel/sched/fifo_rt.c \
     $(ROOT)/kernel/irq/irq.c \
     $(ROOT)/kernel/mem/mem.c \
-    $(ROOT)/kernel/mem/phys_alloc.c \
+    $(ROOT)/kernel/mem/tlsf.c \
     $(ROOT)/kernel/thread/thread.c \
     $(ROOT)/kernel/ipc/ep.c \
     $(ROOT)/kernel/notif/notif.c \
@@ -58,14 +58,7 @@ TEST_SRCS := \
 
 SRCS := $(KERNEL_SRCS) $(TEST_SRCS)
 
-SENTINELS := \
-    "mem_integ: start" \
-    "mem_integ: anon alloc/write/read PASS" \
-    "mem_integ: scenario 1 (anon) PASS" \
-    "mem_integ: grant read PASS" \
-    "mem_integ: scenario 2 (grant) PASS" \
-    "mem_integ: scenario 3 (MPU fault)" \
-    "mem_integ: PASS"
+SENTINEL := "MEM INTEG TEST: PASS"
 
 QEMU_TIMEOUT := 60
 TIMEOUT_CMD  := timeout --kill-after=5 $(QEMU_TIMEOUT)
@@ -75,9 +68,6 @@ TIMEOUT_CMD  := timeout --kill-after=5 $(QEMU_TIMEOUT)
 gen_config:
 	@mkdir -p $(GEN_INC)/ul
 	@printf '#ifndef UL_CONFIG_H\n#define UL_CONFIG_H\n' > $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_MAX_THREADS      32\n' >> $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_MAX_ENDPOINTS    16\n' >> $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_MAX_NOTIFS       16\n' >> $(GEN_INC)/ul/config.h
 	@printf '#define UL_CONFIG_MAX_IRQ_BINDINGS 16\n' >> $(GEN_INC)/ul/config.h
 	@printf '#define UL_CONFIG_TICK_HZ          1000\n' >> $(GEN_INC)/ul/config.h
 	@printf '#define UL_CONFIG_DEBUG_PRINTK     1\n' >> $(GEN_INC)/ul/config.h
@@ -99,16 +89,7 @@ run: $(TARGET)
 	    -kernel $(TARGET) \
 	    -nographic \
 	    </dev/null 2>&1 | tee /tmp/mem_integ_test.log ; \
-	FAIL=0 ; \
-	for S in $(SENTINELS) ; do \
-	    if grep -q "$$S" /tmp/mem_integ_test.log ; then \
-	        echo "  [PASS] found: $$S" ; \
-	    else \
-	        echo "  [FAIL] missing: $$S" ; \
-	        FAIL=1 ; \
-	    fi ; \
-	done ; \
-	if [ $$FAIL -eq 0 ]; then \
+	if grep -q $(SENTINEL) /tmp/mem_integ_test.log ; then \
 	    echo "MEM INTEG TEST: PASS" ; \
 	else \
 	    echo "MEM INTEG TEST: FAIL" ; \

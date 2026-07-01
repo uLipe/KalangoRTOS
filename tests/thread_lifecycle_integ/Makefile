@@ -44,7 +44,7 @@ KERNEL_SRCS := \
     $(ROOT)/kernel/sched/fifo_rt.c \
     $(ROOT)/kernel/irq/irq.c \
     $(ROOT)/kernel/mem/mem.c \
-    $(ROOT)/kernel/mem/phys_alloc.c \
+    $(ROOT)/kernel/mem/tlsf.c \
     $(ROOT)/kernel/thread/thread.c \
     $(ROOT)/kernel/ipc/ep.c \
     $(ROOT)/kernel/notif/notif.c \
@@ -70,9 +70,6 @@ TIMEOUT_CMD  := timeout --kill-after=5 $(QEMU_TIMEOUT)
 gen_config:
 	@mkdir -p $(GEN_INC)/ul
 	@printf '#ifndef UL_CONFIG_H\n#define UL_CONFIG_H\n' > $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_MAX_THREADS      32\n' >> $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_MAX_ENDPOINTS    16\n' >> $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_MAX_NOTIFS       16\n' >> $(GEN_INC)/ul/config.h
 	@printf '#define UL_CONFIG_MAX_IRQ_BINDINGS 16\n' >> $(GEN_INC)/ul/config.h
 	@printf '#define UL_CONFIG_TICK_HZ          1000\n' >> $(GEN_INC)/ul/config.h
 	@printf '#define UL_CONFIG_DEBUG_PRINTK     1\n' >> $(GEN_INC)/ul/config.h

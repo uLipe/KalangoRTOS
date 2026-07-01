@@ -18,7 +18,7 @@ ENTRY(_start)
 
 MEMORY {
     PFLASH  (rx)  : ORIGIN = 0x80000000, LENGTH = 4M
-    SRAM    (rwx) : ORIGIN = 0x70000000, LENGTH = 256K
+    SRAM    (rwx) : ORIGIN = 0x70000000, LENGTH = 240K
 }
 
 _ul_kernel_stack_size = 4096;
@@ -62,6 +62,7 @@ SECTIONS {
     .bss (NOLOAD) : {
         _ul_kernel_bss_start = .;
         *(.bss .bss.*)
+        *(.kernel.bss)
         *(.sbss .sbss.*)
         *(COMMON)
         . = ALIGN(4);

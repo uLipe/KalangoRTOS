@@ -13,7 +13,7 @@ CFLAGS := \
 
 SRCS := \
     mem_unit_test.c \
-    $(ROOT)/kernel/mem/phys_alloc.c
+    $(ROOT)/kernel/mem/tlsf.c
 
 .PHONY: all run clean
 
