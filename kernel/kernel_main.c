@@ -34,6 +34,36 @@ void ul_kernel_tick(void)
 	ul_sched_tick();
 }
 
+void ul_kernel_irq_check_preempt(void)
+{
+	ul_sched_check_preempt();
+}
+
+/*
+ * ul_kernel_syscall_check_preempt — called at the end of every syscall,
+ * before restoring the caller's context.
+ *
+ * If a higher-priority thread became ready during the syscall (e.g. a
+ * notification was delivered, a thread was resumed), the caller is
+ * demoted to READY and ul_sched_schedule() switches to the new thread.
+ * Execution resumes here when the caller is eventually rescheduled, then
+ * returns normally to ul_arch_syscall_entry() and thence to userspace.
+ *
+ * The running thread is never removed from the run queue by pick_next(),
+ * so no ul_sched_enqueue() is needed — just mark it READY and schedule.
+ */
+void ul_kernel_syscall_check_preempt(void)
+{
+	ul_thread_t *cur  = ul_sched_current();
+	ul_thread_t *next = ul_sched_peek_next();
+
+	if (!cur || !next || next == cur || next->priority >= cur->priority)
+		return;
+
+	cur->state = UL_THREAD_STATE_READY;
+	ul_sched_schedule();
+}
+
 uint32_t ul_kernel_trap_syscall(uint8_t tin, uint32_t args[4])
 {
 	return ul_syscall_router(tin, args[0], args[1], args[2], args[3]);
@@ -54,8 +84,8 @@ void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 	 *   PSW.IS (bit 9) = 1 → trap fired inside an ISR (ISP active)
 	 *   PSW.IS (bit 9) = 0 → trap fired in thread context
 	 *
-	 * On TriCore, traps do not change PSW, so MFCR reflects the exact
-	 * PSW state at the point of the fault (only CDC increments on CALL).
+	 * On this architecture, traps do not change PSW, so MFCR reflects
+	 * the exact PSW state at the point of the fault.
 	 */
 	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
 
@@ -71,7 +101,6 @@ void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 		cur->state = UL_THREAD_STATE_DEAD;
 		ul_sched_dequeue(cur);
 		ul_sched_schedule();
-		/* ul_sched_schedule does not return when current dies */
 	}
 
 	for (;;)
@@ -79,31 +108,36 @@ void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 }
 
 /* =========================================================================
- * Root thread bootstrap
+ * Thread entries
  * ========================================================================= */
 
-/*
- * Explicit .bss.* sections: tricore-elf-gcc with -fdata-sections uses the
- * variable name as the section name which is NOT captured by *(.bss*).
- * Forcing the .bss. prefix fixes placement.
- */
-static ul_arch_ctx_t  idle_ctx_g
-	__attribute__((section(".bss.idle_ctx_g")));
-static ul_thread_t    root_thread_g
-	__attribute__((section(".bss.root_thread_g")));
-static uint8_t        root_stack_g[4096]
-	__attribute__((aligned(8), section(".bss.root_stack_g")));
+static void idle_thread_entry(void *arg)
+{
+	(void)arg;
+	for (;;)
+		ul_arch_cpu_idle();
+}
 
 static void root_thread_entry(void *arg)
 {
 	ul_printk("ulipeMicroKernel: root thread\n");
 	ul_root_thread((const ul_boot_info_t *)arg);
-	/*
-	 * ul_root_thread() should not return.  If it does (stub/test path),
-	 * exit cleanly via the scheduler.
-	 */
 	ul_thread_exit();
 }
+
+/* =========================================================================
+ * Static thread storage
+ * ========================================================================= */
+
+static ul_thread_t idle_thread_g
+	__attribute__((section(".bss.idle_thread_g")));
+static uint8_t     idle_stack_g[256]
+	__attribute__((aligned(8), section(".bss.idle_stack_g")));
+
+static ul_thread_t root_thread_g
+	__attribute__((section(".bss.root_thread_g")));
+static uint8_t     root_stack_g[4096]
+	__attribute__((aligned(8), section(".bss.root_stack_g")));
 
 /* =========================================================================
  * Kernel main — does not return
@@ -111,11 +145,11 @@ static void root_thread_entry(void *arg)
 
 void ul_kernel_main(const ul_boot_info_t *info)
 {
-	ul_thread_attr_t root_attr;
+	ul_thread_attr_t attr;
 
 	ul_printk("ulipeMicroKernel: kernel entry\n");
 
-	ul_sched_init(&idle_ctx_g);
+	ul_sched_init();
 	ul_sched_set_class(&ul_fifo_rt_class);
 	UL_LOG_DBG("sched init done");
 
@@ -131,14 +165,29 @@ void ul_kernel_main(const ul_boot_info_t *info)
 	ul_phys_alloc_init((uintptr_t)_ul_user_pool_start,
 			   (uintptr_t)_ul_user_pool_end);
 
-	root_attr.name      = "root";
-	root_attr.entry     = root_thread_entry;
-	root_attr.arg       = (void *)info;
-	root_attr.priority  = 0;
-	root_attr.stack_size = sizeof(root_stack_g);
-	root_attr.privilege = UL_PRIV_KERNEL;
+	/*
+	 * Create the idle thread first — lowest priority (255), always in
+	 * the run queue.  The scheduler switches to it when no real thread
+	 * is ready, eliminating the need for a special idle context or a
+	 * polling loop in the kernel main frame.
+	 */
+	attr.name       = "idle";
+	attr.entry      = idle_thread_entry;
+	attr.arg        = NULL;
+	attr.priority   = 255u;
+	attr.stack_size = sizeof(idle_stack_g);
+	attr.privilege  = UL_PRIV_KERNEL;
+	ul_thread_init(&idle_thread_g, &attr, idle_stack_g);
+	ul_sched_enqueue(&idle_thread_g);
 
-	ul_thread_init(&root_thread_g, &root_attr, root_stack_g);
+	attr.name       = "root";
+	attr.entry      = root_thread_entry;
+	attr.arg        = (void *)info;
+	attr.priority   = 0u;
+	attr.stack_size = sizeof(root_stack_g);
+	attr.privilege  = UL_PRIV_KERNEL;
+	ul_thread_init(&root_thread_g, &attr, root_stack_g);
+	ul_sched_enqueue(&root_thread_g);
 
 #ifdef UL_KERNEL_PRE_ROOT_HOOK
 	{
@@ -147,29 +196,18 @@ void ul_kernel_main(const ul_boot_info_t *info)
 	}
 #endif
 
-	/* Enable MPU after all static threads are created */
 	ul_arch_mpu_enable();
 	UL_LOG_DBG("mpu enabled");
 
 	ul_printk("ulipeMicroKernel: switching to root thread\n");
 
 	/*
-	 * ul_sched_start saves kernel_main's context into idle_ctx_g and
-	 * switches to root_thread_g.  Returns here only when the run queue
-	 * is empty and the scheduler switches back to idle.
+	 * ul_sched_start() picks the highest-priority ready thread
+	 * (root_thread_g, prio=0) and performs the initial context switch.
+	 * It does not return.
 	 */
-	ul_sched_start(&idle_ctx_g, &root_thread_g);
+	ul_sched_start();
 
-	ul_printk("ulipeMicroKernel: idle loop\n");
-	for (;;) {
-		/*
-		 * Check for runnable threads before potentially halting.
-		 * This covers: timer wakeup with wait, and busy-wait with nop.
-		 */
-		if (ul_sched_pick_next() != NULL) {
-			ul_sched_schedule();
-			continue;
-		}
-		ul_arch_cpu_idle();
-	}
+	for (;;)
+		;
 }

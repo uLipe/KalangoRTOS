@@ -790,6 +790,12 @@ void _arch_generic_isr_handler(void)
 
 	__asm__ volatile("mfcr %0, 0xFE2C" : "=d"(icr));
 	ul_kernel_irq_dispatch((uint8_t)(icr & 0xFFu));
+
+	/*
+	 * If the dispatch woke a higher-priority thread, arm the preemption
+	 * handoff so _arch_generic_preempt_isr can switch context on exit.
+	 */
+	ul_kernel_irq_check_preempt();
 }
 
 /* =========================================================================
@@ -975,6 +981,14 @@ void ul_arch_syscall_entry(void)
 	__asm__ volatile("mov %0, %%d7"  : "=d"(args[3]));
 
 	uint32_t ret = ul_kernel_trap_syscall((uint8_t)tin, args);
+
+	/*
+	 * Centralised reschedule point: if the syscall unblocked a
+	 * higher-priority thread, yield here before restoring userspace.
+	 * Mirrors the behaviour of ISR exit preemption but from the syscall
+	 * trap path.  Execution resumes here when this thread is rescheduled.
+	 */
+	ul_kernel_syscall_check_preempt();
 
 	__asm__ volatile("mov %%d2, %0" : : "d"(ret));
 }

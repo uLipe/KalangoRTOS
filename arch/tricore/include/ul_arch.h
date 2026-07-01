@@ -218,6 +218,20 @@ void ul_kernel_tick(void);
 void ul_kernel_irq_dispatch(uint8_t srpn);
 
 /*
+ * ul_kernel_irq_check_preempt — check if the just-dispatched IRQ woke a
+ * higher-priority thread and arm the preemption handoff if so.
+ * Called from _arch_generic_isr_handler after ul_kernel_irq_dispatch.
+ */
+void ul_kernel_irq_check_preempt(void);
+
+/*
+ * ul_kernel_syscall_check_preempt — check if the syscall woke a higher-
+ * priority thread and yield the CPU to it before returning to userspace.
+ * Called from ul_arch_syscall_entry() after the syscall handler returns.
+ */
+void ul_kernel_syscall_check_preempt(void);
+
+/*
  * ul_kernel_trap_syscall — dispatch a SYSCALL trap (class 6).
  * @tin:  trap identification number (= syscall number, 0–127)
  * @args: arguments read from D4–D7 by ul_arch_syscall_entry()

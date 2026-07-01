@@ -147,11 +147,13 @@ uint32_t ul_kern_irq_ack(uint32_t srpn)
 }
 
 /* =========================================================================
- * ISR dispatch — called from _arch_generic_isr_handler in arch.c
+ * ISR dispatch — called from _arch_generic_isr_handler in arch.c.
  *
  * Runs in ISR context: ICR.IE=0, running on ISP.
- * Must NOT call ul_sched_schedule() — deferred scheduling happens via the
- * idle loop polling ul_sched_pick_next() after RFE.
+ * Does not call ul_sched_schedule() directly.  After this returns,
+ * _arch_generic_isr_handler calls ul_kernel_irq_check_preempt(), which
+ * sets g_preempt_old/new_ctx if a higher-priority thread was woken.
+ * The _arch_generic_preempt_isr stub then performs the context switch.
  * ========================================================================= */
 
 void ul_kernel_irq_dispatch(uint8_t srpn)

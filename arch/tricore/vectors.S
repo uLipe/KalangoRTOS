@@ -126,25 +126,17 @@ _ul_int_table:
     .align  5		/* pad to next 32-byte boundary */
 
 /*
- * SRPN=2..255 — generic userspace IRQ dispatcher.
+ * SRPN=2..255 — generic userspace IRQ dispatcher with preemption support.
  *
- * On entry the hardware has already:
- *   - saved the Upper Context into a fresh CSA frame
- *   - set ICR.CCPN = SRPN of the fired interrupt
- *   - cleared ICR.IE
- *   - switched A10 to ISP (if PSW.IS was 0)
+ * Each slot jumps to _arch_generic_preempt_isr (defined below), which
+ * performs svlcx, dispatches the IRQ, checks for preemption, and either
+ * context-switches or restores the interrupted thread (same mechanism as
+ * _arch_tick_preempt_isr).  SRPN is read from ICR.CCPN inside the C handler.
  *
- * CSA/CSFR accesses (SVLCX, CALL, RFE, MFCR/MTCR) bypass DPR protection,
- * so the stub is safe even when running in user PRS (PRS=1).
- * PRS elevation to kernel (PRS=0) is performed inside _arch_generic_isr_handler
- * before any data stack access.
+ * CSA/CSFR accesses bypass DPR, so the jump is safe in any PRS.
  */
     .rept   254
-    svlcx
-    call    _arch_generic_isr_handler
-    disable
-    rslcx
-    rfe
+    j       _arch_generic_preempt_isr
     .align  5
     .endr
 
@@ -232,3 +224,62 @@ _arch_tick_preempt_isr:
     rfe
 
     .size _arch_tick_preempt_isr, . - _arch_tick_preempt_isr
+
+/* ---------------------------------------------------------------------------
+ * _arch_generic_preempt_isr — generic IRQ handler with preemption support.
+ *
+ * Jumped to by every SRPN=2..255 vector slot.  The SRPN is read from
+ * ICR.CCPN inside _arch_generic_isr_handler, which also calls
+ * ul_kernel_irq_check_preempt() to potentially set g_preempt_old/new_ctx.
+ *
+ * If g_preempt_new_ctx is set on return from the C handler, perform the
+ * preemptive context switch identically to _arch_tick_preempt_isr.
+ * ------------------------------------------------------------------------ */
+
+    .extern _arch_generic_isr_handler
+
+    .global _arch_generic_preempt_isr
+    .type   _arch_generic_preempt_isr, @function
+
+_arch_generic_preempt_isr:
+    svlcx
+    call    _arch_generic_isr_handler
+
+    movh.a  %a14, hi:g_preempt_new_ctx
+    lea     %a14, [%a14] lo:g_preempt_new_ctx
+    ld.a    %a14, [%a14]
+    jz.a    %a14, .Lgeneric_no_preempt
+
+    movh.a  %a15, hi:g_preempt_old_ctx
+    lea     %a15, [%a15] lo:g_preempt_old_ctx
+    ld.a    %a15, [%a15]
+
+    mov.a   %a12, 0
+    movh.a  %a13, hi:g_preempt_new_ctx
+    lea     %a13, [%a13] lo:g_preempt_new_ctx
+    st.a    [%a13], %a12
+
+    mfcr    %d0, 0xFE00
+    st.w    [%a15] 0, %d0
+
+    ld.w    %d0, [%a14] 0
+    dsync
+    mtcr    0xFE00, %d0
+    isync
+
+    mfcr    %d1, 0xFE04
+    mov     %d2, 0x7f
+    andn    %d1, %d1, %d2
+    mtcr    0xFE04, %d1
+    isync
+
+    disable
+    rslcx
+    rfe
+
+.Lgeneric_no_preempt:
+    disable
+    rslcx
+    rfe
+
+    .size _arch_generic_preempt_isr, . - _arch_generic_preempt_isr
