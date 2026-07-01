@@ -14,10 +14,11 @@
 /* =========================================================================
  * Scheduler class — vtable for pluggable scheduling policies.
  *
- * All callbacks are invoked with interrupts serialised (cooperative OS:
- * only from syscall context or at boot before the first switch).
+ * All callbacks are invoked with interrupts serialised.
  *
- * pick_next() returns NULL when no thread is ready → idle.
+ * pick_next() / peek_next() return the highest-priority ready thread.
+ * The idle thread (lowest priority sentinel) is always in the run queue,
+ * so these never return NULL after ul_sched_start().
  * ========================================================================= */
 
 typedef struct ul_sched_class {
@@ -25,18 +26,19 @@ typedef struct ul_sched_class {
 	void		 (*init)(void);
 	void		 (*enqueue)(ul_thread_t *t);
 	void		 (*dequeue)(ul_thread_t *t);
-	ul_thread_t	*(*pick_next)(void);   /* return highest-prio ready thread */
-	ul_thread_t	*(*peek_next)(void);    /* peek without side-effects */
+	ul_thread_t	*(*pick_next)(void);
+	ul_thread_t	*(*peek_next)(void);
 } ul_sched_class_t;
 
 /* Exported by kernel/sched/fifo_rt.c */
 extern const ul_sched_class_t ul_fifo_rt_class;
 
 /*
- * Preemption handoff: set by ul_sched_tick() when a preemptive switch is
- * needed.  Consumed by the tick ISR assembly stub (_arch_tick_preempt_isr)
- * after the C handler returns, at which point PCXI = L_sv -> U_hw and the
- * switch can be performed without an extra svlcx.
+ * Preemption handoff: set by ul_sched_tick() or ul_sched_check_preempt()
+ * when a preemptive switch is needed.  Consumed by ISR assembly stubs
+ * (_arch_tick_preempt_isr, _arch_generic_preempt_isr) after the C handler
+ * returns, at which point PCXI = L_sv -> U_hw and the switch can be
+ * performed without an extra svlcx.
  * Both are NULL when no preemption is pending.
  */
 extern ul_arch_ctx_t *g_preempt_old_ctx;
@@ -47,22 +49,37 @@ extern ul_arch_ctx_t *g_preempt_new_ctx;
  * ========================================================================= */
 
 /*
- * ul_sched_init — register the idle context; call before set_class/start.
+ * ul_sched_init     — initialise scheduler state; call before set_class/start.
  * ul_sched_set_class — install a scheduling policy and run its init hook.
- * ul_sched_start — record first thread as current, perform initial switch.
- *                  Does not return until something switches back to idle.
- * ul_sched_schedule — pick next ready thread and switch to it (or idle).
+ * ul_sched_start    — perform the first context switch from the startup frame
+ *                     to the highest-priority ready thread.  Does not return.
+ * ul_sched_schedule — pick the highest-priority ready thread and switch to it.
+ *                     The caller must have already arranged for the current
+ *                     thread to be either blocked/dead (dequeued) or READY
+ *                     (in queue) before calling.
  */
-void		 ul_sched_init(ul_arch_ctx_t *idle);
+void		 ul_sched_init(void);
 void		 ul_sched_set_class(const ul_sched_class_t *cls);
-void		 ul_sched_start(ul_arch_ctx_t *idle, ul_thread_t *first);
+void		 ul_sched_start(void);
 void		 ul_sched_schedule(void);
 
 void		 ul_sched_enqueue(ul_thread_t *t);
 void		 ul_sched_dequeue(ul_thread_t *t);
 ul_thread_t	*ul_sched_current(void);
-ul_thread_t	*ul_sched_pick_next(void);
+ul_thread_t	*ul_sched_peek_next(void);
+
+/*
+ * ul_sched_tick — called from the tick ISR.  Decrements the running thread's
+ * quantum and arms the ISR preemption handoff if a switch is needed.
+ *
+ * ul_sched_check_preempt — called from a generic ISR after a notification is
+ * delivered.  If a strictly higher-priority thread became ready, arms the
+ * g_preempt_old/new_ctx handoff so the ISR stub performs a context switch on
+ * exit (same mechanism as ul_sched_tick).
+ * Must be called with interrupts disabled (already the case inside an ISR).
+ */
 void		 ul_sched_tick(void);
+void		 ul_sched_check_preempt(void);
 
 /*
  * ul_sched_set_dead_for_cleanup — register a dead thread for deferred

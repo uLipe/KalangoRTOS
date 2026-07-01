@@ -15,7 +15,6 @@
 #include <ul_arch.h>
 
 static const ul_sched_class_t	*sched_class;
-static ul_arch_ctx_t		*sched_idle;
 static ul_thread_t		*sched_current;
 
 /*
@@ -36,14 +35,21 @@ static ul_thread_t		*sched_current;
 static ul_thread_t *g_sched_dead;
 
 /*
- * Preemption handoff pointers: written by ul_sched_tick() and consumed by
- * the tick ISR assembly stub (_arch_tick_preempt_isr) in vectors.S.
+ * Preemption handoff pointers: written by ul_sched_tick() or
+ * ul_sched_check_preempt() and consumed by ISR assembly stubs
+ * (_arch_tick_preempt_isr, _arch_generic_preempt_isr) in vectors.S.
  * The stub reads them after the C handler returns, at which point
  * PCXI = L_sv -> U_hw (the interrupted thread's ISR context chain).
  * Setting g_preempt_new_ctx != NULL signals: "perform a preemptive switch".
  */
 ul_arch_ctx_t *g_preempt_old_ctx;
 ul_arch_ctx_t *g_preempt_new_ctx;
+
+/*
+ * Saved at ul_sched_start() to provide a valid "from" context for the
+ * initial switch out of the startup frame.  Written once; never loaded.
+ */
+static ul_arch_ctx_t startup_ctx;
 
 /*
  * Register a dying thread for deferred CSA/stack cleanup.
@@ -73,9 +79,8 @@ void ul_sched_set_dead_for_cleanup(ul_thread_t *th)
 	ul_arch_cpu_irq_restore(key);
 }
 
-void ul_sched_init(ul_arch_ctx_t *idle)
+void ul_sched_init(void)
 {
-	sched_idle    = idle;
 	sched_current = NULL;
 	sched_class   = NULL;
 }
@@ -87,27 +92,34 @@ void ul_sched_set_class(const ul_sched_class_t *cls)
 }
 
 /*
- * ul_sched_start — perform the first context switch from idle to a thread.
+ * ul_sched_start — perform the first context switch from the startup frame
+ * to the highest-priority ready thread.
  *
- * Records first as current, configures MPU for the first thread, then
- * switches the idle context (kernel_main's stack) to the thread.
+ * The startup frame context (startup_ctx) is written once and never loaded
+ * again; it acts purely as the "from" argument for the initial switch.
+ * Since the idle thread is always in the run queue, pick_next() is
+ * guaranteed to return a valid thread.  Does not return.
  */
-void ul_sched_start(ul_arch_ctx_t *idle, ul_thread_t *first)
+void ul_sched_start(void)
 {
-	sched_idle           = idle;
-	sched_current        = first;
-	first->state         = UL_THREAD_STATE_RUNNING;
+	ul_thread_t *first = sched_class->pick_next();
+
+	sched_current          = first;
+	first->state           = UL_THREAD_STATE_RUNNING;
+	first->ticks_remaining = UL_CONFIG_SCHED_QUANTUM_TICKS;
 	ul_arch_mpu_switch(first->regions, first->region_count, 1u);
-	ul_arch_ctx_switch(idle, &first->ctx);
+	ul_arch_ctx_switch(&startup_ctx, &first->ctx);
 }
 
 /*
  * ul_sched_schedule — switch to the highest-priority ready thread.
  *
- * If the run queue is empty, switches to the idle context.  If pick_next
- * returns the same thread that is already running (only one ready thread
- * of that priority after a yield), the switch is still performed so the
- * CSA chain unwinds correctly through ul_arch_ctx_switch.
+ * The running thread must have already set its own state to BLOCKED/DEAD
+ * (and dequeued itself) before calling, OR set it to READY (remaining in
+ * the queue) if voluntarily yielding the CPU.
+ *
+ * With the idle thread permanently in the queue, pick_next() always
+ * returns a valid thread, so there is no idle-context fallback path.
  */
 void ul_sched_schedule(void)
 {
@@ -128,11 +140,6 @@ void ul_sched_schedule(void)
 	 * then records the resulting PCXI into g_sched_dead->ctx.pcxi.
 	 * Freeing the chain before that svlcx would return those frames to
 	 * FCX, only for svlcx to immediately re-allocate and corrupt them.
-	 *
-	 * By skipping cleanup when g_sched_dead == prev we defer to the
-	 * NEXT invocation of ul_sched_schedule() from any other thread, at
-	 * which point the context switch has completed and the dead thread's
-	 * PCXI chain is fully recorded and no longer referenced by the CPU.
 	 */
 	if (g_sched_dead && g_sched_dead != prev) {
 		key = ul_arch_cpu_irq_save();
@@ -145,8 +152,7 @@ void ul_sched_schedule(void)
 	}
 
 	next = sched_class->pick_next();
-
-	from = prev ? &prev->ctx : sched_idle;
+	from = prev ? &prev->ctx : &startup_ctx;
 
 	/*
 	 * Disable interrupts before committing sched_current = next.
@@ -156,25 +162,14 @@ void ul_sched_schedule(void)
 	 * sched_current (state=RUNNING) while the CPU is still executing on
 	 * "prev"'s stack.  The preemptive ISR would then save the wrong PCXI
 	 * into next->ctx.pcxi, corrupting its context chain.
-	 *
-	 * ul_arch_ctx_switch() issues its own "disable" and its terminal "rfe"
-	 * restores ICR.IE from the new thread's PIE bit, so no manual
-	 * re-enable is needed on the switch path.  The early-return path
-	 * (from == to) restores via ul_arch_cpu_irq_restore().
 	 */
 	key = ul_arch_cpu_irq_save();
 
-	if (next) {
-		sched_current        = next;
-		next->state          = UL_THREAD_STATE_RUNNING;
-		next->ticks_remaining = UL_CONFIG_SCHED_QUANTUM_TICKS;
-		to = &next->ctx;
-		ul_arch_mpu_switch(next->regions, next->region_count, 1u);
-	} else {
-		sched_current = NULL;
-		to = sched_idle;
-		ul_arch_mpu_switch(NULL, 0u, 1u);
-	}
+	sched_current          = next;
+	next->state            = UL_THREAD_STATE_RUNNING;
+	next->ticks_remaining  = UL_CONFIG_SCHED_QUANTUM_TICKS;
+	to = &next->ctx;
+	ul_arch_mpu_switch(next->regions, next->region_count, 1u);
 
 	if (from == to) {
 		ul_arch_cpu_irq_enable();
@@ -183,14 +178,11 @@ void ul_sched_schedule(void)
 
 	ul_arch_ctx_switch(from, to);
 	/*
-	 * We return here when THIS thread is re-scheduled.
+	 * We return here when THIS thread (prev) is re-scheduled.
 	 *
-	 * ul_arch_ctx_switch terminal rfe restores ICR.IE from the saved
+	 * ul_arch_ctx_switch's terminal rfe restores ICR.IE from the saved
 	 * UC PCXI.PIE, which is 0 because irq_save() had disabled IE before
-	 * the call.  Re-enable unconditionally: the scheduler is only ever
-	 * entered with IE=1 (idle loop, syscall trap path after PRS=0
-	 * elevation in ul_arch_syscall_entry).  ENABLE is accessible at
-	 * IO >= 1 and avoids MTCR on ICR which requires IO >= 2.
+	 * the call.  Re-enable unconditionally.
 	 */
 	ul_arch_cpu_irq_enable();
 }
@@ -210,9 +202,9 @@ ul_thread_t *ul_sched_current(void)
 	return sched_current;
 }
 
-ul_thread_t *ul_sched_pick_next(void)
+ul_thread_t *ul_sched_peek_next(void)
 {
-	return sched_class->pick_next();
+	return sched_class ? sched_class->peek_next() : NULL;
 }
 
 void ul_sched_tick(void)
@@ -235,13 +227,14 @@ void ul_sched_tick(void)
 	if (cur->state != UL_THREAD_STATE_RUNNING)
 		return;
 
-	/* Decrement time-slice counter */
 	if (cur->ticks_remaining > 0)
 		cur->ticks_remaining--;
 
 	/*
 	 * Trigger preemption when the quantum expires OR when a strictly
-	 * higher-priority thread (e.g. woken by ul_timer_tick) is waiting.
+	 * higher-priority thread (e.g. woken by ul_timer_tick) is ready.
+	 * peek_next() returns rq_head; if cur is at the head, next == cur
+	 * and no priority preemption fires.
 	 */
 	next         = sched_class->peek_next();
 	need_preempt = (cur->ticks_remaining == 0) ||
@@ -250,17 +243,14 @@ void ul_sched_tick(void)
 	if (!need_preempt)
 		return;
 
-	/* Reset quantum for the next run of cur */
 	cur->ticks_remaining = UL_CONFIG_SCHED_QUANTUM_TICKS;
 
-	/* Rotate cur to tail of its priority group (FIFO round-robin) */
+	/* Rotate cur to the tail of its priority group (FIFO round-robin) */
 	ul_sched_dequeue(cur);
 	ul_sched_enqueue(cur);
 
-	/* Pick the best thread now that cur is at the tail */
 	next = sched_class->pick_next();
 	if (!next || next == cur) {
-		/* cur is the only candidate — keep it running */
 		cur->state    = UL_THREAD_STATE_RUNNING;
 		sched_current = cur;
 		return;
@@ -268,11 +258,43 @@ void ul_sched_tick(void)
 
 	/*
 	 * Signal the ISR stub to perform the preemptive context switch.
-	 * The stub reads g_preempt_new_ctx after _arch_tick_isr_handler
-	 * returns, when PCXI = L_sv -> U_hw (the interrupted thread's
-	 * ISR context chain).  It saves that chain to g_preempt_old_ctx->pcxi
-	 * and loads g_preempt_new_ctx->pcxi, then does rslcx + rfe.
 	 */
+	sched_current         = next;
+	next->state           = UL_THREAD_STATE_RUNNING;
+	next->ticks_remaining = UL_CONFIG_SCHED_QUANTUM_TICKS;
+	ul_arch_mpu_switch(next->regions, next->region_count, 1u);
+	g_preempt_old_ctx = &cur->ctx;
+	g_preempt_new_ctx = &next->ctx;
+}
+
+/*
+ * ul_sched_check_preempt — arm a preemptive switch from ISR context.
+ *
+ * Called after a generic ISR delivers a notification and may have woken
+ * a higher-priority thread.  If the run-queue head has strictly higher
+ * priority than the current thread, arms g_preempt_old/new_ctx so the
+ * ISR stub (_arch_generic_preempt_isr) performs the switch on exit.
+ *
+ * The running thread stays in the run queue (pick_next does not remove it).
+ * We only update its state to READY and update sched_current — no
+ * ul_sched_enqueue() call is needed or correct here.
+ */
+void ul_sched_check_preempt(void)
+{
+	ul_thread_t *cur = sched_current;
+	ul_thread_t *next;
+
+	if (!cur || !sched_class)
+		return;
+	if (cur->state != UL_THREAD_STATE_RUNNING)
+		return;
+
+	next = sched_class->peek_next();
+	if (!next || next == cur || next->priority >= cur->priority)
+		return;
+
+	cur->state = UL_THREAD_STATE_READY;
+
 	sched_current         = next;
 	next->state           = UL_THREAD_STATE_RUNNING;
 	next->ticks_remaining = UL_CONFIG_SCHED_QUANTUM_TICKS;

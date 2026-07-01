@@ -85,9 +85,4 @@ void ul_timer_tick(void)
 		ul_sched_enqueue(th);
 	}
 
-	/*
-	 * Do NOT call ul_sched_schedule() here — the idle loop detects a
-	 * non-empty run queue after ul_arch_cpu_idle() returns and calls
-	 * ul_sched_schedule() itself from a clean call frame.
-	 */
 }

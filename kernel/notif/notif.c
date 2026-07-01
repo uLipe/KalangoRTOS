@@ -85,14 +85,6 @@ int notif_signal_impl(ul_notif_t notif_id, uint32_t bits)
 
 	ul_arch_cpu_irq_restore(key);
 
-	/*
-	 * From thread context only: if there is no current thread (idle loop),
-	 * switch immediately.  From ISR context IE=0 so this path is not taken
-	 * there; deferred scheduling happens via the idle-loop poll after RFE.
-	 */
-	if (ul_sched_current() == NULL)
-		ul_sched_schedule();
-
 	return 0;
 }
 
