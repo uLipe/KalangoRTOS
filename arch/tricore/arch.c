@@ -419,9 +419,8 @@ void ul_arch_mpu_init(void)
 	uint8_t  i;
 
 	/*
-	 * Linker-defined bounds for the shared RAM DPR (DPR 4).
-	 * These are declared here rather than at file scope to avoid polluting
-	 * the global namespace; they are only needed by this function.
+	 * Linker-defined bounds for the SRAM DPR.
+	 * Declared here to avoid polluting the global namespace.
 	 */
 	extern uint8_t _ul_kernel_data_start[];
 	extern uint8_t _ul_user_pool_end[];
@@ -441,20 +440,31 @@ void ul_arch_mpu_init(void)
 	for (i = 0u; i < UL_ARCH_NUM_PRS; i++)
 		mpu_write_enables(i, 0u, 0u, 0u, 0u);
 
+	/*
+	 * DPR layout — 4-slot model required by the current QEMU build.
+	 *
+	 * The QEMU linumiz fork (release/ifx/tricore-2.0) implements only
+	 * DPR slots 0-3 (CSFR 0xC000-0xC018).  Slots 4+ (0xC020+) are
+	 * silently ignored.  All PRS1 accesses must therefore fit within
+	 * slots 0-3.  Slot 0 is kernel-only (full 4 GiB); slots 1-3 are
+	 * accessible to PRS 1.
+	 */
+
 	/* DPR 0: entire 4 GiB — kernel full R+W access via PRS 0 */
 	mpu_write_dpr(UL_ARCH_MPU_KERNEL_DPR,
 		      0x00000000u, 0xFFFFFFF8u);
 
 	/*
-	 * DPR 1: peripheral region (0xF0000000..0xFFFFFFFF).
-	 * Kernel uses this for MMIO; driver threads get sub-ranges via mmap.
+	 * DPR 1: SRAM region (kernel_data_start..user_pool_end).
+	 * Both PRS 0 and PRS 1 need R+W here: driver threads access globals,
+	 * stacks, and heap blocks; kernel accesses TCBs, IRQ tables, etc.
 	 */
-	mpu_write_dpr(UL_ARCH_MPU_PERIPH_DPR,
-		      UL_ARCH_PERIPH_BASE,
-		      UL_ARCH_PERIPH_BASE + UL_ARCH_PERIPH_SIZE - 8u);
+	mpu_write_dpr(UL_ARCH_MPU_SRAM_DPR,
+		      (uint32_t)(uintptr_t)_ul_kernel_data_start,
+		      (uint32_t)(uintptr_t)_ul_user_pool_end - 8u);
 
 	/*
-	 * DPR 2: flash read-only (0x80000000..0x801FFFFF).
+	 * DPR 2: flash read-only (0x80000000..flash_end).
 	 * User threads need this to load .rodata (string literals, const arrays).
 	 */
 	mpu_write_dpr(UL_ARCH_MPU_FLASH_DPR,
@@ -462,25 +472,14 @@ void ul_arch_mpu_init(void)
 		      UL_ARCH_FLASH_BASE + UL_ARCH_FLASH_SIZE - 8u);
 
 	/*
-	 * DPR 3: board-specific console MMIO range (conditional).
-	 * Some simulators enforce DPR-based write checks based on PSW.PRS
-	 * even when SYSCON.PROTEN = 0.  This slot covers the console device
-	 * range so ul_printk() can be called from any privilege level.
+	 * DPR 3: console + peripheral range (0xBF000000..0xFFFFFFF8).
+	 * Covers both the QEMU virt debug UART (0xBF000000) and the TriCore
+	 * peripheral space (0xF0000000+) in a single slot — the only one
+	 * available for PRS 1 after SRAM and flash slots are consumed.
+	 * Driver threads need peripheral access for SRC registers, STM, etc.
 	 */
-#if UL_ARCH_QEMU_VIRT_CONSOLE
 	mpu_write_dpr(UL_ARCH_MPU_VIRT_DPR,
-		      UL_ARCH_QEMU_VIRT_BASE,
-		      UL_ARCH_QEMU_VIRT_BASE + UL_ARCH_QEMU_VIRT_SIZE - 8u);
-#endif
-
-	/*
-	 * DPR 4: kernel RAM range — provides fine-grained isolation on
-	 * TC27x silicon (18 DPRs).  On platforms with fewer DPR slots the
-	 * write to this CSFR address is silently ignored.
-	 */
-	mpu_write_dpr(UL_ARCH_MPU_RAM_DPR,
-		      (uint32_t)(uintptr_t)_ul_kernel_data_start,
-		      (uint32_t)(uintptr_t)_ul_user_pool_end - 8u);
+		      0xBF000000u, 0xFFFFFFF8u);
 
 	/* CPR 0: entire flash — all threads may execute code from here */
 	mpu_write_cpr(UL_ARCH_MPU_CPR_ALL,
@@ -490,46 +489,33 @@ void ul_arch_mpu_init(void)
 	__asm__ volatile("isync" ::: "memory");
 
 	/*
-	 * PRS 0 (kernel): all DPRs read+write, all CPRs read+execute.
-	 * Mask 0x3FFFF covers all 18 DPRs; 0x3FF covers all 10 CPRs.
+	 * PRS 0 (kernel): DPRs 0-3 R+W, CPR 0 R+X.
+	 * DPR 0 already covers the full address space, so bits 1-3 are
+	 * redundant for PRS 0 but kept for symmetry.
 	 */
 	mpu_write_enables(0u,
-			  0x3FFFFu,	/* DPRE: all 18 DPRs readable */
-			  0x3FFFFu,	/* DPWE: all 18 DPRs writable */
-			  0x3FFu,	/* CPRE: all 10 CPRs readable */
-			  0x3FFu);	/* CPXE: all 10 CPRs executable */
+			  0xFu,  /* DPRE: slots 0-3 readable */
+			  0xFu,  /* DPWE: slots 0-3 writable */
+			  0x1u,  /* CPRE: CPR 0 readable */
+			  0x1u); /* CPXE: CPR 0 executable */
 
 	/*
 	 * PRS 1 (user/driver threads):
-	 *   DPR 0 — full 4 GiB, R+W — covers stacks, heap, globals
-	 *   DPR 1 — peripheral region (R+W)
-	 *   DPR 2 — flash (R only)
-	 *   DPR 3 — board console MMIO (R+W, enabled only when configured)
+	 *   DPR 1 — SRAM (R+W) — globals, stacks, heap
+	 *   DPR 2 — flash (R only) — .rodata access
+	 *   DPR 3 — console + peripheral (R+W) — ul_printk, SRC, STM
 	 *
-	 * On TC27x silicon (18 DPRs), per-domain DPRs replace the blanket
-	 * DPR-0 grant once domain sections are wired up via ul_mpu_switch().
+	 * DPR 0 (full 4 GiB) is intentionally excluded from PRS 1 so that
+	 * kernel-only addresses (CSFRs, etc.) remain inaccessible.
 	 */
-#if UL_ARCH_QEMU_VIRT_CONSOLE
 	mpu_write_enables(1u,
-			  (1u << UL_ARCH_MPU_KERNEL_DPR) |
-			  (1u << UL_ARCH_MPU_PERIPH_DPR)  |
-			  (1u << UL_ARCH_MPU_FLASH_DPR)   |
+			  (1u << UL_ARCH_MPU_SRAM_DPR)  |
+			  (1u << UL_ARCH_MPU_FLASH_DPR) |
 			  (1u << UL_ARCH_MPU_VIRT_DPR),
-			  (1u << UL_ARCH_MPU_KERNEL_DPR) |
-			  (1u << UL_ARCH_MPU_PERIPH_DPR)  |
+			  (1u << UL_ARCH_MPU_SRAM_DPR)  |
 			  (1u << UL_ARCH_MPU_VIRT_DPR),
 			  (1u << UL_ARCH_MPU_CPR_ALL),
 			  (1u << UL_ARCH_MPU_CPR_ALL));
-#else
-	mpu_write_enables(1u,
-			  (1u << UL_ARCH_MPU_KERNEL_DPR) |
-			  (1u << UL_ARCH_MPU_PERIPH_DPR)  |
-			  (1u << UL_ARCH_MPU_FLASH_DPR),
-			  (1u << UL_ARCH_MPU_KERNEL_DPR) |
-			  (1u << UL_ARCH_MPU_PERIPH_DPR),
-			  (1u << UL_ARCH_MPU_CPR_ALL),
-			  (1u << UL_ARCH_MPU_CPR_ALL));
-#endif
 
 	/* PRS 2, 3: remain zeroed (unused) */
 }void ul_arch_mpu_enable(void)
@@ -564,15 +550,21 @@ static void mpu_program_regions(uint8_t prs, const ul_arch_region_t *regions,
 	uint8_t  d_slot;
 	uint8_t  i;
 
-	/* Preserve static bits (mirror of ul_arch_mpu_init PRS-1 config):
-	 * DPR 0 R+W (full range), DPR 1 R+W (periph), DPR 2 R (flash),
-	 * DPR 3 R+W (virt console) */
-	dpre = (1u << UL_ARCH_MPU_KERNEL_DPR) |
-	       (1u << UL_ARCH_MPU_PERIPH_DPR) |
-	       (1u << UL_ARCH_MPU_FLASH_DPR)  |
+	/*
+	 * Static bits for PRS 1 (user/driver threads):
+	 *   DPR 1: SRAM R+W — globals, stacks, heap
+	 *   DPR 2: flash R — .rodata access
+	 *   DPR 3: console + peripheral R+W — ul_printk, SRC, STM
+	 *
+	 * DPR 0 (full 4 GiB, kernel-only) is intentionally omitted.
+	 * Slots 6-17 below handle per-thread regions; in the current QEMU
+	 * build those slots are unmapped (writes are no-ops), so all threads
+	 * share the SRAM/flash/periph ranges set above.
+	 */
+	dpre = (1u << UL_ARCH_MPU_SRAM_DPR) |
+	       (1u << UL_ARCH_MPU_FLASH_DPR) |
 	       (1u << UL_ARCH_MPU_VIRT_DPR);
-	dpwe = (1u << UL_ARCH_MPU_KERNEL_DPR) |
-	       (1u << UL_ARCH_MPU_PERIPH_DPR) |
+	dpwe = (1u << UL_ARCH_MPU_SRAM_DPR) |
 	       (1u << UL_ARCH_MPU_VIRT_DPR);
 	cpre = (1u << UL_ARCH_MPU_CPR_ALL);
 	cpxe = (1u << UL_ARCH_MPU_CPR_ALL);
@@ -920,30 +912,6 @@ uint32_t ul_arch_atomic_add(volatile uint32_t *ptr, uint32_t val)
 	return old;
 }
 
-/* =========================================================================
- * Physical allocator
- * ========================================================================= */
-
-void ul_arch_phys_alloc_init(uintptr_t pool_base, size_t pool_size)
-{
-	(void)pool_base;
-	(void)pool_size;
-	/* TODO: first-fit metadata init */
-}
-
-void *ul_arch_phys_alloc(size_t size, size_t align)
-{
-	(void)size;
-	(void)align;
-	return NULL; /* TODO */
-}
-
-void ul_arch_phys_free(void *ptr, size_t size)
-{
-	(void)ptr;
-	(void)size;
-	/* TODO */
-}
 
 /* =========================================================================
  * Syscall entry — arch/tricore/arch.c

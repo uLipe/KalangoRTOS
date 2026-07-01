@@ -219,12 +219,21 @@
 
 /*
  * Static DPR/CPR slot assignments:
- *   Slot 0: kernel — covers entire address space (PRS 0 R+W)
- *   Slot 1: peripheral space (PRS 0 R+W; driver threads via UL_MMAP_PERIPH)
- *   Slot 2: flash read (PRS 1 R — user threads need to read constants)
- *   Slot 3: QEMU virt device (only when UL_ARCH_QEMU_VIRT_CONSOLE=1)
- *   Slots 4–5: reserved
- *   Slots 6–17: per-thread dynamic regions (DPR); configured by mpu_switch()
+ *
+ *   The current QEMU linumiz build (release/ifx/tricore-2.0) implements
+ *   only 4 shared DPR range registers (slots 0-3 at CSFR 0xC000-0xC018).
+ *   Slots 4+ (0xC020+) are unmapped and writes are silently ignored.  The
+ *   layout below fits within these 4 slots.  When QEMU gains full TC1.6.2
+ *   DPR support (18 slots), slots 4-17 will become usable for finer-grained
+ *   per-thread isolation.
+ *
+ *   Slot 0: kernel — covers entire address space (PRS 0 R+W only)
+ *   Slot 1: SRAM — covers kernel_data_start..user_pool_end (PRS 0+1 R+W)
+ *   Slot 2: flash read (PRS 0+1 R — all threads need to read .rodata)
+ *   Slot 3: console + peripheral — covers 0xBF000000..0xFFFFFFF8 (PRS 0+1 R+W)
+ *   Slots 4–5: reserved (unused in current QEMU)
+ *   Slots 6–17: per-thread dynamic regions; configured by mpu_switch()
+ *               (no-op in current QEMU, functional when DPR slots 6+ are added)
  *
  *   CPR slot 0: all flash execute+read (enabled for PRS 0 and PRS 1)
  *   CPR slots 1–9: per-thread code regions (reserved for future use)
@@ -234,10 +243,9 @@
  *   1 = user PRS  (all non-kernel threads)
  */
 #define UL_ARCH_MPU_KERNEL_DPR	0
-#define UL_ARCH_MPU_PERIPH_DPR	1
+#define UL_ARCH_MPU_SRAM_DPR	1  /* SRAM (was PERIPH_DPR — repurposed) */
 #define UL_ARCH_MPU_FLASH_DPR	2
-#define UL_ARCH_MPU_VIRT_DPR	3	/* QEMU virt console slot (conditional) */
-#define UL_ARCH_MPU_RAM_DPR	4
+#define UL_ARCH_MPU_VIRT_DPR	3  /* console + full peripheral range */
 #define UL_ARCH_MPU_USER_DPR_BASE 6
 #define UL_ARCH_MPU_CPR_ALL	0
 

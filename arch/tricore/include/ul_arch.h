@@ -148,9 +148,6 @@ uint32_t ul_arch_atomic_add(volatile uint32_t *ptr, uint32_t val);
  * Physical memory allocator (arch_api_spec.md §11 — support)
  * ========================================================================= */
 
-void     ul_arch_phys_alloc_init(uintptr_t pool_base, size_t pool_size);
-void    *ul_arch_phys_alloc(size_t size, size_t align);
-void     ul_arch_phys_free(void *ptr, size_t size);
 
 /* =========================================================================
  * Boot entry (arch_api_spec.md §11)
