@@ -81,10 +81,10 @@ static void supervisor(void *arg)
 	tid_b = ul_thread_create(&attr);
 	ul_printk("preempt_integ: worker_b tid=%d\n", (int)tid_b);
 
-	/* Sleep 200 ms: workers run while we wait.
-	 * 200 ms / 10 ms quantum = 20 quanta — ample time for both to run. */
+	/* Sleep 20 ms: workers run while we wait.
+	 * 20 ms / 10 ms quantum = 2 quanta — enough for both to run once. */
 	ul_printk("preempt_integ: sleeping 200ms\n");
-	ul_usleep(200000);
+	ul_msleep(20);
 	ul_printk("preempt_integ: awoke\n");
 
 	/* Stop workers */

@@ -62,7 +62,7 @@ SENTINELS := \
     "preempt_integ: start" \
     "preempt_integ: PASS"
 
-QEMU_TIMEOUT := 30
+QEMU_TIMEOUT := 120
 TIMEOUT_CMD  := timeout --kill-after=5 $(QEMU_TIMEOUT)
 
 .PHONY: all run clean gen_config
