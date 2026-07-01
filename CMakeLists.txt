@@ -47,6 +47,7 @@ add_library(ulipe_kernel STATIC
     kernel/ipc/ep.c
     kernel/notif/notif.c
     kernel/mem/mem.c
+    kernel/mem/tlsf.c
     kernel/irq/irq.c
     arch/tricore/arch.c
     arch/tricore/ctx_switch.S

@@ -26,14 +26,15 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <ul/microkernel.h>
-#include <ul/config.h>
 #include <kernel/include/ul_ep_internal.h>
 #include <kernel/include/ul_notif_internal.h>
 #include <kernel/include/ul_sched.h>
 #include <kernel/syscall/syscall_router.h>
 #include <ul_arch.h>
 
-ul_endpoint_t ep_pool[UL_CONFIG_MAX_ENDPOINTS];
+#ifndef UL_UNIT_TEST
+#include <kernel/include/ul_mem_internal.h>
+#endif
 
 int ul_ep_init(ul_endpoint_t *ep, ul_ep_t id)
 {
@@ -46,12 +47,29 @@ int ul_ep_init(ul_endpoint_t *ep, ul_ep_t id)
 
 ul_endpoint_t *ul_ep_by_id(ul_ep_t id)
 {
-	if (id < 0 || id >= (ul_ep_t)UL_CONFIG_MAX_ENDPOINTS)
+#ifdef UL_UNIT_TEST
+	/*
+	 * Unit test mode: integer IDs index into the static pool.
+	 * ep_pool is defined below and accessible to tests via extern.
+	 */
+	if (id == UL_EP_INVALID || (uint32_t)id >= UL_CONFIG_MAX_ENDPOINTS)
 		return NULL;
-	if (!ep_pool[id].active)
+	if (!ep_pool[(uint32_t)id].active)
 		return NULL;
-	return &ep_pool[id];
+	return &ep_pool[(uint32_t)id];
+#else
+	ul_endpoint_t *ep = (ul_endpoint_t *)(uintptr_t)id;
+
+	if (!ep || !ep->active)
+		return NULL;
+	return ep;
+#endif
 }
+
+#ifdef UL_UNIT_TEST
+#include <ul/config.h>
+ul_endpoint_t ep_pool[UL_CONFIG_MAX_ENDPOINTS];
+#endif
 
 void ul_ep_recv_queue_remove(ul_thread_t *th)
 {
@@ -359,15 +377,24 @@ int ep_recv_or_notif_impl(ul_ep_t ep_id, ul_notif_t notif_id,
 
 uint32_t ul_kern_ep_create(void)
 {
-	ul_ep_t i;
+#ifdef UL_UNIT_TEST
+	uint32_t i;
 
-	for (i = 0; i < (ul_ep_t)UL_CONFIG_MAX_ENDPOINTS; i++) {
+	for (i = 0u; i < UL_CONFIG_MAX_ENDPOINTS; i++) {
 		if (!ep_pool[i].active) {
-			ul_ep_init(&ep_pool[i], i);
+			ul_ep_init(&ep_pool[i], (ul_ep_t)i);
 			return (uint32_t)i;
 		}
 	}
 	return (uint32_t)(int32_t)(-UL_ENOSPC);
+#else
+	ul_endpoint_t *ep = (ul_endpoint_t *)ul_heap_alloc(sizeof(ul_endpoint_t));
+
+	if (!ep)
+		return (uint32_t)(int32_t)(-UL_ENOMEM);
+	ul_ep_init(ep, (ul_ep_t)(uintptr_t)ep);
+	return (uint32_t)(uintptr_t)ep;
+#endif
 }
 
 uint32_t ul_kern_ep_call(uint32_t ep_id, uint32_t msg_ptr)
@@ -422,4 +449,24 @@ uint32_t ul_kern_ep_recv_or_notif(uint32_t ep_id, uint32_t notif_id,
 		(ul_notif_t)notif_id,
 		mask,
 		(ul_recv_or_notif_result_t *)(uintptr_t)result_ptr);
+}
+
+uint32_t ul_kern_ep_destroy(uint32_t ep_id)
+{
+#ifdef UL_UNIT_TEST
+	uint32_t i = (uint32_t)ep_id;
+
+	if (i >= UL_CONFIG_MAX_ENDPOINTS || !ep_pool[i].active)
+		return (uint32_t)(int32_t)(-UL_EINVAL);
+	ep_pool[i].active = false;
+	return 0u;
+#else
+	ul_endpoint_t *ep = (ul_endpoint_t *)(uintptr_t)ep_id;
+
+	if (!ep || !ep->active)
+		return (uint32_t)(int32_t)(-UL_EINVAL);
+	ep->active = false;
+	ul_heap_free(ep);
+	return 0u;
+#endif
 }

@@ -14,8 +14,8 @@
 #include <kernel/include/ul_mem_internal.h>
 #include <ul_arch.h>
 
-static const ul_sched_class_t	*sched_class;
-static ul_thread_t		*sched_current;
+static const ul_sched_class_t * UL_KERNEL_BSS sched_class;
+static ul_thread_t            * UL_KERNEL_BSS sched_current;
 
 /*
  * Dead-thread reaper slot.
@@ -32,7 +32,7 @@ static ul_thread_t		*sched_current;
  * call to ul_sched_schedule() always drains the slot before any new exit
  * can enqueue another dying thread.
  */
-static ul_thread_t *g_sched_dead;
+static ul_thread_t * UL_KERNEL_BSS g_sched_dead;
 
 /*
  * Preemption handoff pointers: written by ul_sched_tick() or
@@ -42,14 +42,14 @@ static ul_thread_t *g_sched_dead;
  * PCXI = L_sv -> U_hw (the interrupted thread's ISR context chain).
  * Setting g_preempt_new_ctx != NULL signals: "perform a preemptive switch".
  */
-ul_arch_ctx_t *g_preempt_old_ctx;
-ul_arch_ctx_t *g_preempt_new_ctx;
+ul_arch_ctx_t * UL_KERNEL_BSS g_preempt_old_ctx;
+ul_arch_ctx_t * UL_KERNEL_BSS g_preempt_new_ctx;
 
 /*
  * Saved at ul_sched_start() to provide a valid "from" context for the
  * initial switch out of the startup frame.  Written once; never loaded.
  */
-static ul_arch_ctx_t startup_ctx;
+static ul_arch_ctx_t UL_KERNEL_BSS startup_ctx;
 
 /*
  * Register a dying thread for deferred CSA/stack cleanup.
@@ -71,9 +71,7 @@ void ul_sched_set_dead_for_cleanup(ul_thread_t *th)
 	key = ul_arch_cpu_irq_save();
 	if (g_sched_dead) {
 		ul_arch_ctx_free(&g_sched_dead->ctx);
-		if (g_sched_dead->stack_base)
-			ul_phys_free(g_sched_dead->stack_base);
-		ul_thread_pool_free(g_sched_dead);
+		ul_thread_free(g_sched_dead);
 	}
 	g_sched_dead = th;
 	ul_arch_cpu_irq_restore(key);
@@ -144,9 +142,7 @@ void ul_sched_schedule(void)
 	if (g_sched_dead && g_sched_dead != prev) {
 		key = ul_arch_cpu_irq_save();
 		ul_arch_ctx_free(&g_sched_dead->ctx);
-		if (g_sched_dead->stack_base)
-			ul_phys_free(g_sched_dead->stack_base);
-		ul_thread_pool_free(g_sched_dead);
+		ul_thread_free(g_sched_dead);
 		g_sched_dead = NULL;
 		ul_arch_cpu_irq_restore(key);
 	}

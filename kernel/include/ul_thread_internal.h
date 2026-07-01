@@ -43,14 +43,14 @@ typedef struct ul_thread {
 	struct ul_thread *next;           /* run-queue linkage */
 	struct ul_thread *sleep_next;     /* sleep-queue linkage */
 	struct ul_thread *ipc_next;       /* IPC send/recv queue linkage */
+	struct ul_thread *reg_next;       /* global TCB registry linkage */
 	uint64_t          sleep_until;    /* absolute µs deadline (0 = not sleeping) */
 	ul_msg_t          ipc_msg;        /* in-flight message buffer */
 	ul_tid_t          ipc_sender;     /* sender TID stored by recv for reply */
 	/*
 	 * Output pointers saved in the TCB before a blocking recv.  Written
 	 * back after wakeup so the result survives the RSLCX/RFE context
-	 * switch (local variables on the blocking thread's kernel stack cannot
-	 * be reliably accessed post-switch due to register clobber in RSLCX).
+	 * switch.
 	 */
 	ul_msg_t         *ipc_msg_outptr;
 	ul_tid_t         *ipc_sender_outptr;
@@ -65,8 +65,6 @@ typedef struct ul_thread {
 	uint32_t          ticks_remaining;
 	/*
 	 * Capability bitmask — which privileged operations this thread may invoke.
-	 * Checked by the syscall router.  Root thread starts with UL_CAP_ALL.
-	 * Grant subsets to child threads via ul_cap_grant().
 	 */
 	uint8_t           cap_flags;
 } ul_thread_t;
@@ -75,6 +73,6 @@ int          ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr,
 			    void *stack);
 ul_thread_t *ul_thread_by_tid(ul_tid_t tid);
 void         ul_thread_set_state(ul_thread_t *th, uint8_t state);
-void         ul_thread_pool_free(ul_thread_t *th);
+void         ul_thread_free(ul_thread_t *th);
 
 #endif /* UL_THREAD_INTERNAL_H */

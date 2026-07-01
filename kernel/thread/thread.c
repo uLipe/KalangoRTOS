@@ -19,32 +19,24 @@
 #include <ul_arch.h>
 
 /*
- * Thread registry: linear array for ul_thread_by_tid().
- * Populated by ul_thread_init().  When a TCB from tcb_pool is recycled
- * (same struct pointer reused), ul_thread_init() updates the existing
- * slot rather than appending a new one, so the registry count stays
- * bounded by the pool size.
+ * Thread registry: singly-linked list of ALL allocated TCBs (including
+ * static idle/root threads).  ul_thread_by_tid() walks this list.
+ * Protected by the invariant that TCBs are never moved.
+ *
+ * Static threads (idle, root) are registered at boot via ul_thread_init().
+ * Dynamic threads append themselves at creation and remove themselves on exit.
  */
-static ul_thread_t	*tcb_reg[UL_CONFIG_MAX_THREADS];
-static uint32_t		 tcb_reg_count;
-static ul_tid_t		 tid_counter;
-
-/*
- * TCB pool for dynamically-created threads (ul_kern_thread_spawn).
- * Static threads created via ul_thread_init() use caller-provided storage
- * and are NOT in this pool.
- */
-static ul_thread_t	 tcb_pool[UL_CONFIG_MAX_THREADS];
-static bool		 tcb_pool_used[UL_CONFIG_MAX_THREADS];
+static ul_thread_t * UL_KERNEL_BSS tcb_list;
+static ul_tid_t      UL_KERNEL_BSS tid_counter;
 
 int ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr, void *stack)
 {
+	ul_thread_t *p;
+
 	if (!th || !attr || !stack || !attr->entry)
 		return UL_EINVAL;
 	if (attr->stack_size == 0)
 		return UL_EINVAL;
-	if (tcb_reg_count >= UL_CONFIG_MAX_THREADS)
-		return UL_ENOSPC;
 
 	th->stack_base  = (uint8_t *)stack;
 	th->stack_size  = attr->stack_size;
@@ -69,18 +61,12 @@ int ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr, void *stack)
 	th->rn_result_outptr   = NULL;
 	th->region_count      = 0u;
 	th->ticks_remaining   = UL_CONFIG_SCHED_QUANTUM_TICKS;
+	th->reg_next          = NULL;
 
-	/*
-	 * Default capability set:
-	 *   Kernel threads (root) receive UL_CAP_ALL.
-	 *   Driver/user threads spawned dynamically start with no capabilities;
-	 *   root must explicitly grant via ul_cap_grant().
-	 */
 	th->cap_flags = (attr->privilege == UL_PRIV_KERNEL) ? UL_CAP_ALL : 0u;
 
 	/*
 	 * Every non-kernel thread gets its stack as a default R+W MPU region.
-	 * The kernel thread uses PRS 0 (full access) and needs no DPR entries.
 	 */
 	if (attr->privilege != UL_PRIV_KERNEL) {
 		th->regions[0].base  = (uintptr_t)stack;
@@ -96,37 +82,26 @@ int ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr, void *stack)
 			 (uintptr_t)stack + attr->stack_size,
 			 attr->privilege);
 
-	/*
-	 * Register in the lookup table.  If this TCB struct already has an
-	 * entry (pool reuse: same pointer was freed then reallocated), update
-	 * it in place so the count stays bounded by the pool size.
-	 */
-	{
-		uint32_t i;
-		bool found = false;
-
-		for (i = 0; i < tcb_reg_count; i++) {
-			if (tcb_reg[i] == th) {
-				found = true;
-				break;
-			}
-		}
-		if (!found) {
-			if (tcb_reg_count >= UL_CONFIG_MAX_THREADS)
-				return UL_ENOSPC;
-			tcb_reg[tcb_reg_count++] = th;
-		}
+	/* Register in the TCB list (append at tail to preserve insertion order). */
+	if (!tcb_list) {
+		tcb_list = th;
+	} else {
+		p = tcb_list;
+		while (p->reg_next)
+			p = p->reg_next;
+		p->reg_next = th;
 	}
+
 	return UL_OK;
 }
 
 ul_thread_t *ul_thread_by_tid(ul_tid_t tid)
 {
-	uint32_t i;
+	ul_thread_t *th;
 
-	for (i = 0; i < tcb_reg_count; i++) {
-		if (tcb_reg[i]->tid == tid)
-			return tcb_reg[i];
+	for (th = tcb_list; th; th = th->reg_next) {
+		if (th->tid == tid)
+			return th;
 	}
 	return NULL;
 }
@@ -136,25 +111,31 @@ void ul_thread_set_state(ul_thread_t *th, uint8_t state)
 	th->state = state;
 }
 
-/* =========================================================================
- * Internal helpers
- * ========================================================================= */
-
 /*
- * Free a pool-allocated TCB slot.  No-op for statically-allocated threads.
- * Exposed via ul_thread_internal.h so the scheduler reaper can call it
- * after freeing the CSA chain and stack of a deferred dead thread.
+ * Unlink a TCB from the global registry list and free its heap memory.
+ * Stack is freed first (it was allocated from the heap), then the TCB.
+ * Called only for heap-allocated threads (dynamic TCBs).
+ * Static TCBs (idle, root) must never be passed to this function.
  */
-void ul_thread_pool_free(ul_thread_t *th)
+void ul_thread_free(ul_thread_t *th)
 {
-	uint32_t i;
+	ul_thread_t **pp;
+	ul_arch_irq_key_t key;
 
-	for (i = 0; i < UL_CONFIG_MAX_THREADS; i++) {
-		if (&tcb_pool[i] == th) {
-			tcb_pool_used[i] = false;
-			return;
-		}
-	}
+	key = ul_arch_cpu_irq_save();
+
+	/* Remove from registry list. */
+	pp = &tcb_list;
+	while (*pp && *pp != th)
+		pp = &(*pp)->reg_next;
+	if (*pp)
+		*pp = th->reg_next;
+
+	ul_arch_cpu_irq_restore(key);
+
+	if (th->stack_base)
+		ul_heap_free(th->stack_base);
+	ul_heap_free(th);
 }
 
 /* =========================================================================
@@ -168,10 +149,6 @@ uint32_t ul_kern_thread_self(void)
 	return t ? (uint32_t)t->tid : (uint32_t)(int32_t)UL_TID_INVALID;
 }
 
-/*
- * yield — re-enqueue current at the tail of its priority group (FIFO within
- * priority), then pick the highest-priority ready thread.
- */
 uint32_t ul_kern_yield(void)
 {
 	ul_thread_t *cur = ul_sched_current();
@@ -186,14 +163,10 @@ uint32_t ul_kern_yield(void)
 }
 
 /*
- * exit — remove current thread from the run queue and schedule the next one.
- * Execution never returns to the exiting thread.
+ * exit — mark thread dead and schedule the next one.
  *
  * CSA chain and stack cannot be freed here: the thread is still executing
- * and its PCXI chain is live.  We register it for deferred cleanup;
- * ul_sched_schedule() performs the actual release after the context switch.
- * tcb_pool_free() is also deferred so the TCB slot is not recycled before
- * the CSA walk completes.
+ * and its PCXI chain is live.  Register for deferred cleanup in the reaper.
  */
 uint32_t ul_kern_exit(void)
 {
@@ -210,40 +183,33 @@ uint32_t ul_kern_exit(void)
 }
 
 /*
- * spawn — allocate a TCB from the pool, allocate a stack from the phys pool,
- * initialise the thread, and enqueue it.  Returns the new TID or a negative
- * error code cast to uint32_t.
+ * spawn — allocate a TCB and stack from the heap, initialise, and enqueue.
+ * Returns the new TID or a negative error code cast to uint32_t.
  */
 uint32_t ul_kern_thread_spawn(uint32_t attr_ptr)
 {
 	const ul_thread_attr_t	*attr = (const ul_thread_attr_t *)(uintptr_t)attr_ptr;
-	ul_thread_t		*th = NULL;
+	ul_thread_t		*th;
 	void			*stack;
-	uint32_t		 slot;
 	int			 ret;
 
 	if (!attr || !attr->entry || attr->stack_size == 0)
 		return (uint32_t)(int32_t)UL_EINVAL;
 
-	for (slot = 0; slot < UL_CONFIG_MAX_THREADS; slot++) {
-		if (!tcb_pool_used[slot]) {
-			th = &tcb_pool[slot];
-			tcb_pool_used[slot] = true;
-			break;
-		}
-	}
+	th = (ul_thread_t *)ul_heap_alloc(sizeof(ul_thread_t));
 	if (!th)
-		return (uint32_t)(int32_t)UL_ENOSPC;
+		return (uint32_t)(int32_t)UL_ENOMEM;
 
-	stack = ul_phys_alloc(attr->stack_size);
+	stack = ul_heap_alloc(attr->stack_size);
 	if (!stack) {
-		tcb_pool_used[slot] = false;
+		ul_heap_free(th);
 		return (uint32_t)(int32_t)UL_ENOMEM;
 	}
 
 	ret = ul_thread_init(th, attr, stack);
 	if (ret != UL_OK) {
-		tcb_pool_used[slot] = false;
+		ul_heap_free(stack);
+		ul_heap_free(th);
 		return (uint32_t)(int32_t)ret;
 	}
 
@@ -273,20 +239,14 @@ uint32_t ul_kern_thread_kill(uint32_t tid)
 
 	if (th != ul_sched_current()) {
 		/*
-		 * Target is not on the CPU: its CSA chain is not live
-		 * in PCXI, so we can free everything immediately.
+		 * Target is not on the CPU: CSA chain is not live, free now.
 		 */
 		key = ul_arch_cpu_irq_save();
 		ul_arch_ctx_free(&th->ctx);
-		if (th->stack_base)
-			ul_phys_free(th->stack_base);
 		ul_arch_cpu_irq_restore(key);
-		ul_thread_pool_free(th);
+		ul_thread_free(th);
 	} else {
-		/*
-		 * Self-kill: CSA chain is live — defer cleanup to the
-		 * next ul_sched_schedule() call (same as ul_kern_exit).
-		 */
+		/* Self-kill: defer cleanup to reaper. */
 		ul_sched_set_dead_for_cleanup(th);
 		ul_sched_schedule();
 	}
@@ -337,10 +297,6 @@ uint32_t ul_kern_thread_set_prio(uint32_t tid, uint32_t prio)
 		th->priority = (uint8_t)prio;
 		ul_sched_enqueue(th);
 	} else {
-		/*
-		 * RUNNING, BLOCKED, SUSPENDED, DEAD: update priority for when
-		 * the thread re-enters the run queue.
-		 */
 		th->priority = (uint8_t)prio;
 	}
 	return 0;
@@ -355,12 +311,6 @@ uint32_t ul_kern_thread_get_prio(uint32_t tid)
 	return (uint32_t)th->priority;
 }
 
-/*
- * ul_kern_cap_grant — grant a subset of capabilities to another thread.
- *
- * Caller must hold UL_CAP_GRANT_CAP and all of the caps being granted.
- * Prevents privilege escalation: a thread cannot grant caps it does not hold.
- */
 uint32_t ul_kern_cap_grant(uint32_t target_tid, uint32_t caps)
 {
 	ul_thread_t *cur    = ul_sched_current();
@@ -369,7 +319,6 @@ uint32_t ul_kern_cap_grant(uint32_t target_tid, uint32_t caps)
 	if (!cur || !target)
 		return (uint32_t)(int32_t)UL_ESRCH;
 
-	/* Cannot grant capabilities the caller does not hold */
 	if ((cur->cap_flags & (uint8_t)caps) != (uint8_t)caps)
 		return (uint32_t)(int32_t)UL_EPERM;
 
@@ -377,15 +326,6 @@ uint32_t ul_kern_cap_grant(uint32_t target_tid, uint32_t caps)
 	return (uint32_t)UL_OK;
 }
 
-/*
- * ul_kern_sleep_us — block the calling thread for @lo_us | (@hi_us << 32) µs.
- *
- * The 64-bit duration is split across two 32-bit syscall argument registers
- * (D4 = lo, D5 = hi) and reconstructed here.  A zero duration is treated as
- * an immediate yield.  The thread is inserted into the sleep queue and
- * ul_sched_schedule() switches to the next ready thread; execution resumes
- * here after the timer ISR calls ul_sched_enqueue() for this thread.
- */
 uint32_t ul_kern_sleep_us(uint32_t lo_us, uint32_t hi_us)
 {
 	uint64_t	 duration = ((uint64_t)hi_us << 32) | (uint64_t)lo_us;

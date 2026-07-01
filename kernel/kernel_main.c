@@ -129,15 +129,13 @@ static void root_thread_entry(void *arg)
  * Static thread storage
  * ========================================================================= */
 
-static ul_thread_t idle_thread_g
-	__attribute__((section(".bss.idle_thread_g")));
+static ul_thread_t idle_thread_g   UL_KERNEL_BSS;
 static uint8_t     idle_stack_g[256]
-	__attribute__((aligned(8), section(".bss.idle_stack_g")));
+	__attribute__((aligned(8))) UL_KERNEL_BSS;
 
-static ul_thread_t root_thread_g
-	__attribute__((section(".bss.root_thread_g")));
+static ul_thread_t root_thread_g   UL_KERNEL_BSS;
 static uint8_t     root_stack_g[4096]
-	__attribute__((aligned(8), section(".bss.root_stack_g")));
+	__attribute__((aligned(8))) UL_KERNEL_BSS;
 
 /* =========================================================================
  * Kernel main — does not return
@@ -162,8 +160,10 @@ void ul_kernel_main(const ul_boot_info_t *info)
 	ul_arch_cpu_irq_enable();
 	UL_LOG_DBG("timer init done");
 
-	ul_phys_alloc_init((uintptr_t)_ul_user_pool_start,
-			   (uintptr_t)_ul_user_pool_end);
+	ul_heap_init((uintptr_t)_ul_user_pool_start,
+		     (uintptr_t)_ul_user_pool_end - (uintptr_t)_ul_user_pool_start);
+	ul_printk("ulipeMicroKernel: heap %u bytes available\n",
+		  (unsigned)ul_heap_free_bytes());
 
 	/*
 	 * Create the idle thread first — lowest priority (255), always in

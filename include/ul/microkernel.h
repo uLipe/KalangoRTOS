@@ -47,13 +47,13 @@ typedef enum {
  * Opaque handles
  * ========================================================================= */
 
-typedef int32_t  ul_tid_t;
-typedef int32_t  ul_ep_t;
-typedef int32_t  ul_notif_t;
+typedef int32_t   ul_tid_t;
+typedef uintptr_t ul_ep_t;
+typedef uintptr_t ul_notif_t;
 
 #define UL_TID_INVALID		((ul_tid_t)-1)
-#define UL_EP_INVALID		((ul_ep_t)-1)
-#define UL_NOTIF_INVALID	((ul_notif_t)-1)
+#define UL_EP_INVALID		((ul_ep_t)0)
+#define UL_NOTIF_INVALID	((ul_notif_t)0)
 
 /* =========================================================================
  * IPC message
@@ -293,6 +293,13 @@ static inline int ul_ep_recv_or_notif(ul_ep_t ep, ul_notif_t notif,
 	return (int)r;
 }
 
+static inline int ul_ep_destroy(ul_ep_t ep)
+{
+	uint32_t r;
+	UL_SYSCALL_1(UL_SYS_EP_DESTROY, ep, r);
+	return (int)r;
+}
+
 /* =========================================================================
  * Notification API — docs/api_spec.md §8
  * ========================================================================= */
@@ -325,9 +332,37 @@ static inline int ul_notif_wait(ul_notif_t notif, uint32_t mask, uint32_t *bits)
 	return (int)r;
 }
 
+static inline int ul_notif_destroy(ul_notif_t notif)
+{
+	uint32_t r;
+	UL_SYSCALL_1(UL_SYS_NOTIF_DESTROY, notif, r);
+	return (int)r;
+}
+
 /* =========================================================================
  * Memory API — docs/api_spec.md §9
  * ========================================================================= */
+
+static inline void *ul_malloc(size_t size)
+{
+	uint32_t r;
+	UL_SYSCALL_1(UL_SYS_MALLOC, size, r);
+	return (void *)(uintptr_t)r;
+}
+
+static inline void ul_free(void *ptr)
+{
+	uint32_t r;
+	UL_SYSCALL_1(UL_SYS_FREE, ptr, r);
+	(void)r;
+}
+
+static inline void *ul_aligned_alloc(size_t align, size_t size)
+{
+	uint32_t r;
+	UL_SYSCALL_2(UL_SYS_ALIGNED_ALLOC, align, size, r);
+	return (void *)(uintptr_t)r;
+}
 
 static inline void *ul_mem_map(void *hint, size_t size,
 			       uint32_t perms, uint32_t flags)

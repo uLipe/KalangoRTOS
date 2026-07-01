@@ -21,11 +21,12 @@
 #include <kernel/include/ul_timer_internal.h>
 #include <kernel/include/ul_thread_internal.h>
 #include <kernel/include/ul_sched.h>
+#include <kernel/include/ul_mem_internal.h>
 
 #define TICK_PERIOD_US	(1000000u / UL_CONFIG_TICK_HZ)
 
-static ul_thread_t	*sleep_head;
-static volatile uint32_t g_tick_count;
+static ul_thread_t	* UL_KERNEL_BSS sleep_head;
+static volatile uint32_t UL_KERNEL_BSS g_tick_count;
 
 void ul_timer_init(void)
 {

@@ -18,14 +18,15 @@
 #include <ul/config.h>
 #include <kernel/include/ul_irq_internal.h>
 #include <kernel/include/ul_notif_internal.h>
+#include <kernel/include/ul_mem_internal.h>
 #include <kernel/syscall/syscall_router.h>
 #include <ul_arch.h>
 
 /* =========================================================================
- * Binding table
+ * Binding table — static, kernel-space, hardware-bounded size.
  * ========================================================================= */
 
-static ul_irq_binding_t irq_table[UL_CONFIG_MAX_IRQ_BINDINGS];
+static ul_irq_binding_t UL_KERNEL_BSS irq_table[UL_CONFIG_MAX_IRQ_BINDINGS];
 
 void ul_irq_table_init(void)
 {
