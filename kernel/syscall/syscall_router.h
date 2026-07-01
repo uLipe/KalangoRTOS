@@ -37,6 +37,9 @@ uint32_t ul_kern_mem_map(uint32_t hint, uint32_t size,
 uint32_t ul_kern_mem_unmap(uint32_t addr, uint32_t size);
 uint32_t ul_kern_mem_grant(uint32_t addr, uint32_t size,
 			   uint32_t target_tid, uint32_t perms);
+uint32_t ul_kern_heap_alloc(uint32_t size);
+uint32_t ul_kern_heap_free(uint32_t ptr);
+uint32_t ul_kern_heap_aligned_alloc(uint32_t align, uint32_t size);
 
 /* Scheduling */
 uint32_t ul_kern_yield(void);
@@ -54,12 +57,14 @@ uint32_t ul_kern_ep_reply_recv(uint32_t ep, uint32_t sender_tid,
 uint32_t ul_kern_ep_grant(uint32_t ep, uint32_t target_tid);
 uint32_t ul_kern_ep_recv_or_notif(uint32_t ep, uint32_t notif,
 				  uint32_t mask, uint32_t result_ptr);
+uint32_t ul_kern_ep_destroy(uint32_t ep);
 
 /* Notifications */
 uint32_t ul_kern_notif_create(void);
 uint32_t ul_kern_notif_signal(uint32_t notif, uint32_t bits);
 uint32_t ul_kern_notif_wait(uint32_t notif, uint32_t mask, uint32_t bits_ptr);
 uint32_t ul_kern_notif_poll(uint32_t notif, uint32_t mask);
+uint32_t ul_kern_notif_destroy(uint32_t notif);
 
 /* IRQ (requires UL_PRIV_DRIVER) */
 uint32_t ul_kern_irq_bind(uint32_t srpn, uint32_t notif, uint32_t bit);

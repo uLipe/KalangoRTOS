@@ -24,6 +24,9 @@
 #define UL_SYS_MMAP                 1  /* void *ul_mem_map(hint, sz, perms, flags) */
 #define UL_SYS_MUNMAP               2  /* int   ul_mem_unmap(addr, sz)            */
 #define UL_SYS_MEM_GRANT            3  /* int   ul_mem_grant(addr, sz, tid, perms)*/
+#define UL_SYS_MALLOC               4  /* void *ul_malloc(size)                   */
+#define UL_SYS_FREE                 5  /* void  ul_free(ptr)                      */
+#define UL_SYS_ALIGNED_ALLOC        6  /* void *ul_aligned_alloc(align, size)     */
 
 /* ── Scheduling / exit ───────────────────────────────────────────── */
 #define UL_SYS_YIELD               10  /* void  ul_thread_yield(void)             */
@@ -41,12 +44,14 @@
 #define UL_SYS_EP_REPLY_RECV       34  /* int     ul_ep_reply_recv(...)           */
 #define UL_SYS_EP_GRANT            35  /* int     ul_ep_grant(ep, target)         */
 #define UL_SYS_EP_RECV_OR_NOTIF    36  /* int     ul_ep_recv_or_notif(...)        */
+#define UL_SYS_EP_DESTROY          37  /* int     ul_ep_destroy(ep)               */
 
 /* ── Notifications ───────────────────────────────────────────────── */
 #define UL_SYS_NOTIF_CREATE        40  /* ul_notif_t ul_notif_create(void)        */
 #define UL_SYS_NOTIF_SIGNAL        41  /* int        ul_notif_signal(notif, bits) */
 #define UL_SYS_NOTIF_WAIT          42  /* int        ul_notif_wait(notif, mask, bits*) */
 #define UL_SYS_NOTIF_POLL          43  /* uint32_t   ul_notif_poll(notif, mask)   */
+#define UL_SYS_NOTIF_DESTROY       44  /* int        ul_notif_destroy(notif)      */
 
 /* ── IRQ (requires IO >= 1 / UL_PRIV_DRIVER) ────────────────────── */
 #define UL_SYS_IRQ_BIND            60  /* int ul_irq_bind(srpn, notif, bit)       */

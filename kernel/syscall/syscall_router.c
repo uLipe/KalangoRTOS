@@ -62,6 +62,15 @@ uint32_t ul_syscall_router(uint32_t nr,
 	case UL_SYS_MEM_GRANT:
 		return ul_kern_mem_grant(a0, a1, a2, a3);
 
+	case UL_SYS_MALLOC:
+		return ul_kern_heap_alloc(a0);
+
+	case UL_SYS_FREE:
+		return ul_kern_heap_free(a0);
+
+	case UL_SYS_ALIGNED_ALLOC:
+		return ul_kern_heap_aligned_alloc(a0, a1);
+
 	/* ── Scheduling (any privilege) ──────────────────────────────── */
 	case UL_SYS_YIELD:
 		return ul_kern_yield();
@@ -98,6 +107,9 @@ uint32_t ul_syscall_router(uint32_t nr,
 	case UL_SYS_EP_RECV_OR_NOTIF:
 		return ul_kern_ep_recv_or_notif(a0, a1, a2, a3);
 
+	case UL_SYS_EP_DESTROY:
+		return ul_kern_ep_destroy(a0);
+
 	/* ── Notifications (any privilege) ──────────────────────────── */
 	case UL_SYS_NOTIF_CREATE:
 		return ul_kern_notif_create();
@@ -110,6 +122,9 @@ uint32_t ul_syscall_router(uint32_t nr,
 
 	case UL_SYS_NOTIF_POLL:
 		return ul_kern_notif_poll(a0, a1);
+
+	case UL_SYS_NOTIF_DESTROY:
+		return ul_kern_notif_destroy(a0);
 
 	/* ── IRQ (requires UL_PRIV_DRIVER) ──────────────────────────── */
 	case UL_SYS_IRQ_BIND:
