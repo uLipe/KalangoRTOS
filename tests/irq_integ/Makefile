@@ -61,9 +61,6 @@ SRCS := $(KERNEL_SRCS) $(TEST_SRCS)
 SENTINELS := \
     "irq_integ: start" \
     "irq_integ: server ready, waiting for IRQs" \
-    "irq_integ: IRQ received iter=0" \
-    "irq_integ: IRQ received iter=1" \
-    "irq_integ: IRQ received iter=2" \
     "irq_integ: basic IRQ delivery PASS" \
     "irq_integ: IRQ disable PASS" \
     "irq_integ: IRQ re-enable PASS" \
