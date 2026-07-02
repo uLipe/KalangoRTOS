@@ -1,122 +1,119 @@
 # ulipeMicroKernel — Architecture Abstraction Layer Specification
 
-**Version:** 0.1 (draft)
-**Reference implementation:** TriCore TC1.6.1 / AURIX TC2xx
-**Header:** `#include <ul/arch.h>`
+**Version:** 1.0
+**Header:** `arch/<arch>/include/ul_arch.h`
+**Status:** Reflects the implemented contract between `kernel/` and `arch/tricore/`.
+
+> **Purpose of this document:** generic contract that any architecture port must
+> satisfy.  Section 13 contains notes specific to the reference TriCore
+> implementation.  For porting guidance see `docs/arch_porting_guide.md`.
+> For the public userspace API see `docs/api_spec.md`.
 
 ---
 
 ## Table of Contents
 
 1. [Philosophy and Directory Layout](#1-philosophy-and-directory-layout)
-2. [Contract Summary](#2-contract-summary)
+2. [Dependency Rules](#2-dependency-rules)
 3. [Arch Types](#3-arch-types)
-4. [Arch Constants and Macros](#4-arch-constants-and-macros)
-5. [CPU Control](#5-cpu-control)
-6. [Context Management](#6-context-management)
-7. [MPU — Memory Protection Unit](#7-mpu--memory-protection-unit)
-8. [IRQ and SRC Control](#8-irq-and-src-control)
-9. [Tick Timer](#9-tick-timer)
-10. [Atomic Operations](#10-atomic-operations)
-11. [Boot Entry](#11-boot-entry)
+4. [CPU Control](#4-cpu-control)
+5. [Context Management](#5-context-management)
+6. [MPU — Memory Protection Unit](#6-mpu--memory-protection-unit)
+7. [IRQ Control](#7-irq-control)
+8. [Tick Timer](#8-tick-timer)
+9. [Atomic Operations](#9-atomic-operations)
+10. [Boot Entry](#10-boot-entry)
+11. [Character Output Primitive](#11-character-output-primitive)
 12. [Kernel Callbacks (arch → kernel)](#12-kernel-callbacks-arch--kernel)
-13. [TriCore TC2xx Implementation Notes](#13-tricore-tc2xx-implementation-notes)
+13. [TriCore TC2xx Reference Implementation Notes](#13-tricore-tc2xx-reference-implementation-notes)
 
 ---
 
 ## 1. Philosophy and Directory Layout
 
-The arch layer is a **contract**, not a library.  It separates platform-
-independent kernel logic from hardware-specific implementation.  The kernel
-calls into the arch layer; the arch layer calls specific kernel callbacks when
-hardware events occur.
+The arch layer is a **contract**, not a library.  It isolates
+platform-independent kernel logic from hardware-specific implementation.
 
 ```
-ulipeMicroKernel/
-├── kernel/            platform-independent kernel (scheduler, IPC, memory)
-├── include/
-│   └── ul/
-│       └── arch.h     this contract (generic types + function declarations)
-└── arch/
-    └── tricore/       TriCore TC2xx implementation
-        ├── arch_cpu.c
-        ├── arch_ctx.S
-        ├── arch_mpu.c
-        ├── arch_irq.c
-        ├── arch_tick.c
-        ├── startup.S
-        └── include/
-            └── arch_config.h   arch-specific constants (UL_ARCH_NUM_DPR, etc.)
+kernel/          platform-independent (scheduler, IPC, memory, IRQ table)
+                 calls ul_arch_* only
+                 exports ul_kernel_* callbacks
+
+arch/
+└── <arch>/      one subdirectory per supported ISA
+    ├── arch.c           main implementation
+    ├── ctx_switch.S     context switch (assembly)
+    ├── startup.S        _start, stack, memory init
+    ├── vectors.S        trap/ISR entry stubs
+    └── include/
+        ├── ul_arch.h        arch contract header (types + prototypes)
+        └── arch_config.h    arch-specific constants (MPU region count, etc.)
 ```
 
-**Rules:**
-- `kernel/` **never** includes `arch/tricore/` headers directly.  It only
-  includes `ul/arch.h`.
-- `arch/tricore/` may include any TriCore-specific header it needs.
-- All arch functions are prefixed `ul_arch_*`.
+Adding a new architecture means creating a new `arch/<name>/` subtree that
+satisfies every symbol declared in `ul_arch.h`.  See `docs/arch_porting_guide.md`.
 
 ---
 
-## 2. Contract Summary
+## 2. Dependency Rules
 
-Functions the **arch port must implement** (called by the kernel):
+```
+kernel/ → arch/ via ul_arch.h only
+arch/   → kernel/ via ul_kernel_* callbacks only
+board/  → nothing above it
+```
 
-| Group | Functions |
-|-------|-----------|
-| CPU control | `ul_arch_cpu_irq_enable`, `ul_arch_cpu_irq_disable`, `ul_arch_cpu_irq_save`, `ul_arch_cpu_irq_restore`, `ul_arch_cpu_barrier_data`, `ul_arch_cpu_barrier_instr`, `ul_arch_cpu_wait`, `ul_arch_cpu_id` |
-| Context | `ul_arch_ctx_init`, `ul_arch_ctx_switch`, `ul_arch_ctx_free`, `ul_arch_csa_pool_init` |
-| MPU | `ul_arch_mpu_init`, `ul_arch_mpu_enable`, `ul_arch_mpu_disable`, `ul_arch_mpu_configure`, `ul_arch_mpu_switch` |
-| IRQ | `ul_arch_irq_vectors_init`, `ul_arch_irq_src_configure`, `ul_arch_irq_src_enable`, `ul_arch_irq_src_disable`, `ul_arch_irq_src_clear` |
-| Tick | `ul_arch_tick_init`, `ul_arch_tick_get` |
-| Atomic | `ul_arch_atomic_cas32`, `ul_arch_atomic_load32`, `ul_arch_atomic_store32` |
-| Boot | `ul_arch_init` |
+Violations:
 
-Callbacks the **kernel exports** (called by the arch port, e.g., from ISRs):
-
-| Function | When called |
-|----------|-------------|
-| `ul_kernel_tick()` | Every scheduler tick |
-| `ul_kernel_irq_dispatch(srpn)` | On every hardware IRQ |
-| `ul_kernel_trap_syscall(tin, args)` | On SYSCALL trap (class 6) |
-| `ul_kernel_trap_fault(class, tin)` | On protection fault (class 1) |
+- `kernel/` must **never** include arch implementation headers directly.
+- `arch/` must **never** include `kernel/` internal headers.
+- Arch code must not encode scheduling policy (it calls `ul_kernel_tick()` and
+  lets the kernel decide what to do next).
+- Kernel code must not contain ISA-specific instructions or register names.
 
 ---
 
 ## 3. Arch Types
 
-Defined in `ul/arch.h`; the kernel uses these opaque types.  The actual struct
-layouts are in `arch/<target>/include/arch_config.h`.
+Each arch defines these types in its `ul_arch.h`:
+
+### `ul_arch_ctx_t` — saved CPU context
 
 ```c
-/*
- * ul_arch_ctx_t — saved CPU context for a thread
- *
- * TriCore: only PCXI needs to be stored; the CSA chain holds everything else.
- * Other architectures may store a full register frame here.
- */
-typedef struct ul_arch_ctx ul_arch_ctx_t;
-
-/*
- * ul_arch_irq_key_t — opaque saved interrupt state
- *
- * Returned by ul_arch_cpu_irq_save(); passed to ul_arch_cpu_irq_restore().
- * TriCore: wraps the ICR register value.
- */
-typedef uint32_t ul_arch_irq_key_t;
-
-/*
- * ul_arch_region_t — a single memory protection region descriptor
- *
- * Passed in arrays to ul_arch_mpu_configure().
- */
 typedef struct {
-	uintptr_t base;     /* region start (must be aligned to UL_ARCH_REGION_ALIGN) */
-	size_t    size;     /* region size in bytes (multiple of UL_ARCH_REGION_ALIGN) */
-	uint32_t  perms;    /* UL_PERM_READ | UL_PERM_WRITE | UL_PERM_EXEC */
-	uint8_t   type;     /* UL_REGION_CODE | UL_REGION_DATA | UL_REGION_PERIPH */
+    /* arch-defined fields; must be the FIRST field of ul_thread_t */
+    ...
+} ul_arch_ctx_t;
+```
+
+Must be the **first field** of `ul_thread_t` so the assembly context-switch
+path can access it at a known offset without depending on the full TCB layout.
+
+The struct must encode enough state to resume the thread via `ul_arch_ctx_switch`.
+On register-file architectures this is typically a saved-PC + stack-pointer; on
+architectures with hardware-managed context (like TriCore's CSA) it is a link
+to the saved frame chain.
+
+### `ul_arch_irq_key_t` — saved interrupt state
+
+```c
+typedef <arch-defined> ul_arch_irq_key_t;
+```
+
+Opaque value returned by `ul_arch_cpu_irq_save()` and passed to
+`ul_arch_cpu_irq_restore()`.  Must encode enough state to restore the previous
+interrupt enable / mask level exactly.
+
+### `ul_arch_region_t` — MPU region descriptor
+
+```c
+typedef struct {
+    uintptr_t base;
+    size_t    size;
+    uint32_t  perms;    /* UL_PERM_* bitmask */
+    uint8_t   type;     /* UL_REGION_* tag */
 } ul_arch_region_t;
 
-/* Region type tags */
 #define UL_REGION_CODE    0
 #define UL_REGION_DATA    1
 #define UL_REGION_STACK   2
@@ -125,634 +122,498 @@ typedef struct {
 #define UL_REGION_SHARED  5
 ```
 
----
-
-## 4. Arch Constants and Macros
-
-Defined in `arch/<target>/include/arch_config.h` and included by `ul/arch.h`.
-
-```c
-/*
- * These are defined by the arch port.  Values below are TriCore TC2xx.
- */
-
-/* MPU hardware limits */
-#define UL_ARCH_NUM_DPR        18   /* data protection ranges */
-#define UL_ARCH_NUM_CPR        10   /* code protection ranges */
-#define UL_ARCH_NUM_PRS         4   /* protection register sets */
-#define UL_ARCH_MAX_REGIONS    12   /* max regions per thread (data + code) */
-#define UL_ARCH_REGION_ALIGN    8   /* minimum region base/size alignment, bytes */
-
-/* PSW initial values for new threads (TriCore PSW register) */
-#define UL_ARCH_PSW_USER    0x00000880u  /* IO=0 (user), IS=0, CDE=1, CDC=0 */
-#define UL_ARCH_PSW_DRIVER  0x00000980u  /* IO=1 (driver), IS=0, CDE=1, CDC=0 */
-
-/* CSA pool minimum count (each CSA = 64 bytes) */
-#define UL_ARCH_CSA_MIN_COUNT  64
-
-/* IPC message registers mapped to CPU data registers */
-#define UL_ARCH_SYSCALL_ARG0_REG   "d4"
-#define UL_ARCH_SYSCALL_ARG1_REG   "d5"
-#define UL_ARCH_SYSCALL_ARG2_REG   "d6"
-#define UL_ARCH_SYSCALL_ARG3_REG   "d7"
-#define UL_ARCH_SYSCALL_RET_REG    "d2"
-```
+`perms` uses the same `UL_PERM_READ | UL_PERM_WRITE | UL_PERM_EXEC | UL_PERM_USER`
+flags defined in `include/ul/microkernel.h`.
 
 ---
 
-## 5. CPU Control
+## 4. CPU Control
+
+### `ul_arch_cpu_irq_save` / `ul_arch_cpu_irq_restore`
 
 ```c
-/*
- * ul_arch_cpu_irq_enable - globally enable CPU interrupt delivery
- *
- * TriCore: `enable` instruction (sets ICR.IE).
- */
-void ul_arch_cpu_irq_enable(void);
-
-/*
- * ul_arch_cpu_irq_disable - globally disable CPU interrupt delivery
- *
- * TriCore: `disable` instruction.
- */
-void ul_arch_cpu_irq_disable(void);
-
-/*
- * ul_arch_cpu_irq_save - disable interrupts and return previous state
- *
- * Used for critical sections.  The returned key must be passed to
- * ul_arch_cpu_irq_restore() — never compared or manipulated directly.
- *
- * TriCore: reads ICR, calls disable, returns ICR value.
- */
 ul_arch_irq_key_t ul_arch_cpu_irq_save(void);
-
-/*
- * ul_arch_cpu_irq_restore - restore interrupt state from a saved key
- *
- * TriCore: MTCR ICR, key.
- */
-void ul_arch_cpu_irq_restore(ul_arch_irq_key_t key);
-
-/*
- * ul_arch_cpu_barrier_data - data memory barrier
- *
- * Ensures all pending writes are visible before this point.
- * TriCore: `dsync` instruction.
- */
-void ul_arch_cpu_barrier_data(void);
-
-/*
- * ul_arch_cpu_barrier_instr - instruction synchronisation barrier
- *
- * Flushes pipeline; required after writing CSFRs (MTCR).
- * TriCore: `isync` instruction.
- */
-void ul_arch_cpu_barrier_instr(void);
-
-/*
- * ul_arch_cpu_wait - enter low-power idle state
- *
- * Returns when an interrupt or any pending request wakes the core.
- * Called from the idle thread when no runnable thread exists.
- *
- * TriCore: `enable` + `wait` — atomically re-enables interrupts and sleeps.
- */
-void ul_arch_cpu_wait(void);
-
-/*
- * ul_arch_cpu_id - return the current CPU/core index
- *
- * Returns 0 on single-core systems.
- * TriCore: MFCR CORE_ID & 0x7.
- */
-uint32_t ul_arch_cpu_id(void);
+void              ul_arch_cpu_irq_restore(ul_arch_irq_key_t key);
 ```
+
+Disable interrupts globally and save/restore the previous state.  The save/restore
+pair is re-entrant: nested calls must restore the outermost state only when the
+outermost restore is reached.
+
+### `ul_arch_cpu_irq_enable` / `ul_arch_cpu_irq_disable`
+
+```c
+void ul_arch_cpu_irq_enable(void);
+void ul_arch_cpu_irq_disable(void);
+```
+
+Unconditional enable / disable.  Used in boot and shutdown paths where no
+previous state needs to be preserved.
+
+### `ul_arch_cpu_idle`
+
+```c
+void ul_arch_cpu_idle(void);
+```
+
+Enter a low-power wait state until the next interrupt.  Called by the kernel
+idle thread.  Must return when an interrupt fires and is handled (i.e., after
+the ISR completes).
+
+### `ul_arch_cpu_halt`
+
+```c
+void ul_arch_cpu_halt(void);
+```
+
+Hard halt with interrupts disabled.  Used by the panic path.  Must not return.
+
+### `ul_arch_cpu_clz`
+
+```c
+uint32_t ul_arch_cpu_clz(uint32_t val);
+```
+
+Count leading zeros of `val`.  Used by the O(1) bitmap scheduler.  Implement
+with the native ISA instruction when available; fall back to a software loop.
 
 ---
 
-## 6. Context Management
+## 5. Context Management
 
-The kernel stores one `ul_arch_ctx_t` per thread.  The arch layer owns the
-layout; the kernel treats it as opaque.
+### `ul_arch_ctx_init`
 
 ```c
-/*
- * ul_arch_csa_pool_init - initialise the CSA free list from a memory region
- *
- * @pool_base: physical start of the CSA pool (must be 64-byte aligned)
- * @pool_size: size in bytes; must be a multiple of 64
- *
- * Must be called once before any thread context is created or any interrupt
- * can fire.
- *
- * TriCore: builds the linked list of 64-byte CSA frames and writes FCX/LCX.
- */
-void ul_arch_csa_pool_init(uintptr_t pool_base, size_t pool_size);
+void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
+                      void (*entry)(void *arg), void *arg,
+                      uintptr_t stack_top, ul_privilege_t priv);
+```
 
-/*
- * ul_arch_ctx_init - build the initial CPU context for a new thread
- *
- * Fabricates a CSA chain as if the thread had just been interrupted before
- * executing its first instruction.  After this call, ul_arch_ctx_switch()
- * can load the thread without special-casing first runs.
- *
- * @ctx:       context structure to initialise (embedded in the TCB)
- * @entry:     thread entry function
- * @arg:       argument passed in the first argument register (D4 on TriCore)
- * @stack_top: top of the thread's stack (highest address; stack grows down)
- * @priv:      UL_PRIV_USER or UL_PRIV_DRIVER (determines PSW.IO)
- *
- * TriCore: allocates two CSA frames (Lower + Upper) from FCX, fills them
- * with A10=stack_top, A11=entry, D4=arg, PSW=UL_ARCH_PSW_{USER|DRIVER}.
- */
-void ul_arch_ctx_init(ul_arch_ctx_t *ctx, void (*entry)(void *), void *arg,
-		      uintptr_t stack_top, ul_privilege_t priv);
+Fabricate the initial saved context for a new thread.  After this call,
+`ul_arch_ctx_switch(NULL, ctx)` must start executing `entry(arg)` at privilege
+`priv` using the stack whose top is `stack_top`.
 
-/*
- * ul_arch_ctx_switch - save current context and load next context
- *
- * Called from the scheduler with interrupts disabled.  On return the CPU is
- * executing the next thread.
- *
- * @prev: context of the thread being suspended (may be NULL on first switch)
- * @next: context of the thread to resume
- *
- * TriCore:
- *   Save path:  SVLCX; MFCR PCXI → prev->pcxi
- *   Load path:  MTCR PCXI ← next->pcxi; ISYNC; RSLCX; RFE
- *
- * Implemented in assembly (arch/tricore/arch_ctx.S).
- */
-void ul_arch_ctx_switch(ul_arch_ctx_t *prev, ul_arch_ctx_t *next);
+Implementations typically push a synthetic register frame onto the stack or
+(for hardware-managed context) allocate a saved-context frame in a pool.
 
-/*
- * ul_arch_ctx_free - return a thread's CSA chain to the free list
- *
- * Called when a thread is destroyed.  Must be called with interrupts disabled.
- *
- * @ctx: the context whose CSA chain will be freed
- *
- * TriCore: walks the chain starting from ctx->pcxi, prepending each 64-byte
- * frame back to FCX.
- */
+A trampoline must ensure that if `entry` returns, `ul_thread_exit()` is called.
+
+### `ul_arch_ctx_switch`
+
+```c
+void ul_arch_ctx_switch(ul_arch_ctx_t *from, const ul_arch_ctx_t *to);
+```
+
+Suspend the current thread by saving its CPU state into `*from`, then resume
+the thread whose state is in `*to`.  Does not return to the caller until the
+current thread is switched back to.
+
+If `from` is NULL, the function performs a one-way jump to `to` (used for the
+first task load).
+
+The kernel guarantees that interrupts are disabled when this is called.
+
+### `ul_arch_ctx_free`
+
+```c
 void ul_arch_ctx_free(ul_arch_ctx_t *ctx);
 ```
 
+Release any arch-managed resources associated with `ctx` (e.g., saved-context
+frames from a hardware pool).  Called when a thread is killed.  Must be safe to
+call from any context with interrupts disabled.
+
 ---
 
-## 7. MPU — Memory Protection Unit
+## 6. MPU — Memory Protection Unit
 
-The arch MPU layer maps generic region descriptors onto hardware protection
-registers.  On TriCore this is the DPR/CPR system with four PRS slots.
+### `ul_arch_mpu_init`
 
 ```c
-/*
- * ul_arch_mpu_init - reset all protection ranges and configure PRS 0 as
- *                    the kernel's unrestricted protection set
- *
- * Called once during boot before ul_arch_mpu_enable().
- *
- * TriCore: zeros all DPR/CPR ranges, sets DPRE/DPWE/CPRE/CPXE = 0xFFFFFFFF
- * for PRS 0 (kernel).  Protection enforcement remains off until
- * ul_arch_mpu_enable() is called.
- */
 void ul_arch_mpu_init(void);
-
-/*
- * ul_arch_mpu_enable - activate hardware memory protection (SYSCON.PROTEN)
- *
- * After this call, any access not permitted by the active PRS raises a
- * protection fault (trap class 1).
- */
-void ul_arch_mpu_enable(void);
-
-/*
- * ul_arch_mpu_disable - deactivate hardware memory protection
- *
- * Used only during init or fault recovery.  Must not be called from user
- * context.
- */
-void ul_arch_mpu_disable(void);
-
-/*
- * ul_arch_mpu_configure - program a PRS slot with a set of regions
- *
- * @prs:     protection register set index (0–UL_ARCH_NUM_PRS-1)
- * @regions: array of region descriptors
- * @count:   number of entries in @regions
- *
- * The function maps regions of type UL_REGION_CODE into CPR entries and all
- * others into DPR entries.  Excess regions (beyond hardware limits) are
- * silently dropped — the caller must ensure count ≤ UL_ARCH_MAX_REGIONS.
- *
- * PRS 0 is reserved for the kernel and must not be reconfigured.
- */
-void ul_arch_mpu_configure(uint8_t prs, const ul_arch_region_t *regions,
-			   uint8_t count);
-
-/*
- * ul_arch_mpu_switch - switch MPU to the protection set of a thread
- *
- * Called on every context switch, with interrupts disabled.
- *
- * Fast path (pre-assigned PRS): modifies PSW.PRS and PSW.IO only (~3 cycles).
- * Slow path (dynamic PRS 3): calls ul_arch_mpu_configure(3, ...) then
- * updates PSW.
- *
- * @regions: the thread's active region array
- * @count:   number of active regions
- * @prs:     pre-assigned PRS index, or UL_ARCH_NUM_PRS if dynamic
- * @priv:    UL_PRIV_USER or UL_PRIV_DRIVER
- */
-void ul_arch_mpu_switch(const ul_arch_region_t *regions, uint8_t count,
-			uint8_t prs, ul_privilege_t priv);
 ```
 
----
+One-time MPU initialisation.  Set up a privileged protection domain (PRS 0 on
+TriCore, region 0 on ARMv7-M, etc.) with full kernel access.  Called once from
+`ul_arch_init()` before the scheduler starts.
 
-## 8. IRQ and SRC Control
-
-On TriCore, hardware interrupts are routed through SRC (Service Request
-Control) registers.  Each peripheral has one or more SRC entries indexed by
-their SRPN (Software Request Priority Number, 0–255).
+### `ul_arch_mpu_enable` / `ul_arch_mpu_disable`
 
 ```c
-/*
- * ul_arch_irq_vectors_init - set BIV (Interrupt Vector Base) and BTV (Trap
- *                             Vector Base), and configure ISP (Interrupt Stack)
- *
- * @biv:      physical address of the interrupt vector table (must be aligned
- *            to the hardware-required boundary; TriCore: 8 bytes per slot × 256)
- * @btv:      physical address of the trap vector table
- * @isp_top:  top of the interrupt/ISR stack (highest address)
- *
- * Must be called before ul_arch_mpu_enable() and before any interrupt is
- * enabled.
- *
- * TriCore: MTCR BIV, BTV, ISP + ISYNC.
- */
-void ul_arch_irq_vectors_init(uintptr_t biv, uintptr_t btv,
-			      uintptr_t isp_top);
+void ul_arch_mpu_enable(void);
+void ul_arch_mpu_disable(void);
+```
 
-/*
- * ul_arch_irq_src_configure - configure an SRC entry
- *
- * @srpn: priority number (1–255; 0 is reserved)
- * @tos:  target core (0 = Core 0, 1 = Core 1, 2 = Core 2)
- *
- * Sets the SRPN and TOS fields; does NOT enable the interrupt.
- * Use ul_arch_irq_src_enable() after binding to a notification.
- *
- * The SRC register address for a given SRPN is board-specific and looked up
- * from an arch-private table (not part of the public contract).
- */
-void ul_arch_irq_src_configure(uint8_t srpn, uint8_t tos);
+Activate / deactivate hardware memory protection.  After `ul_arch_mpu_enable()`
+returns, accesses outside configured regions must trigger a hardware fault.
 
-/*
- * ul_arch_irq_src_enable  - set SRC.SRE (enables IRQ delivery)
- * ul_arch_irq_src_disable - clear SRC.SRE
- */
+### `ul_arch_mpu_configure`
+
+```c
+void ul_arch_mpu_configure(uint8_t prs, const ul_arch_region_t *regions,
+                            uint8_t count);
+```
+
+Program `count` regions into protection domain `prs`.  On architectures with
+a Protection Register Set model (e.g., TriCore DPR/CPR), `prs` identifies the
+set.  On flat-region architectures (e.g., ARMv7-M MPU), `prs` is a logical
+slot that the port maps to hardware regions.
+
+### `ul_arch_mpu_switch`
+
+```c
+void ul_arch_mpu_switch(const ul_arch_region_t *regions, uint8_t count,
+                         uint8_t prs);
+```
+
+Fast domain switch at context switch time.  Must be as cheap as possible; on
+architectures that support it (e.g., TriCore `PSW.PRS` field), this is a
+single register write.
+
+### `ul_arch_mpu_addr_permitted`
+
+```c
+bool ul_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms);
+```
+
+Return true if `[addr, addr+size)` is accessible with `perms` in the currently
+active protection domain.  Used by the kernel to validate syscall pointer
+arguments before dereferencing them.
+
+---
+
+## 7. IRQ Control
+
+### `ul_arch_irq_vectors_init`
+
+```c
+void ul_arch_irq_vectors_init(uintptr_t trap_table, uintptr_t irq_table,
+                               uintptr_t isr_stack_top);
+```
+
+Register the trap/interrupt vector tables with hardware and set the ISR stack
+pointer.  On architectures where trap and interrupt tables are separate, both
+addresses are provided; use the appropriate one for the ISA.
+
+Must be called before `ul_arch_cpu_irq_enable()`.
+
+### `ul_arch_irq_src_configure`
+
+```c
+void ul_arch_irq_src_configure(uint8_t srpn, uint8_t priority, uint8_t cpu_id);
+```
+
+Configure interrupt source `srpn` (Service Request Priority Number — a logical
+index into the interrupt controller).  Set its priority and target CPU.  Leave
+it disabled; `ul_arch_irq_src_enable()` activates it.
+
+### `ul_arch_irq_src_enable` / `ul_arch_irq_src_disable`
+
+```c
 void ul_arch_irq_src_enable(uint8_t srpn);
 void ul_arch_irq_src_disable(uint8_t srpn);
+```
 
-/*
- * ul_arch_irq_src_clear - clear the pending flag (SRC.CLRR)
- *
- * Must be called inside the kernel's IRQ dispatch path before signalling
- * the userspace notification, to prevent immediate re-entry.
- */
-void ul_arch_irq_src_clear(uint8_t srpn);
+Enable / disable interrupt source `srpn` in the interrupt controller.
 
-/*
- * ul_arch_irq_src_trigger - software-trigger an IRQ (SRC.SETR)
- *
- * Used to raise a soft interrupt between cores (inter-core IPC).
- */
+### `ul_arch_irq_src_ack`
+
+```c
+void ul_arch_irq_src_ack(uint8_t srpn);
+```
+
+Clear the pending flag for `srpn`.  Required after handling a level-triggered
+interrupt to prevent immediate re-entry.
+
+### `ul_arch_irq_src_is_pending`
+
+```c
+bool ul_arch_irq_src_is_pending(uint8_t srpn);
+```
+
+Return true if `srpn` has a pending interrupt request.
+
+### `ul_arch_irq_src_trigger`
+
+```c
 void ul_arch_irq_src_trigger(uint8_t srpn);
 ```
 
+Software-trigger interrupt `srpn`.  Used only in test builds to inject
+synthetic hardware events.
+
 ---
 
-## 9. Tick Timer
+## 8. Tick Timer
 
-The tick timer drives the scheduler.  On TriCore TC2xx the System Timer (STM)
-is the natural choice: a 64-bit free-running counter with a compare register
-that generates an SRC interrupt.
+### `ul_arch_tick_init`
 
 ```c
-/*
- * ul_arch_tick_init - configure the hardware timer to fire at @freq_hz
- *
- * @freq_hz:   desired tick rate (e.g., 1000 for 1 ms ticks)
- * @tick_srpn: SRC priority number to use for the tick interrupt
- *
- * The implementation must:
- *   1. Program the timer compare register for the given frequency.
- *   2. Configure the SRC entry (ul_arch_irq_src_configure).
- *   3. Enable the SRC (ul_arch_irq_src_enable).
- *
- * The timer ISR calls ul_kernel_tick() and re-arms the compare register.
- *
- * TriCore: uses STM0_CMP0; tick ISR is generated via SRC_STM0_0.
- */
-void ul_arch_tick_init(uint32_t freq_hz, uint8_t tick_srpn);
+void ul_arch_tick_init(void);
+```
 
-/*
- * ul_arch_tick_get - return the current tick count (monotonically increasing)
- *
- * Thread-safe (reads a volatile counter updated by the tick ISR).
- * May wrap; callers must handle wrapping for timeout arithmetic.
- */
+Configure a periodic hardware timer to fire at `UL_CONFIG_TICK_HZ` Hz.  The
+timer ISR must call `ul_kernel_tick()` then `ul_kernel_irq_check_preempt()`.
+Called once from `ul_arch_init()`.
+
+### `ul_arch_tick_get`
+
+```c
 uint32_t ul_arch_tick_get(void);
 ```
 
----
-
-## 10. Atomic Operations
-
-These primitives must be implemented without disabling interrupts when the
-hardware supports native atomics.  On TriCore TC2xx there is no load-linked /
-store-conditional; use `CMPSWAP.W` (compare-and-swap word) instead.
-
-```c
-/*
- * ul_arch_atomic_cas32 - compare and swap 32-bit word
- *
- * If *ptr == expected, writes desired to *ptr atomically and returns true.
- * Otherwise returns false; *ptr is unchanged.
- *
- * TriCore: CMPSWAP.W instruction (atomic in terms of bus access).
- */
-bool ul_arch_atomic_cas32(volatile uint32_t *ptr, uint32_t expected,
-			  uint32_t desired);
-
-/*
- * ul_arch_atomic_load32  - atomic 32-bit load (acquire semantics)
- * ul_arch_atomic_store32 - atomic 32-bit store (release semantics)
- *
- * On architectures with coherent caches, these map to plain load/store with
- * the appropriate barrier.  On TriCore: LD.W / ST.W with DSYNC.
- */
-uint32_t ul_arch_atomic_load32(volatile const uint32_t *ptr);
-void     ul_arch_atomic_store32(volatile uint32_t *ptr, uint32_t val);
-```
+Return elapsed microseconds since reset as a free-running 32-bit counter.
+Wraps after approximately 4294 seconds.  Used by `ul_timer_set_deadline()` to
+compute absolute deadlines.
 
 ---
 
-## 11. Boot Entry
+## 9. Atomic Operations
 
-### 11.1 ul_board_init (optional, user-provided)
+### `ul_arch_atomic_cas`
 
 ```c
-/*
- * ul_board_init - optional board-level hardware setup
- *
- * Called by startup.S as the very first C function, before .data is copied
- * and before any kernel subsystem is initialised.  Intended for chip-specific
- * bring-up that the kernel should not own: PLL configuration, flash wait-state
- * tuning, external RAM initialisation, port mux setup.
- *
- * Constraints:
- *   - Runs in full supervisor mode (PSW.IO = 3); MPU is NOT yet active.
- *   - Must NOT use initialised global variables (.data has not been copied yet).
- *   - Must NOT call any ul_* kernel or arch API functions.
- *   - Must NOT enable interrupts (BIV/BTV not yet programmed).
- *   - Must return normally; ul_arch_init() is called immediately after.
- *
- * If not defined by the user, the linker selects the weak no-op stub from
- * arch/tricore/board_init_stub.c.  No CMake registration is required.
- *
- * Declared with __attribute__((weak)) so the user overrides it by defining
- * a strong symbol with the same name anywhere in the link.
- */
-__attribute__((weak)) void ul_board_init(void);
+uint32_t ul_arch_atomic_cas(volatile uint32_t *ptr,
+                             uint32_t expected, uint32_t desired);
 ```
 
-`ul_board_init()` is the recommended replacement for a first-stage bootloader in
-systems where the kernel can afford to own startup (i.e., the CPU comes up with
-enough internal flash speed to run PLL init code). When a dedicated bootloader IS
-used, `ul_board_init()` should be left as the no-op stub, since the bootloader
-will have already configured the hardware before jumping to `_start`.
+Compare-and-swap.  If `*ptr == expected`, atomically write `desired` and return
+`expected`.  Otherwise return the current value of `*ptr` without writing.
+Must be lock-free; implement with the native ISA atomic instruction.
 
-### 11.2 ul_arch_init (arch-provided)
+### `ul_arch_atomic_add`
 
 ```c
-/*
- * ul_arch_init - one-time CPU and peripheral initialisation
- *
- * Called by startup.S after ul_board_init(), after .data copy and .bss zero.
- * Must NOT call any kernel functions.
- *
- * Responsibilities:
- *   1. ul_arch_csa_pool_init()    — build CSA free list
- *   2. ul_arch_irq_vectors_init() — set BIV, BTV, ISP
- *   3. ul_arch_mpu_init()         — zero all protection ranges
- *   4. ul_arch_tick_init()        — configure tick timer
- *   5. Return; control passes to ul_kernel_main() [internal kernel fn]
- *
- * @info: caller-allocated ul_boot_info_t to fill in; forwarded to
- *        ul_kernel_main(), which passes it to ul_root_thread().
- */
+uint32_t ul_arch_atomic_add(volatile uint32_t *ptr, uint32_t val);
+```
+
+Atomically add `val` to `*ptr`.  Return the value **before** the add.
+
+---
+
+## 10. Boot Entry
+
+### `ul_arch_init`
+
+```c
 void ul_arch_init(ul_boot_info_t *info);
 ```
 
-### 11.3 startup.S calling convention (TriCore)
+One-time CPU and peripheral initialisation.  Called from `startup.S` / `_start`
+after `ul_board_init()`, `.data` copy, and `.bss` zero.  Fills `*info` and
+returns; control passes to `ul_kernel_main()`.
 
-```asm
-_start:
-    /* 1. Kernel stack (A10) and interrupt stack pointer (ISP / A11) */
-    movh.a  %a10, hi:_ul_kernel_stack_top
-    lea     %a10, [%a10]lo:_ul_kernel_stack_top
+Mandatory sequence:
 
-    /* 2. BTV, BIV, small-data anchors, CSA pool
-     *    (done in assembly before any C call) */
-    ...
+1. Initialise the saved-context resource pool (CSA free list, register
+   windows, or equivalent).
+2. Register trap/interrupt vectors and ISR stack (`ul_arch_irq_vectors_init`).
+3. Initialise the MPU (`ul_arch_mpu_init`).
+4. Start the tick timer (`ul_arch_tick_init`).
+5. Populate `*info`:
+   - `mem[]` / `mem_count`: available physical RAM regions.
+   - `tick_hz`: `UL_CONFIG_TICK_HZ`.
+   - `csa_pool_base` / `csa_pool_size`: saved-context pool (or zeros if the
+     arch does not use a hardware pool).
 
-    /* 3. ul_board_init() — optional chip setup; weak no-op if absent.
-     *    Called BEFORE .data copy: must not use initialised global vars. */
-    call    ul_board_init
+### `ul_board_init`
 
-    /* 4. Copy .data LMA→VMA, zero .bss */
-    ...
-
-    /* 5. ul_arch_init(&boot_info_static) — kernel arch setup */
-    movh.a  %a4, hi:_boot_info_static
-    lea     %a4, [%a4]lo:_boot_info_static
-    call    ul_arch_init
-
-    /* 6. ul_kernel_main(&boot_info_static) — does not return */
-    movh.a  %a4, hi:_boot_info_static
-    lea     %a4, [%a4]lo:_boot_info_static
-    call    ul_kernel_main
-    debug
-    j .
+```c
+void ul_board_init(void);
 ```
 
-**Full boot sequence:**
+Board-level early hardware setup.  Called from `_start` **before** `.data` copy.
 
+Constraints:
+- No initialised global variables available.
+- No `ul_*` API calls.
+- No interrupt enable.
+- Must return normally.
+
+Provided by the board in its `UL_BOARD_SOURCES`.  For QEMU / boards that need
+no early init this is an empty function.
+
+### `ul_kernel_main`
+
+```c
+void ul_kernel_main(const ul_boot_info_t *info);
 ```
-_start
-  │
-  ├─ [asm] stack (A10) + ISP + BTV/BIV + small-data anchors + CSA pool
-  │
-  ├─ ul_board_init()          user optional; weak stub if absent
-  │    PLL, flash WS, ext RAM    (supervisor mode, no kernel API, no .data)
-  │
-  ├─ [asm] .data copy (LMA → VMA) + .bss zero
-  │
-  ├─ ul_arch_init()           arch-provided; fills ul_boot_info_t
-  │    CSA free list, MPU zero, tick timer, BIV/BTV programmed to CSFRs
-  │
-  └─ ul_kernel_main()         kernel-internal; does not return
-       physical allocator, scheduler, root thread launch
+
+Platform-independent kernel entry.  Called by `_start` after `ul_arch_init()`.
+Does not return.  Declared here so `startup.S` can call it without depending on
+internal kernel headers.  Must never be called from user code.
+
+---
+
+## 11. Character Output Primitive
+
+```c
+void ul_printk_char_out(char c);
 ```
+
+Single-character output to the board's debug console.  Must be provided by the
+board as a **strong** (non-weak) symbol in `UL_BOARD_SOURCES`.
+
+Called by the kernel printk subsystem and by the arch fault handler before the
+scheduler is running.  Must be safe to call very early (before IRQs are
+enabled).
 
 ---
 
 ## 12. Kernel Callbacks (arch → kernel)
 
-These functions are **implemented by the kernel** and called by the arch port.
-They are declared in `ul/arch.h`; their definitions live in `kernel/`.
+These are implemented in `kernel/` and called by the arch port from ISR handlers
+and the syscall path.  They contain **no arch-specific code**; all hardware
+state must be extracted by the arch before calling.
+
+### `ul_kernel_tick`
 
 ```c
-/*
- * ul_kernel_tick - advance the scheduler clock by one tick
- *
- * Called from the tick timer ISR (inside the interrupt handler, before
- * RSLCX/RFE).  May trigger a context switch; the arch ISR must be
- * structured so that rescheduling takes effect on RFE.
- *
- * The kernel increments the tick counter, unblocks timeout-expired threads,
- * and calls ul_sched_request_preempt() if a higher-priority thread is ready.
- */
 void ul_kernel_tick(void);
+```
 
-/*
- * ul_kernel_irq_dispatch - route a hardware IRQ to its notification object
- *
- * @srpn: the SRPN (priority number) of the interrupt that fired
- *
- * Called from the generic ISR stub (isr_common in int_table.S) after SVLCX,
- * before RSLCX/RFE.  The kernel looks up the irq_binding for @srpn, calls
- * ul_arch_irq_src_clear(@srpn), and signals the bound notification.
- */
+Advance the scheduler clock by one tick.  Called from the periodic timer ISR
+before returning from the interrupt.
+
+### `ul_kernel_irq_dispatch`
+
+```c
 void ul_kernel_irq_dispatch(uint8_t srpn);
-
-/*
- * ul_kernel_trap_syscall - dispatch a SYSCALL trap (class 6)
- *
- * @tin:  trap identification number (= syscall number, 0–255)
- * @args: pointer to the four syscall arguments (from D4–D7)
- *
- * Called from the trap class 6 handler after SVLCX.  The kernel decodes
- * @tin, validates privilege, executes the syscall, and writes the return
- * value to D2 before returning.
- *
- * TriCore: TIN is in D15 when the trap handler starts.
- */
-void ul_kernel_trap_syscall(uint8_t tin, uint32_t args[4]);
-
-/*
- * ul_kernel_trap_fault - handle a hardware protection fault (class 1)
- *
- * @trap_class: hardware trap class (1 for internal protection faults)
- * @tin:        fault subtype
- *              1=PRIV  2=MPR  3=MPW  4=MPX  5=MPP  6=MPN  7=GRWP
- *
- * Called from the trap class 1 handler.  The kernel terminates the faulting
- * thread and triggers rescheduling.
- */
-void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin);
 ```
+
+Route hardware interrupt `srpn` to its bound notification object.  Called from
+the generic ISR stub before returning from the interrupt.
+
+### `ul_kernel_irq_check_preempt`
+
+```c
+void ul_kernel_irq_check_preempt(void);
+```
+
+Check if the just-dispatched IRQ woke a higher-priority thread and arm the
+preemption handoff.  Called after `ul_kernel_irq_dispatch`.
+
+### `ul_kernel_syscall_check_preempt`
+
+```c
+void ul_kernel_syscall_check_preempt(void);
+```
+
+Check if a completed syscall woke a higher-priority thread and yield the CPU
+before returning to userspace.  Called from the syscall entry path after the
+router returns.
+
+### `ul_kernel_trap_syscall`
+
+```c
+uint32_t ul_kernel_trap_syscall(uint8_t tin, uint32_t args[4]);
+```
+
+Dispatch a syscall.  `tin` is the syscall number; `args[0..3]` are the four
+argument registers read by the syscall entry stub.  Returns the value to be
+written as the syscall return value.
+
+### `ul_kernel_trap_recoverable`
+
+```c
+void ul_kernel_trap_recoverable(void);
+```
+
+Kill the current thread after an isolatable hardware fault (e.g., MPU violation
+in a user thread).  The arch calls this when the fault can be attributed to a
+single thread and the kernel can continue running.
+
+### `ul_kernel_trap_panic`
+
+```c
+void ul_kernel_trap_panic(void);
+```
+
+Halt the system after an unrecoverable fault (kernel fault, ISR fault, or any
+fault that cannot be isolated to a single user thread).
 
 ---
 
-## 13. TriCore TC2xx Implementation Notes
+## 13. TriCore TC2xx Reference Implementation Notes
 
-### 13.1 CSA Pool Sizing
+This section documents implementation decisions specific to the TriCore TC1.6.x
+port (`arch/tricore/`).  It is **not** part of the generic contract.
 
-Each CSA frame is 64 bytes.  Every interrupt nesting level and every function
-call at trap entry consumes one or two frames.
+### Files
 
-| Use case | CSA frames consumed |
-|----------|---------------------|
-| Thread context (Lower + Upper) | 2 |
-| Each nested function call | 1 (Upper) |
-| Each interrupt nesting level | 2 |
+| File | Implements |
+|------|-----------|
+| `arch.c` | CPU control, MPU (DPR/CPR), IRQ (SRC), tick (STM0), syscall entry, trap entry |
+| `ctx_switch.S` | `ul_arch_ctx_switch` — SVLCX/RSLCX/PCXI swap |
+| `startup.S` | `_start` — stack, CSA pool, BTV/BIV, `.data`/`.bss`, calls `ul_board_init` → `ul_arch_init` → `ul_kernel_main` |
+| `vectors.S` | Trap handlers, generic ISR stubs, syscall entry stub |
 
-Minimum recommended pool: `UL_ARCH_CSA_MIN_COUNT` (64) = 4 KiB.
-For systems with 32 threads and 8 interrupt priorities: 256 frames = 16 KiB.
+### `ul_arch_ctx_t` on TriCore
 
-### 13.2 PRS Allocation Strategy
-
-| PRS | Owner | Notes |
-|-----|-------|-------|
-| 0 | Kernel | DPRE/DPWE/CPRE/CPXE = 0xFFFFFFFF; never changed |
-| 1 | Driver A | Pre-configured for the ASCLIN/SPI driver process |
-| 2 | Driver B | Pre-configured for a second driver process |
-| 3 | Dynamic | Reconfigured on every switch for remaining threads |
-
-Threads assigned a fixed PRS (0–2) use the fast context-switch path
-(3 cycles to change PSW.PRS).  Threads on PRS 3 use the slow path
-(≈ 18 writes to CSFR registers per switch).
-
-### 13.3 Region Alignment
-
-TriCore DPR/CPR registers store `lower` and `upper` addresses.  The hardware
-enforces no power-of-2 requirement — only 8-byte alignment.  The kernel must
-round all region sizes and bases to `UL_ARCH_REGION_ALIGN` (8) before calling
-`ul_arch_mpu_configure`.
-
-### 13.4 Syscall Argument Passing
-
-```
-SYSCALL #tin  →  Trap Class 6
-
-On entry to the trap handler (after hardware saves Upper Context):
-  D4 = arg0    D5 = arg1    D6 = arg2    D7 = arg3
-  D15 = TIN    A11 = return address (in upper CSA)
-
-Return value:
-  D2 = retval  (written by kernel before RFE)
+```c
+typedef struct { uint32_t pcxi; } ul_arch_ctx_t;
 ```
 
-### 13.5 Protection Fault TIN Codes
+`pcxi` is the PCXI register value encoding a two-frame CSA chain:
 
-| TIN | Name | Meaning |
-|-----|------|---------|
-| 1 | PRIV | Privileged instruction in user mode |
-| 2 | MPR  | Memory protection read violation |
-| 3 | MPW  | Memory protection write violation |
-| 4 | MPX  | Memory protection execute violation |
-| 5 | MPP  | Peripheral protection violation |
-| 6 | MPN  | Null-pointer access |
-| 7 | GRWP | Global register write protection |
+```
+pcxi → lower-context CSA (UL=0, saved by SVLCX)
+      → upper-context CSA (UL=1, saved by hardware on CALL/trap/ISR)
+```
 
-### 13.6 W^X Enforcement
+### Context switch sequence
 
-The arch layer must silently enforce W^X: when `UL_PERM_WRITE` is present,
-`ul_arch_mpu_configure` must clear `UL_PERM_EXEC` from the effective
-permissions before writing the CPR/DPR entries.
+```asm
+svlcx                    ; save lower context to a free CSA
+mfcr   d15, #PCXI        ; read head of saved chain
+st.w   [a4], d15         ; from->pcxi = PCXI
+ld.w   d15, [a5]         ; d15 = to->pcxi
+dsync                    ; flush CSA writes before modifying PCXI
+mtcr   #PCXI, d15        ; PCXI = to->pcxi
+isync                    ; pipeline sync (mandatory after any MTCR)
+rslcx                    ; restore lower context
+rfe                      ; restore upper context + PSW + PC
+```
 
-### 13.7 Key CSFR Addresses
+### Initial PSW for `ul_arch_ctx_init`
 
-| CSFR | Address | Description |
-|------|---------|-------------|
-| PCXI | 0xFE00 | Previous context pointer (CSA chain head) |
-| PSW  | 0xFE04 | Program status word (IO, PRS, IS, CDC) |
-| PC   | 0xFE08 | Program counter (read-only in user mode) |
-| SYSCON | 0xFE14 | System configuration (PROTEN bit 1) |
-| BIV  | 0xFE20 | Interrupt vector base |
-| BTV  | 0xFE24 | Trap vector base |
-| ISP  | 0xFE28 | Interrupt stack pointer |
-| ICR  | 0xFE2C | Interrupt control register (IE, CCPN) |
-| FCX  | 0xFE38 | Free CSA list head |
-| LCX  | 0xFE3C | Free CSA list limit (for overflow detection) |
-| CORE_ID | 0xFE1C | Current core identification (bits [2:0]) |
+```
+PSW.IO  = priv    (0=user, 1=driver, 2=supervisor)
+PSW.IS  = 0       (thread uses own stack, not ISP)
+PSW.CDE = 1
+PSW.CDC = 0x7F    (call-depth counter disabled)
+PSW.PRS = 0       (kernel PRS; switched at first context switch)
+```
 
----
+`PSW.IS = 0` is critical.  If set to 1, the CPU uses the ISP register as the
+stack pointer instead of A10, corrupting the ISR stack.
 
-*This spec is the authoritative contract for all arch ports.  A new port must
-implement every function in §5–§11 and invoke every callback in §12 at the
-correct point.  The TriCore implementation in `arch/tricore/` is the reference.*
+### CSA pool invariants
+
+- Pool in fast local DSPR RAM only — never in Flash.
+- 64-byte aligned; each CSA frame = 64 bytes.
+- `ISYNC` after every `MTCR` on any CSFR.
+- `DSYNC` before `MTCR #PCXI` when a CSA was written manually.
+
+### IRQ and CCPN
+
+The syscall entry path sets `CCPN = 255` immediately, disabling all hardware
+IRQs for the syscall duration.  This avoids the need for IRQ-save critical
+sections inside most syscall handlers.
+
+Interrupt sources use SRC (Service Request Control) registers.  The SRC address
+for STM0 SR0 is parameterised as `UL_ARCH_SRC_STM0_SR0` via board `CFLAGS` to
+support different chip families without arch-code changes.
+
+### Trap class routing
+
+| Class | Name | Action |
+|-------|------|--------|
+| 1 | Internal Protection | `ul_kernel_trap_recoverable()` |
+| 3 TIN 1 | FCD (free list near empty) | log warning, continue |
+| 3 TIN 4 | FCU (free list exhausted) | `ul_kernel_trap_panic()` |
+| 6 | System Call | `ul_kernel_trap_syscall(tin, args)` |
+| Others | Various | `ul_kernel_trap_panic()` |
+
+For the full TriCore hardware reference see `docs/microkernel_book_tricore.md`
+and `docs/tricore_guide_pt.md`.

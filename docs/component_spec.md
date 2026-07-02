@@ -1,7 +1,13 @@
 # ulipeMicroKernel — Component System Specification
 
-**Version:** 0.3 (draft)
-**Status:** Incorporates review rounds 1 and 2 — awaiting final approval before implementation
+**Version:** 0.3
+**Status:** Implemented — reflects the component system as of the `cmake/component_api.cmake` introduction.
+
+> **Purpose of this document:** design rationale and rules for the component
+> system: directory layout, CMake API (`ul_component_register`), ROOT_THREAD
+> invariant, service pattern (IPC as implementation detail), and the
+> `board_console` reference service.  For a step-by-step application walkthrough
+> see `docs/application_development_guide.md`.
 
 ---
 

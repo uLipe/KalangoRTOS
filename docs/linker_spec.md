@@ -1,7 +1,12 @@
 # ulipeMicroKernel — Linker Script Specification
 
-**Version:** 0.2 (draft)
+**Version:** 0.2
 **Target:** Three-layer linker model — kernel-common / arch / chip (chip input is external)
+
+> **Purpose of this document:** authoritative reference for the three-layer
+> linker script model, section layout, domain generation pipeline, and chip
+> input contract.  Consult this when adding a new memory region, changing
+> section alignment, creating a domain, or porting to a new chip.
 
 ---
 
