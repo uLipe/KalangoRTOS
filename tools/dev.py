@@ -20,6 +20,8 @@ Usage:
     python3 tools/dev.py tests integ --test NAME
     python3 tools/dev.py tests unit  --list
     python3 tools/dev.py tests integ --list
+
+    python3 tools/dev.py killall                # kill every running dev container
 """
 
 from __future__ import annotations
@@ -299,6 +301,25 @@ def _run_build(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Killall
+# ---------------------------------------------------------------------------
+
+def _killall() -> None:
+    result = subprocess.run(
+        ["docker", "ps", "-q", "--filter", f"ancestor={IMAGE_NAME}"],
+        capture_output=True,
+        text=True,
+    )
+    containers = result.stdout.split()
+    if not containers:
+        print("No running containers found.")
+        return
+    print(f"Killing {len(containers)} container(s)…")
+    subprocess.run(["docker", "kill"] + containers, check=False)
+    print("Done.")
+
+
+# ---------------------------------------------------------------------------
 # Test runner helpers
 # ---------------------------------------------------------------------------
 
@@ -426,6 +447,12 @@ def _parse_args() -> argparse.Namespace:
         help="Remove previous build artefacts before compiling",
     )
 
+    # ── killall ──────────────────────────────────────────────────────────────
+    subparsers.add_parser(
+        "killall",
+        help="Kill all running dev containers (useful when QEMU hangs)",
+    )
+
     # ── tests ────────────────────────────────────────────────────────────────
     tests_p = subparsers.add_parser(
         "tests",
@@ -458,6 +485,10 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     args = _parse_args()
     _check_docker()
+
+    if args.command == "killall":
+        _killall()
+        return
 
     if args.rebuild or not _image_exists():
         try:
