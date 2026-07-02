@@ -500,6 +500,10 @@ After flashing:
 
 Create a minimal application that blinks an LED via a driver component.
 
+> **Note:** addresses and peripheral layout in this example are based on the
+> AURIX TC2xx/TC3xx GPIO port registers (`0xF003A000`).  Adapt base addresses
+> and register offsets for your target.
+
 ### File structure
 
 ```
@@ -540,30 +544,52 @@ void     gpio_set(uint8_t pin, int val);
 
 ### gpio_driver/src/gpio_driver.c
 
+The server thread must map the GPIO peripheral region before accessing it.
+`ul_mem_map()` with `UL_MMAP_PERIPH` requires `UL_CAP_MAP_PERIPH`; the root
+thread grants this capability to the driver thread before it starts.
+
 ```c
 #include <gpio_driver.h>
 #include <ul/microkernel.h>
 
+/*
+ * TC2xx/TC3xx PORT20 output register — AURIX peripheral base 0xF003A000.
+ * Size covers the full port register block (one page, 4 KB).
+ * Adjust base address and size for your target.
+ */
+#define GPIO_PERIPH_BASE  0xF003A000u
+#define GPIO_PERIPH_SIZE  0x1000u      /* 4 KB */
+
 #define MSG_GPIO_SET  1u
 
-static ul_ep_t g_ep;
+static ul_ep_t          g_ep;
+static volatile uint32_t *g_port;
 
 static void gpio_server(void *arg)
 {
     ul_msg_t msg;
     ul_tid_t sender;
 
+    /*
+     * Map the peripheral region into this thread's address space.
+     * Must be done here (inside the thread), not in gpio_driver_init(),
+     * because ul_mem_map with UL_MMAP_PERIPH operates on the calling thread's
+     * MPU context.
+     */
+    g_port = ul_mem_map((void *)GPIO_PERIPH_BASE, GPIO_PERIPH_SIZE,
+                        UL_PERM_READ | UL_PERM_WRITE,
+                        UL_MMAP_PERIPH);
+
     (void)arg;
     for (;;) {
         ul_ep_recv(g_ep, &msg, &sender);
-        if (msg.label == MSG_GPIO_SET) {
-            volatile uint32_t *port = (volatile uint32_t *)0xF003A000u;
+        if (msg.label == MSG_GPIO_SET && g_port) {
             if (msg.words[1])
-                *port |= (1u << msg.words[0]);
+                *g_port |= (1u << msg.words[0]);
             else
-                *port &= ~(1u << msg.words[0]);
+                *g_port &= ~(1u << msg.words[0]);
         }
-        ul_msg_t reply = { .label = UL_OK };
+        ul_msg_t reply = { .label = g_port ? UL_OK : UL_EPERM };
         ul_ep_reply(sender, &reply);
     }
 }
@@ -625,14 +651,21 @@ static void blink_task(void *arg)
 void ul_root_thread(const ul_boot_info_t *info)
 {
     board_services_init(info);
-    gpio_driver_init();
+
+    /*
+     * gpio_driver_init() creates the endpoint and spawns the server thread.
+     * The server maps its peripheral region on its own, but it needs
+     * UL_CAP_MAP_PERIPH to do so — grant it before the thread runs.
+     */
+    ul_tid_t gpio_tid = gpio_driver_init();
+    ul_cap_grant(gpio_tid, UL_CAP_MAP_PERIPH);
 
     ul_thread_attr_t attr = {
         .name = "blink", .entry = blink_task, .arg = NULL,
         .priority = 20, .stack_size = 512, .privilege = UL_PRIV_DRIVER,
     };
-    ul_tid_t tid = ul_thread_create(&attr);
-    ul_cap_grant(tid, UL_CAP_TIMER);
+    ul_tid_t blink_tid = ul_thread_create(&attr);
+    ul_cap_grant(blink_tid, UL_CAP_TIMER);
 
     ul_thread_exit();
 }
