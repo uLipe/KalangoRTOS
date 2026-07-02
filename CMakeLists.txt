@@ -31,12 +31,26 @@ include(cmake/linker_api.cmake)
 # Override with: cmake -DUL_CHIP_DIR=<path/to/board> ...
 # ---------------------------------------------------------------------------
 
-set(UL_CHIP_DIR "${CMAKE_SOURCE_DIR}/boards/qemu_tc27x"
+set(UL_CHIP_DIR "${CMAKE_SOURCE_DIR}/boards/qemu_tc3xx"
     CACHE PATH "Path to the board directory containing memory.ld")
 
 # ---------------------------------------------------------------------------
 # Kernel static library
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Board descriptor — sets UL_BOARD_CPU, UL_BOARD_CFLAGS, UL_BOARD_SOURCES
+# ---------------------------------------------------------------------------
+
+if(EXISTS "${UL_CHIP_DIR}/board.cmake")
+    include("${UL_CHIP_DIR}/board.cmake")
+endif()
+
+# Prefix board sources with the board directory path.
+set(_UL_BOARD_SRCS "")
+foreach(_src IN LISTS UL_BOARD_SOURCES)
+    list(APPEND _UL_BOARD_SRCS "${UL_CHIP_DIR}/${_src}")
+endforeach()
 
 add_library(ulipe_kernel STATIC
     kernel/kernel_main.c
@@ -44,6 +58,9 @@ add_library(ulipe_kernel STATIC
     kernel/printk/ul_printk.c
     kernel/thread/thread.c
     kernel/sched/sched.c
+    kernel/sched/fifo_rt.c
+    kernel/sched/bitmap_rt.c
+    kernel/timer/timer.c
     kernel/ipc/ep.c
     kernel/notif/notif.c
     kernel/mem/mem.c
@@ -54,7 +71,7 @@ add_library(ulipe_kernel STATIC
     stub/board_init_stub.c
     stub/printk_stub.c
     stub/root_thread_stub.c
-    boards/qemu_tc27x/qemu_console.c)
+    ${_UL_BOARD_SRCS})
 
 target_include_directories(ulipe_kernel PUBLIC
     "${CMAKE_SOURCE_DIR}/include"
@@ -62,7 +79,12 @@ target_include_directories(ulipe_kernel PUBLIC
     "${CMAKE_BINARY_DIR}/generated")
 
 target_include_directories(ulipe_kernel PRIVATE
-    "${CMAKE_SOURCE_DIR}")
+    "${CMAKE_SOURCE_DIR}"
+    "${UL_CHIP_DIR}")
+
+if(DEFINED UL_BOARD_CFLAGS)
+    target_compile_options(ulipe_kernel PRIVATE ${UL_BOARD_CFLAGS})
+endif()
 
 # ---------------------------------------------------------------------------
 # Kernel executable (kernel + arch startup + apps)

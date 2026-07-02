@@ -55,6 +55,7 @@ KERNEL_SOURCES = [
     "kernel/printk/ul_printk.c",
     "kernel/sched/sched.c",
     "kernel/sched/fifo_rt.c",
+    "kernel/sched/bitmap_rt.c",
     "kernel/irq/irq.c",
     "kernel/mem/mem.c",
     "kernel/mem/tlsf.c",
