@@ -14,7 +14,7 @@
  * SRPN vectors are programmed at runtime by ul_arch_irq_src_configure().
  */
 
-    .extern ul_kernel_trap_fault
+    .extern ul_arch_trap_entry
     .extern ul_arch_syscall_entry
     .extern ul_kernel_irq_dispatch
 
@@ -30,7 +30,7 @@
 _trap_class0:
     mov     %d4, 0
     mov     %d5, %d15
-    call    ul_kernel_trap_fault
+    call    ul_arch_trap_entry
     j       .
 
 /* Class 1 — Internal Protection Trap */
@@ -39,7 +39,7 @@ _trap_class0:
 _trap_class1:
     mov     %d4, 1
     mov     %d5, %d15
-    call    ul_kernel_trap_fault
+    call    ul_arch_trap_entry
     j       .
 
 /* Class 2 — Instruction Error Trap */
@@ -48,7 +48,7 @@ _trap_class1:
 _trap_class2:
     mov     %d4, 2
     mov     %d5, %d15
-    call    ul_kernel_trap_fault
+    call    ul_arch_trap_entry
     j       .
 
 /* Class 3 — Context Management Trap (FCU/CDU) */
@@ -57,7 +57,7 @@ _trap_class2:
 _trap_class3:
     mov     %d4, 3
     mov     %d5, %d15
-    call    ul_kernel_trap_fault
+    call    ul_arch_trap_entry
     j       .
 
 /* Class 4 — System Bus and Peripheral Errors */
@@ -66,7 +66,7 @@ _trap_class3:
 _trap_class4:
     mov     %d4, 4
     mov     %d5, %d15
-    call    ul_kernel_trap_fault
+    call    ul_arch_trap_entry
     j       .
 
 /* Class 5 — Assertion Traps */
@@ -75,7 +75,7 @@ _trap_class4:
 _trap_class5:
     mov     %d4, 5
     mov     %d5, %d15
-    call    ul_kernel_trap_fault
+    call    ul_arch_trap_entry
     j       .
 
 /* Class 6 — SYSCALL */
@@ -91,7 +91,7 @@ _trap_class6:
 _trap_class7:
     mov     %d4, 7
     mov     %d5, %d15
-    call    ul_kernel_trap_fault
+    call    ul_arch_trap_entry
     j       .
 
 /* ---------------------------------------------------------------------------

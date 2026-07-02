@@ -175,12 +175,17 @@ void ul_arch_init(ul_boot_info_t *info);
 void ul_arch_syscall_entry(void);
 
 /*
+ * ul_arch_trap_entry — arch-level fault dispatcher; called from vectors.S.
+ * Reads PSW to determine context, performs the arch-specific dump, then
+ * calls ul_kernel_trap_recoverable() or ul_kernel_trap_panic().
+ * Does not return.
+ */
+void ul_arch_trap_entry(uint8_t trap_class, uint8_t tin);
+
+/*
  * ul_arch_trap_dump — dump arch-specific CPU state after a hardware fault.
- * @trap_class / @tin: forwarded from the trap vector for context.
- *
- * Outputs directly via ul_printk_char_out (a board primitive below the kernel
- * print layer) so it stays safe even when called before the kernel is fully
- * initialised.  Called by ul_kernel_trap_fault() in kernel_main.c.
+ * Called by ul_arch_trap_entry(); output goes via ul_printk_char_out so it
+ * remains safe even before the kernel is fully initialised.
  */
 void ul_arch_trap_dump(uint8_t trap_class, uint8_t tin);
 
@@ -238,12 +243,19 @@ void ul_kernel_syscall_check_preempt(void);
 uint32_t ul_kernel_trap_syscall(uint8_t tin, uint32_t args[4]);
 
 /*
- * ul_kernel_trap_fault — handle a hardware protection fault.
- * @trap_class: TriCore trap class (1 = Internal Protection, 3 = FCU, etc.)
- * @tin:        fault subtype (MPR=2, MPW=3, MPX=4, MPP=5, MPN=6, GRWP=7)
- * Called from the trap class handler in vectors.S.  Does not return.
+ * ul_kernel_trap_recoverable — kill the current thread and reschedule.
+ * Called by ul_arch_trap_entry() when a class-1 fault is detected in
+ * a user/driver thread.  Contains no arch-specific code.
  */
-void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin);
+void ul_kernel_trap_recoverable(void);
+
+/*
+ * ul_kernel_trap_panic — halt the system after an unrecoverable fault.
+ * Called by ul_arch_trap_entry() for all faults that cannot be isolated
+ * to a single user thread (kernel, ISR, or non-class-1 faults).
+ * Contains no arch-specific code.
+ */
+void ul_kernel_trap_panic(void);
 
 /*
  * ul_kernel_main - platform-independent kernel entry; does not return

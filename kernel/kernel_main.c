@@ -7,7 +7,6 @@
  * Does not return.
  */
 
-#include <stdbool.h>
 #include <stdint.h>
 #include <ul/microkernel.h>
 #include <ul/config.h>
@@ -69,33 +68,11 @@ uint32_t ul_kernel_trap_syscall(uint8_t tin, uint32_t args[4])
 	return ul_syscall_router(tin, args[0], args[1], args[2], args[3]);
 }
 
-void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
+void ul_kernel_trap_recoverable(void)
 {
 	ul_thread_t *cur = ul_sched_current();
-	uint32_t psw;
-	bool recoverable;
 
-	ul_printk("TRAP class=%u tin=%u\n",
-		  (unsigned)trap_class, (unsigned)tin);
-	ul_arch_trap_dump(trap_class, tin);
-
-	/*
-	 * Read PSW to determine context:
-	 *   PSW.IS (bit 9) = 1 → trap fired inside an ISR (ISP active)
-	 *   PSW.IS (bit 9) = 0 → trap fired in thread context
-	 *
-	 * On this architecture, traps do not change PSW, so MFCR reflects
-	 * the exact PSW state at the point of the fault.
-	 */
-	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
-
-	/*
-	 * Class 1 (Internal Protection): MPU violation in thread context —
-	 * recoverable: kill the offending thread and reschedule.
-	 */
-	recoverable = (trap_class == 1u);
-
-	if (recoverable && cur) {
+	if (cur) {
 		ul_printk("TRAP: killing thread tid=%u\n",
 			  (unsigned)cur->tid);
 		cur->state = UL_THREAD_STATE_DEAD;
@@ -103,6 +80,13 @@ void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 		ul_sched_schedule();
 	}
 
+	for (;;)
+		;
+}
+
+void ul_kernel_trap_panic(void)
+{
+	ul_printk("KERNEL PANIC: unrecoverable trap\n");
 	for (;;)
 		;
 }

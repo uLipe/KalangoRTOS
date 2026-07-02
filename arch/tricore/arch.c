@@ -1007,6 +1007,61 @@ static inline uint32_t *pcxi_to_csa(uint32_t pcxi)
 	return (uint32_t *)(((link & 0x70000u) << 12) | ((link & 0xFFFFu) << 6));
 }
 
+/*
+ * Trap class names for readable panic output.
+ * Index == TriCore trap class number (0–7).
+ */
+static const char * const trap_class_names[] = {
+	"MMU/MPU data",		/* 0 */
+	"internal protection",	/* 1 */
+	"instruction error",	/* 2 */
+	"context management",	/* 3 */
+	"system bus/periph",	/* 4 */
+	"assertion",		/* 5 */
+	"syscall",		/* 6 — should never reach fault handler */
+	"NMI",			/* 7 */
+};
+
+/*
+ * ul_arch_trap_entry — arch-level trap dispatcher, called from vectors.S.
+ *
+ * Reads PSW to determine whether the fault came from kernel context (ISR
+ * active or supervisor privilege) or from a user/driver thread.  Performs
+ * the arch-specific dump, then invokes the appropriate kernel callback:
+ *   - ul_kernel_trap_recoverable(): thread killed, scheduler picks next
+ *   - ul_kernel_trap_panic():       unrecoverable, system halted
+ *
+ * Class 1 (Internal Protection) originating from a non-kernel thread is
+ * the only recoverable case — all others are fatal.
+ */
+void ul_arch_trap_entry(uint8_t trap_class, uint8_t tin)
+{
+	uint32_t psw;
+	uint32_t io;
+	uint32_t is;
+	int      from_kernel;
+
+	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
+
+	io          = (psw >> 10) & 3u;	/* PSW.IO[11:10]: 2 = supervisor */
+	is          = (psw >>  9) & 1u;	/* PSW.IS[9]: 1 = on ISP (ISR)   */
+	from_kernel = (io == 2u) || (is != 0u);
+
+	ul_printk("TRAP class=%u (%s) tin=%u %s\n",
+		  (unsigned)trap_class,
+		  trap_class < 8u ? trap_class_names[trap_class] : "?",
+		  (unsigned)tin,
+		  from_kernel ? "[kernel/ISR]" : "[thread]");
+
+	ul_arch_trap_dump(trap_class, tin);
+
+	if (trap_class == 1u && !from_kernel) {
+		ul_kernel_trap_recoverable();
+	} else {
+		ul_kernel_trap_panic();
+	}
+}
+
 void ul_arch_trap_dump(uint8_t trap_class, uint8_t tin)
 {
 	uint32_t  pcxi_here;
