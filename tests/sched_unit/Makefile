@@ -14,6 +14,7 @@ CFLAGS := \
 SRCS := \
     sched_unit_test.c \
     $(ROOT)/kernel/sched/fifo_rt.c \
+    $(ROOT)/kernel/sched/bitmap_rt.c \
     $(ROOT)/kernel/sched/sched.c
 
 .PHONY: all run clean

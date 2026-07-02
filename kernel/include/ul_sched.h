@@ -33,6 +33,9 @@ typedef struct ul_sched_class {
 /* Exported by kernel/sched/fifo_rt.c */
 extern const ul_sched_class_t ul_fifo_rt_class;
 
+/* Exported by kernel/sched/bitmap_rt.c — 256-level O(1) scheduler (default) */
+extern const ul_sched_class_t ul_bitmap_rt_class;
+
 /*
  * Preemption handoff: set by ul_sched_tick() or ul_sched_check_preempt()
  * when a preemptive switch is needed.  Consumed by the arch ISR stubs

@@ -23,13 +23,15 @@ static void counter_entry(void *arg)
 	while (1) {
 		console_printf("ulipeMicroKernel: hello from QEMU — tick #%u\n",
 			       (unsigned)count++);
-		ul_msleep(1000);
+		ul_timer_set_deadline(100000ULL);	/* 100 ms */
+		ul_timer_wait();
 	}
 }
 
 void ul_root_thread(const ul_boot_info_t *info)
 {
 	ul_thread_attr_t attr;
+	ul_tid_t         counter_tid;
 
 	(void)info;
 
@@ -44,7 +46,8 @@ void ul_root_thread(const ul_boot_info_t *info)
 		.stack_size = 2048u,
 		.privilege  = UL_PRIV_DRIVER,
 	};
-	ul_thread_create(&attr);
+	counter_tid = ul_thread_create(&attr);
+	ul_cap_grant(counter_tid, UL_CAP_TIMER);
 
 	ul_thread_exit();
 }

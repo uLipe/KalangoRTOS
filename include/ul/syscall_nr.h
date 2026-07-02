@@ -31,7 +31,11 @@
 /* ── Scheduling / exit ───────────────────────────────────────────── */
 #define UL_SYS_YIELD               10  /* void  ul_thread_yield(void)             */
 #define UL_SYS_EXIT                11  /* void  ul_thread_exit(void) [noreturn]   */
-#define UL_SYS_SLEEP_US            12  /* int   ul_usleep(uint64_t us)            */
+/* slot 12 reserved — formerly UL_SYS_SLEEP_US */
+
+/* ── Timer primitives (requires UL_CAP_TIMER) ────────────────────── */
+#define UL_SYS_TIMER_SETDEADLINE   13  /* int   ul_timer_set_deadline(us_lo, us_hi) */
+#define UL_SYS_TIMER_WAIT          14  /* int   ul_timer_wait(void)               */
 
 /* ── Thread query (any privilege) ───────────────────────────────── */
 #define UL_SYS_THREAD_SELF         20  /* ul_tid_t ul_thread_self(void)           */

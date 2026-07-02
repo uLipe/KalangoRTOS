@@ -274,12 +274,9 @@ void ul_sched_tick(void)
  *
  * Called after a generic ISR delivers a notification and may have woken
  * a higher-priority thread.  If the run-queue head has strictly higher
- * priority than the current thread, arms g_preempt_old/new_ctx so the
- * ISR stub (_arch_generic_preempt_isr) performs the switch on exit.
- *
- * The running thread stays in the run queue (pick_next does not remove it).
- * We only update its state to READY and update sched_current — no
- * ul_sched_enqueue() call is needed or correct here.
+ * priority than the current thread, re-enqueues cur as READY, removes
+ * next from the queue, and arms g_preempt_old/new_ctx so the ISR stub
+ * (_arch_generic_preempt_isr) performs the switch on exit.
  */
 void ul_sched_check_preempt(void)
 {
@@ -295,7 +292,12 @@ void ul_sched_check_preempt(void)
 	if (!next || next == cur || next->priority >= cur->priority)
 		return;
 
+	/* Put cur back in the queue before handing the CPU to next. */
 	cur->state = UL_THREAD_STATE_READY;
+	sched_class->enqueue(cur);
+
+	/* Consume next from the queue (peek_next left it there). */
+	next = sched_class->pick_next();
 
 	sched_current         = next;
 	next->state           = UL_THREAD_STATE_RUNNING;

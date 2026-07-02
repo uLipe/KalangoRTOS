@@ -69,7 +69,7 @@ static void sched_reset(void)
 	last_from    = NULL;
 	last_to      = NULL;
 	ul_sched_init();
-	ul_sched_set_class(&ul_fifo_rt_class);
+	ul_sched_set_class(&ul_bitmap_rt_class);
 }
 
 static void make_thread(ul_thread_t *t, ul_tid_t tid, uint8_t prio)

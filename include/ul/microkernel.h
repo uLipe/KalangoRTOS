@@ -124,6 +124,7 @@ typedef struct {
 #define UL_CAP_IRQ		(1u << 2)  /* may bind/enable hardware IRQs */
 #define UL_CAP_MAP_PERIPH	(1u << 3)  /* may map peripheral MMIO regions */
 #define UL_CAP_GRANT_CAP	(1u << 4)  /* may grant capabilities to others */
+#define UL_CAP_TIMER		(1u << 5)  /* may program the hardware timer deadline */
 #define UL_CAP_ALL		0xFFu	   /* all capabilities; root thread initial */
 
 /* =========================================================================
@@ -432,31 +433,42 @@ static inline int ul_cap_grant(ul_tid_t target, uint32_t caps)
 }
 
 /* =========================================================================
- * Sleep API — docs/api_spec.md §11
+ * Timer primitives — docs/api_spec.md §11
  *
- * Durations must be non-zero positive values.  The kernel treats duration 0
- * as an immediate yield (no error).  The 64-bit µs value is split across
- * two 32-bit argument registers (D4 = low word, D5 = high word).
+ * These are low-level kernel timer operations gated by UL_CAP_TIMER.
+ * Only the timer server needs them.  Userspace sleep is implemented by
+ * sending an IPC request to the timer server (in libul).
+ *
+ * ul_timer_set_deadline — program the hardware timer to expire at
+ *   @deadline_us microseconds from now.  Only one deadline can be active
+ *   at a time; a new call overwrites the previous one.
+ *
+ * ul_timer_wait — block the calling thread until the programmed deadline
+ *   expires.  Exactly one thread may call this at a time.
+ *
+ * The 64-bit deadline value is split across two 32-bit registers
+ * (D4 = low word, D5 = high word) following the TriCore ABI.
+ *
+ * These wrappers are excluded from kernel builds to avoid conflicts with
+ * the kernel-internal ul_timer_set_deadline() implementation.
  * ========================================================================= */
 
-static inline int ul_usleep(uint64_t us)
+static inline int ul_timer_set_deadline(uint64_t deadline_us)
 {
-	uint32_t lo = (uint32_t)us;
-	uint32_t hi = (uint32_t)(us >> 32);
+	uint32_t lo = (uint32_t)deadline_us;
+	uint32_t hi = (uint32_t)(deadline_us >> 32);
 	uint32_t r;
 
-	UL_SYSCALL_2(UL_SYS_SLEEP_US, lo, hi, r);
+	UL_SYSCALL_2(UL_SYS_TIMER_SETDEADLINE, lo, hi, r);
 	return (int)r;
 }
 
-static inline int ul_msleep(uint32_t ms)
+static inline int ul_timer_wait(void)
 {
-	return ul_usleep((uint64_t)ms * 1000ULL);
-}
+	uint32_t r;
 
-static inline int ul_sleep(uint32_t seconds)
-{
-	return ul_usleep((uint64_t)seconds * 1000000ULL);
+	UL_SYSCALL_0(UL_SYS_TIMER_WAIT, r);
+	return (int)r;
 }
 
 #endif /* UL_MICROKERNEL_H */

@@ -43,13 +43,10 @@ void ul_kernel_irq_check_preempt(void)
  * before restoring the caller's context.
  *
  * If a higher-priority thread became ready during the syscall (e.g. a
- * notification was delivered, a thread was resumed), the caller is
- * demoted to READY and ul_sched_schedule() switches to the new thread.
+ * notification was delivered, a thread was spawned), the caller is
+ * re-enqueued as READY and ul_sched_schedule() switches to the new thread.
  * Execution resumes here when the caller is eventually rescheduled, then
  * returns normally to ul_arch_syscall_entry() and thence to userspace.
- *
- * The running thread is never removed from the run queue by pick_next(),
- * so no ul_sched_enqueue() is needed — just mark it READY and schedule.
  */
 void ul_kernel_syscall_check_preempt(void)
 {
@@ -60,6 +57,7 @@ void ul_kernel_syscall_check_preempt(void)
 		return;
 
 	cur->state = UL_THREAD_STATE_READY;
+	ul_sched_enqueue(cur);
 	ul_sched_schedule();
 }
 
@@ -132,7 +130,7 @@ void ul_kernel_main(const ul_boot_info_t *info)
 	ul_printk("ulipeMicroKernel: kernel entry\n");
 
 	ul_sched_init();
-	ul_sched_set_class(&ul_fifo_rt_class);
+	ul_sched_set_class(&ul_bitmap_rt_class);
 	UL_LOG_DBG("sched init done");
 
 	ul_irq_table_init();

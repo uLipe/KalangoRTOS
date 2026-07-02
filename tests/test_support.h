@@ -21,4 +21,26 @@
  */
 extern void ul_sim_exit(int code) __attribute__((noreturn));
 
+/*
+ * ul_msleep — test-only delay helper.
+ *
+ * Integration tests use ul_msleep() for ordering (brief delays to ensure
+ * one thread is blocked before another proceeds).  The kernel no longer
+ * provides a sleep syscall; instead, userspace should use the timer server.
+ *
+ * For tests that only need ordering (not precise timing), a yield-loop is
+ * sufficient: each yield gives every ready thread a scheduling opportunity,
+ * and the number of yields scales with the requested duration so that
+ * longer sleeps give more opportunities.  Tests that require wall-clock
+ * accuracy should use the timer server directly.
+ */
+#include <ul/microkernel.h>
+static inline void ul_msleep(uint32_t ms)
+{
+	uint32_t i;
+
+	for (i = 0u; i < ms * 20u; i++)
+		ul_thread_yield();
+}
+
 #endif /* UL_TEST_SUPPORT_H */

@@ -22,7 +22,7 @@
 
 /* Reason a thread is in UL_THREAD_STATE_BLOCKED. */
 #define UL_BLOCKED_NONE          0
-#define UL_BLOCKED_SLEEP         1
+#define UL_BLOCKED_TIMER_WAIT    1  /* waiting for hardware timer deadline */
 #define UL_BLOCKED_IPC_CALL      2  /* waiting for server reply */
 #define UL_BLOCKED_IPC_RECV      3  /* waiting for a caller */
 #define UL_BLOCKED_NOTIF         4  /* waiting for notification bits */
@@ -40,11 +40,10 @@ typedef struct ul_thread {
 	ul_tid_t         tid;
 	ul_ep_t          blocked_ep;      /* ep blocked on; for cleanup on kill */
 	ul_notif_t       blocked_notif;   /* notif blocked on; recv_or_notif */
-	struct ul_thread *next;           /* run-queue linkage */
-	struct ul_thread *sleep_next;     /* sleep-queue linkage */
+	struct ul_thread *next;           /* run-queue forward linkage */
+	struct ul_thread *sched_prev;     /* run-queue backward linkage (O(1) dequeue) */
 	struct ul_thread *ipc_next;       /* IPC send/recv queue linkage */
 	struct ul_thread *reg_next;       /* global TCB registry linkage */
-	uint64_t          sleep_until;    /* absolute µs deadline (0 = not sleeping) */
 	ul_msg_t          ipc_msg;        /* in-flight message buffer */
 	ul_tid_t          ipc_sender;     /* sender TID stored by recv for reply */
 	/*

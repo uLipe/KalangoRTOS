@@ -45,7 +45,10 @@ uint32_t ul_kern_heap_aligned_alloc(uint32_t align, uint32_t size);
 uint32_t ul_kern_yield(void);
 uint32_t ul_kern_exit(void);         /* does not return; marks thread dead */
 uint32_t ul_kern_thread_self(void);
-uint32_t ul_kern_sleep_us(uint32_t lo_us, uint32_t hi_us);
+
+/* Timer primitives (requires UL_CAP_TIMER) */
+uint32_t ul_kern_timer_set_deadline(uint32_t lo_us, uint32_t hi_us);
+uint32_t ul_kern_timer_wait(void);
 
 /* IPC endpoints */
 uint32_t ul_kern_ep_create(void);

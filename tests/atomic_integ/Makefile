@@ -44,6 +44,7 @@ KERNEL_SRCS := \
     $(ROOT)/kernel/printk/ul_printk.c \
     $(ROOT)/kernel/sched/sched.c \
     $(ROOT)/kernel/sched/fifo_rt.c \
+    $(ROOT)/kernel/sched/bitmap_rt.c \
     $(ROOT)/kernel/irq/irq.c \
     $(ROOT)/kernel/mem/mem.c \
     $(ROOT)/kernel/mem/tlsf.c \

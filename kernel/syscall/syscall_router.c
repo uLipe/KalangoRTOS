@@ -78,8 +78,14 @@ uint32_t ul_syscall_router(uint32_t nr,
 	case UL_SYS_EXIT:
 		return ul_kern_exit();
 
-	case UL_SYS_SLEEP_US:
-		return ul_kern_sleep_us(a0, a1);
+	/* ── Timer primitives (requires UL_CAP_TIMER) ────────────────── */
+	case UL_SYS_TIMER_SETDEADLINE:
+		REQUIRE_CAP(UL_CAP_TIMER);
+		return ul_kern_timer_set_deadline(a0, a1);
+
+	case UL_SYS_TIMER_WAIT:
+		REQUIRE_CAP(UL_CAP_TIMER);
+		return ul_kern_timer_wait();
 
 	/* ── Thread query (any privilege) ────────────────────────────── */
 	case UL_SYS_THREAD_SELF:

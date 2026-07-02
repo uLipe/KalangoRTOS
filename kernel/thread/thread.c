@@ -49,9 +49,8 @@ int ul_thread_init(ul_thread_t *th, const ul_thread_attr_t *attr, void *stack)
 	th->blocked_ep  = UL_EP_INVALID;
 	th->blocked_notif = UL_NOTIF_INVALID;
 	th->next        = NULL;
-	th->sleep_next  = NULL;
+	th->sched_prev  = NULL;
 	th->ipc_next    = NULL;
-	th->sleep_until = 0u;
 	th->ipc_sender  = UL_TID_INVALID;
 	th->notif_received = 0u;
 	th->notif_wait_mask = 0u;
@@ -225,9 +224,9 @@ uint32_t ul_kern_thread_kill(uint32_t tid)
 	if (!th || th->state == UL_THREAD_STATE_DEAD)
 		return (uint32_t)(int32_t)UL_ESRCH;
 
-	/* Cancel any pending sleep. */
-	if (th->sleep_until != 0u)
-		ul_timer_sleep_remove(th);
+	/* Cancel timer wait if this thread is the current timer waiter. */
+	if (th->blocked_reason == UL_BLOCKED_TIMER_WAIT)
+		ul_timer_waiter_cancel(th);
 
 	/* Remove from IPC recv_queue if the thread was waiting for a message. */
 	if (th->blocked_reason == UL_BLOCKED_IPC_RECV ||
@@ -326,26 +325,24 @@ uint32_t ul_kern_cap_grant(uint32_t target_tid, uint32_t caps)
 	return (uint32_t)UL_OK;
 }
 
-uint32_t ul_kern_sleep_us(uint32_t lo_us, uint32_t hi_us)
+uint32_t ul_kern_timer_set_deadline(uint32_t lo_us, uint32_t hi_us)
 {
-	uint64_t	 duration = ((uint64_t)hi_us << 32) | (uint64_t)lo_us;
-	uint64_t	 deadline;
-	ul_thread_t	*cur = ul_sched_current();
+	uint64_t deadline_us = ((uint64_t)hi_us << 32) | (uint64_t)lo_us;
+
+	if (deadline_us == 0u)
+		return (uint32_t)(int32_t)UL_EINVAL;
+
+	ul_timer_deadline_arm(deadline_us);
+	return (uint32_t)UL_OK;
+}
+
+uint32_t ul_kern_timer_wait(void)
+{
+	ul_thread_t *cur = ul_sched_current();
 
 	if (!cur)
 		return (uint32_t)(int32_t)UL_EINVAL;
 
-	if (duration == 0u) {
-		ul_kern_yield();
-		return 0;
-	}
-
-	deadline   = ul_timer_now_us() + duration;
-	cur->state          = UL_THREAD_STATE_BLOCKED;
-	cur->blocked_reason = UL_BLOCKED_SLEEP;
-	ul_sched_dequeue(cur);
-	ul_timer_sleep_insert(cur, deadline);
-	ul_sched_schedule();
-
-	return 0;
+	ul_timer_wait_thread(cur);
+	return (uint32_t)UL_OK;
 }

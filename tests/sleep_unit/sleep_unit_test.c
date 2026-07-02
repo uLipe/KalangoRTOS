@@ -1,22 +1,20 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * sleep_unit_test.c — host unit tests for kernel/timer/timer.c (ticked mode)
+ * Copyright (c) 2024-2026 Felipe Neves
  *
- * In ticked mode, monotonic time advances strictly through ul_timer_tick()
- * calls.  Each call increments an internal counter; ul_timer_now_us()
- * converts that counter to microseconds via the configured tick rate.
+ * sleep_unit_test.c — host unit tests for kernel/timer/timer.c
  *
- * There is no STM counter manipulation, no ul_arch_tick_deadline(), and no
- * re-arm logic — the hardware timer fires periodically at UL_CONFIG_TICK_HZ.
+ * Tests the two-primitive timer model:
+ *   ul_timer_set_deadline(us) — programs a relative deadline in µs.
+ *   ul_timer_wait_thread(cur) — blocks a thread; ul_timer_tick() wakes it.
+ *   ul_timer_waiter_cancel(th) — cancels the wait before the deadline.
  *
  * Test plan:
  *   1. Monotonic time advances one TICK_PERIOD_US per ul_timer_tick().
- *   2. Insert order: threads inserted out-of-deadline order are sorted.
- *   3. ul_timer_tick() wakes all threads whose deadline <= now.
- *   4. After a partial wake, remaining threads are still sleeping.
- *   5. Threads with the same deadline wake together in FIFO order.
- *   6. When idle (sched_current==NULL), expired threads are enqueued.
- *   7. When a thread is running, ul_sched_schedule is NOT called from tick.
+ *   2. Timer wakes waiter when deadline expires.
+ *   3. Timer does not wake waiter before deadline.
+ *   4. ul_timer_waiter_cancel() removes the waiter; tick no longer wakes it.
+ *   5. A second set_deadline overwrites the first.
  */
 
 #include <stdint.h>
@@ -34,7 +32,6 @@
 #include "../../kernel/include/ul_sched.h"
 #include "../../kernel/include/ul_timer_internal.h"
 
-/* Context switch stubs (unused by timer tests). */
 void ul_arch_ctx_switch(ul_arch_ctx_t *f, ul_arch_ctx_t *t) { (void)f; (void)t; }
 void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 		      void (*entry)(void *), void *arg,
@@ -42,26 +39,29 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 {
 	(void)ctx; (void)entry; (void)arg; (void)sp; (void)priv;
 }
+void ul_arch_ctx_free(ul_arch_ctx_t *ctx) { (void)ctx; }
+void ul_arch_mpu_switch(const ul_arch_region_t *r, uint8_t c, uint8_t p)
+{
+	(void)r; (void)c; (void)p;
+}
 
-/* Scheduler stubs. */
-static ul_thread_t	*g_current;
-static ul_thread_t	*g_last_enqueued;
-static int		 g_schedule_calls;
+static ul_thread_t *g_current;
+static ul_thread_t *g_last_enqueued;
+static int          g_schedule_calls;
 
 ul_thread_t *ul_sched_current(void)          { return g_current; }
 void         ul_sched_schedule(void)          { g_schedule_calls++; }
 void         ul_sched_dequeue(ul_thread_t *t) { (void)t; }
 void         ul_sched_enqueue(ul_thread_t *t)
 {
-	t->state = UL_THREAD_STATE_READY;
+	t->state        = UL_THREAD_STATE_READY;
 	g_last_enqueued = t;
 }
-
 void         ul_sched_init(void)                           {}
 void         ul_sched_set_class(const ul_sched_class_t *c) { (void)c; }
 void         ul_sched_start(void)                          {}
 ul_thread_t *ul_sched_peek_next(void)                      { return NULL; }
-void         ul_sched_tick(void)                              {}
+void         ul_sched_tick(void)                           {}
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 
@@ -123,194 +123,135 @@ static void test_monotonic_advance(void)
 }
 
 /*
- * Threads inserted out-of-deadline order must be sorted in ascending
- * deadline order.  Each one wakes on the correct tick boundary.
+ * The waiter must be enqueued when the deadline expires.
  */
-static void test_insert_sorted(void)
+static void test_waiter_woken_on_deadline(void)
 {
-	const char *name = "insert_sorted";
-	uint64_t base;
-	ul_thread_t ta, tb, tc;
-
-	reset_stubs();
-	ul_timer_init();
-	base = ul_timer_now_us();
-
-	ta = make_thread(0);
-	tb = make_thread(1);
-	tc = make_thread(2);
-
-	ul_timer_sleep_insert(&tc, base + 3u * TICK_PERIOD_US);
-	ul_timer_sleep_insert(&ta, base + 1u * TICK_PERIOD_US);
-	ul_timer_sleep_insert(&tb, base + 2u * TICK_PERIOD_US);
-
-	/* Tick 1: ta should wake */
-	g_last_enqueued = NULL;
-	ul_timer_tick();
-	if (g_last_enqueued != &ta)
-		FAIL(name, "ta not woken on tick 1");
-	else
-		PASS(name);
-
-	/* Tick 2: tb should wake */
-	g_last_enqueued = NULL;
-	ul_timer_tick();
-	if (g_last_enqueued != &tb)
-		FAIL(name, "tb not woken on tick 2");
-	else
-		PASS(name);
-
-	/* Tick 3: tc should wake */
-	g_last_enqueued = NULL;
-	ul_timer_tick();
-	if (g_last_enqueued != &tc)
-		FAIL(name, "tc not woken on tick 3");
-	else
-		PASS(name);
-}
-
-/*
- * A single tick past multiple deadlines must wake all expired threads.
- */
-static void test_tick_wakes_all_expired(void)
-{
-	const char *name = "tick_wakes_all_expired";
-	uint64_t base;
-	ul_thread_t ta, tb;
-
-	reset_stubs();
-	ul_timer_init();
-	base = ul_timer_now_us();
-
-	ta = make_thread(0);
-	tb = make_thread(1);
-
-	ul_timer_sleep_insert(&ta, base + 1u * TICK_PERIOD_US);
-	ul_timer_sleep_insert(&tb, base + 1u * TICK_PERIOD_US);
-
-	ul_timer_tick();
-
-	if (ta.state != UL_THREAD_STATE_READY)
-		FAIL(name, "ta not woken");
-	else if (tb.state != UL_THREAD_STATE_READY)
-		FAIL(name, "tb not woken");
-	else
-		PASS(name);
-}
-
-/*
- * When a thread remains in the sleep queue after a partial wake, it must
- * still be sleeping (not enqueued).
- */
-static void test_partial_wake_remainder(void)
-{
-	const char *name = "partial_wake_remainder";
-	uint64_t base;
-	ul_thread_t ta, tb;
-
-	reset_stubs();
-	ul_timer_init();
-	base = ul_timer_now_us();
-
-	ta = make_thread(0);
-	tb = make_thread(1);
-
-	ul_timer_sleep_insert(&ta, base + 1u * TICK_PERIOD_US);
-	ul_timer_sleep_insert(&tb, base + 3u * TICK_PERIOD_US);
-
-	/* One tick: only ta expires */
-	ul_timer_tick();
-
-	if (ta.state != UL_THREAD_STATE_READY)
-		FAIL(name, "ta not woken");
-	else if (tb.state != UL_THREAD_STATE_BLOCKED)
-		FAIL(name, "tb woken too early");
-	else
-		PASS(name);
-}
-
-/*
- * Expired thread is enqueued when in idle context (no running thread).
- */
-static void test_idle_triggers_enqueue(void)
-{
-	const char *name = "idle_triggers_schedule";
-	uint64_t base;
+	const char *name = "waiter_woken_on_deadline";
 	ul_thread_t ta;
 
 	reset_stubs();
-	g_current = NULL;
 	ul_timer_init();
-	base = ul_timer_now_us();
 
 	ta = make_thread(0);
-	ul_timer_sleep_insert(&ta, base + 1u * TICK_PERIOD_US);
+	g_current = &ta;
 
+	ul_timer_set_deadline(TICK_PERIOD_US);		/* 1 tick from now */
+	ul_timer_waiter_cancel(NULL);			/* no-op; dummy call */
+
+	/*
+	 * Simulate what ul_timer_wait_thread() does without the actual
+	 * context switch: register the waiter manually.
+	 */
+	ta.state          = UL_THREAD_STATE_BLOCKED;
+	ta.blocked_reason = UL_BLOCKED_TIMER_WAIT;
+	/* Directly install the waiter via the public cancel + re-arm path
+	 * by calling wait_thread. Because our ul_sched_schedule stub does
+	 * not actually switch context, the call returns immediately. */
+	ul_timer_wait_thread(&ta);
+
+	/* After the fake "return" from wait_thread (stub schedule is no-op),
+	 * tick once to expire the deadline.  The waiter should be enqueued. */
 	ul_timer_tick();
 
-	if (ta.state != UL_THREAD_STATE_READY)
-		FAIL(name, "expired thread not enqueued");
+	if (g_last_enqueued != &ta)
+		FAIL(name, "waiter not enqueued after deadline tick");
 	else
 		PASS(name);
 }
 
 /*
- * ul_timer_tick() must NOT call ul_sched_schedule() directly — the idle
- * loop handles reschedule after returning from ul_arch_cpu_idle().
+ * ul_timer_tick() must not wake the waiter before the deadline expires.
  */
-static void test_running_no_schedule(void)
+static void test_no_early_wake(void)
 {
-	const char *name = "running_no_schedule";
-	uint64_t base;
-	ul_thread_t cur, sleeping;
+	const char *name = "no_early_wake";
+	ul_thread_t ta;
 
 	reset_stubs();
 	ul_timer_init();
-	base = ul_timer_now_us();
 
-	cur     = make_thread(0);
-	sleeping = make_thread(1);
+	ta = make_thread(0);
+	ta.blocked_reason = UL_BLOCKED_TIMER_WAIT;
+	ul_timer_set_deadline(3u * TICK_PERIOD_US);
+	ul_timer_wait_thread(&ta);
 
-	cur.state = UL_THREAD_STATE_RUNNING;
-	g_current = &cur;
-
-	ul_timer_sleep_insert(&sleeping, base + 1u * TICK_PERIOD_US);
-
+	/* Two ticks — deadline is at 3 ticks; waiter must not wake yet. */
 	ul_timer_tick();
+	if (g_last_enqueued == &ta) {
+		FAIL(name, "waiter woken on tick 1 (too early)");
+		return;
+	}
+	ul_timer_tick();
+	if (g_last_enqueued == &ta) {
+		FAIL(name, "waiter woken on tick 2 (too early)");
+		return;
+	}
 
-	if (g_schedule_calls != 0)
-		FAIL(name, "ul_sched_schedule called unexpectedly");
-	else if (sleeping.state != UL_THREAD_STATE_READY)
-		FAIL(name, "sleeping thread not enqueued");
+	/* Third tick — now it should fire. */
+	ul_timer_tick();
+	if (g_last_enqueued != &ta)
+		FAIL(name, "waiter not woken on deadline tick");
 	else
 		PASS(name);
 }
 
 /*
- * Two threads with the same deadline must both wake on the same tick.
+ * ul_timer_waiter_cancel() must remove the waiter; subsequent ticks
+ * must not enqueue it.
  */
-static void test_same_deadline_fifo(void)
+static void test_cancel_prevents_wake(void)
 {
-	const char *name = "same_deadline_fifo";
-	uint64_t base;
-	ul_thread_t ta, tb;
+	const char *name = "cancel_prevents_wake";
+	ul_thread_t ta;
 
 	reset_stubs();
 	ul_timer_init();
-	base = ul_timer_now_us();
 
 	ta = make_thread(0);
-	tb = make_thread(1);
+	ta.blocked_reason = UL_BLOCKED_TIMER_WAIT;
+	ul_timer_set_deadline(TICK_PERIOD_US);
+	ul_timer_wait_thread(&ta);
 
-	ul_timer_sleep_insert(&ta, base + 1u * TICK_PERIOD_US);
-	ul_timer_sleep_insert(&tb, base + 1u * TICK_PERIOD_US);
+	ul_timer_waiter_cancel(&ta);
 
-	ul_timer_tick();
+	ul_timer_tick();	/* would have been the deadline tick */
 
-	if (ta.state != UL_THREAD_STATE_READY)
-		FAIL(name, "ta not woken (same deadline)");
-	else if (tb.state != UL_THREAD_STATE_READY)
-		FAIL(name, "tb not woken (same deadline)");
+	if (g_last_enqueued == &ta)
+		FAIL(name, "cancelled waiter was enqueued");
+	else
+		PASS(name);
+}
+
+/*
+ * A second ul_timer_set_deadline() call must overwrite the first;
+ * the waiter must fire at the new deadline.
+ */
+static void test_overwrite_deadline(void)
+{
+	const char *name = "overwrite_deadline";
+	ul_thread_t ta;
+
+	reset_stubs();
+	ul_timer_init();
+
+	ta = make_thread(0);
+	ta.blocked_reason = UL_BLOCKED_TIMER_WAIT;
+
+	ul_timer_set_deadline(TICK_PERIOD_US);		/* first: 1 tick */
+	ul_timer_set_deadline(3u * TICK_PERIOD_US);	/* override: 3 ticks */
+	ul_timer_wait_thread(&ta);
+
+	ul_timer_tick();	/* tick 1 — old deadline; must NOT fire */
+	if (g_last_enqueued == &ta) {
+		FAIL(name, "fired at overwritten deadline");
+		return;
+	}
+	ul_timer_tick();	/* tick 2 — still early */
+	ul_timer_tick();	/* tick 3 — new deadline */
+
+	if (g_last_enqueued != &ta)
+		FAIL(name, "waiter not fired at new deadline");
 	else
 		PASS(name);
 }
@@ -322,17 +263,15 @@ int main(void)
 	printf("sleep unit tests\n");
 
 	test_monotonic_advance();
-	test_insert_sorted();
-	test_tick_wakes_all_expired();
-	test_partial_wake_remainder();
-	test_idle_triggers_enqueue();
-	test_running_no_schedule();
-	test_same_deadline_fifo();
+	test_waiter_woken_on_deadline();
+	test_no_early_wake();
+	test_cancel_prevents_wake();
+	test_overwrite_deadline();
 
 	if (failures) {
 		printf("\n%d test(s) FAILED\n", failures);
 		return 1;
 	}
-	printf("\nAll tests passed.\n");
+	printf("\nAll tests PASSED\n");
 	return 0;
 }

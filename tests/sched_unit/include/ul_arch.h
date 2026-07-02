@@ -1,4 +1,4 @@
-/* Stub ul_arch.h for host-side unit tests — provides just enough to compile sched + fifo_rt */
+/* Stub ul_arch.h for host-side unit tests — provides just enough to compile sched + bitmap_rt */
 #ifndef UL_ARCH_H
 #define UL_ARCH_H
 
@@ -14,6 +14,12 @@ static inline ul_arch_irq_key_t ul_arch_cpu_irq_save(void)       { return 0u; }
 static inline void ul_arch_cpu_irq_restore(ul_arch_irq_key_t k)  { (void)k; }
 static inline void ul_arch_cpu_irq_enable(void)                   { }
 static inline void ul_arch_cpu_irq_disable(void)                  { }
+
+/* CLZ — GCC built-in equivalent for host x86 */
+static inline uint32_t ul_arch_cpu_clz(uint32_t v)
+{
+	return v ? (uint32_t)__builtin_clz(v) : 32u;
+}
 
 /* MPU region descriptor */
 #define UL_ARCH_MAX_REGIONS	12
