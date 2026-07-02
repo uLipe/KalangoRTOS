@@ -7,7 +7,16 @@
  *
  * If HAVE_BMHD is set in the chip memory.ld, generate_ld.py inserts the
  * chip-provided bmhd.ld.in before this fragment.
+ *
+ * .startup must be the very first section in KERNEL_FLASH so that the CPU
+ * reset address (0x80000000 on TC2xx/TC3xx without BMHD) lands on _start,
+ * not on the trap table.  QEMU with -kernel also starts from 0x80000000
+ * rather than the ELF e_entry field.
  */
+
+    .startup : {
+        KEEP(*(.text._start))
+    } > KERNEL_FLASH
 
     .trap_table : ALIGN(256) {
         _ul_trap_table = .;

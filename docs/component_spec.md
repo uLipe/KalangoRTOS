@@ -1,7 +1,7 @@
 # ulipeMicroKernel — Component System Specification
 
-**Version:** 0.1 (draft)
-**Status:** Awaiting review before implementation
+**Version:** 0.3 (draft)
+**Status:** Incorporates review rounds 1 and 2 — awaiting final approval before implementation
 
 ---
 
@@ -13,10 +13,10 @@
 4. [Discovery and Scan Rules](#4-discovery-and-scan-rules)
 5. [Build Flow](#5-build-flow)
 6. [Linker Fragment Contract](#6-linker-fragment-contract)
-7. [Root Thread Ownership](#7-root-thread-ownership)
-8. [Component Interactions — IPC Contract](#8-component-interactions--ipc-contract)
+7. [Root Thread Ownership and Component Init](#7-root-thread-ownership-and-component-init)
+8. [Component Service Pattern — IPC as Implementation Detail](#8-component-service-pattern--ipc-as-implementation-detail)
 9. [hello_world Component Design](#9-hello_world-component-design)
-10. [board_console Component Design](#10-board_console-component-design)
+10. [board_console — Board Source Service](#10-board_console--board-source-service)
 11. [Open Questions](#11-open-questions)
 
 ---
@@ -29,9 +29,10 @@ Key principles:
 
 - **One image, N components.** The microkernel produces a single ELF. All components are compiled and linked into that ELF. Isolation is enforced at runtime by the MPU, not by separate binaries.
 - **Components are opt-in.** Every component declares itself as `ENABLED` or `DISABLED` in its CMake descriptor. Disabled components contribute zero code to the image.
-- **Only one root thread.** The kernel creates exactly one initial userspace context. Exactly one component provides the `ul_root_thread()` function. That component is responsible for starting all other components' service threads.
+- **Only one root thread.** The kernel creates exactly one initial userspace context. Exactly one component provides the `ul_root_thread()` function. That component is responsible for starting all other components' service threads by calling their public init functions in order.
 - **Kernel knows nothing about components.** Component names, endpoints, and initialisation order are purely userspace policy. The kernel only sees threads, endpoints, and memory mappings.
-- **Components communicate through IPC.** Services exposed by one component to others are accessed via IPC endpoints, not via direct function calls. This enforces isolation even before hardware MPU limits are enforced.
+- **IPC is an implementation detail.** Components expose C functions in their public headers, not endpoint handles. Callers never touch IPC directly; the component's client-side library encapsulates it.
+- **Board services are board sources, not components.** Hardware-dependent services (console, clocks, etc.) live in `boards/<board>/` and follow the same public C API convention.
 
 ---
 
@@ -41,19 +42,20 @@ Key principles:
 my_component/
 ├── CMakeLists.txt          # component descriptor; calls ul_component_register()
 ├── include/
-│   └── my_component.h      # public API header (exposed to other components)
+│   └── my_component.h      # public C API (init function + service calls)
 ├── src/
-│   ├── server.c            # service thread entry point(s)
-│   └── client.c            # client library (calls into IPC endpoint)
+│   ├── server.c            # service thread entry point + IPC recv loop
+│   └── client.c            # client-side wrappers that call into the service via IPC
 └── linker.ld.in            # (optional) domain memory fragment
 ```
 
 ### Rules
 
 - The `CMakeLists.txt` **must** contain exactly one `ul_component_register()` call.
-- `include/` headers are added to the global include path for all components in the same build.
+- `include/` is added to the global include path so other enabled components can include it.
 - Sources listed in `SOURCES` are compiled with `-DUL_COMPONENT_NAME=<name>` defined.
-- `linker.ld.in` is optional. If present and the component is enabled, it is appended to the generated linker script.
+- `linker.ld.in` is optional. If present and the component is enabled, it is appended to the generated linker script after all kernel sections.
+- Every component's public header **must** export an `<name>_init()` function. The root thread calls this explicitly. The component is responsible for preventing double-init.
 
 ---
 
@@ -61,31 +63,39 @@ my_component/
 
 ### `ul_component_register`
 
-Declared in `cmake/component_api.cmake`, included automatically by the build system.
+Declared in `cmake/component_api.cmake`, auto-included by the top-level build.
 
 ```cmake
 ul_component_register(
-    NAME          <string>          # component identifier; must be unique
-    ENABLED       <ON|OFF>          # whether this component participates in the build
-    SOURCES       <files…>          # C/ASM sources relative to component dir
-    INCLUDE_DIRS  <dirs…>           # directories added to the public include path
-    REQUIRES      <names…>          # other component names this one depends on
-    ROOT_THREAD                     # (optional flag) this component provides ul_root_thread()
-    LINKER_FRAGMENT <file>          # (optional) .ld.in fragment for memory domains
+    NAME          <string>        # unique component identifier
+    ENABLED       <ON|OFF>        # if OFF, component contributes nothing to the build
+    SOURCES       <files…>        # C/ASM sources relative to the component's directory
+    INCLUDE_DIRS  <dirs…>         # added to global include path (all other components see these)
+    REQUIRES      <names…>        # declared dependencies on other component names
+    ROOT_THREAD                   # flag: this component provides ul_root_thread()
+    LINKER_FRAGMENT <file>        # optional .ld.in fragment; appended to generated linker script
 )
 ```
 
-**Semantics:**
+### Field semantics
 
 | Field | Required | Notes |
 |---|---|---|
-| `NAME` | yes | Identifier used in `REQUIRES` lists and in `-DUL_COMPONENT_NAME=<name>` |
-| `ENABLED` | yes | If `OFF`, the component is entirely skipped — no sources, no headers, no linker fragment |
-| `SOURCES` | yes | Paths relative to the component's own directory |
-| `INCLUDE_DIRS` | no | Exposed to all other enabled components |
-| `REQUIRES` | no | Order and dependency hints; does not yet enforce link ordering |
-| `ROOT_THREAD` | no (flag) | Marks this component as the one providing `ul_root_thread()` |
-| `LINKER_FRAGMENT` | no | Path relative to component dir; appended verbatim to the generated linker script |
+| `NAME` | yes | Identifier used in `REQUIRES` and `-DUL_COMPONENT_NAME=<name>` |
+| `ENABLED` | yes | `OFF` → zero code, zero headers, zero linker fragment |
+| `SOURCES` | yes | Paths relative to the component directory |
+| `INCLUDE_DIRS` | no | Exposed to every other enabled component |
+| `REQUIRES` | no | Dependency on another component name; see enforcement rules below |
+| `ROOT_THREAD` | no (flag) | Marks the component providing `ul_root_thread()`; exactly one must be ENABLED |
+| `LINKER_FRAGMENT` | no | Appended verbatim after kernel linker sections |
+
+### Dependency enforcement
+
+| Scenario | Result |
+|---|---|
+| Component DISABLED, no one requires it | Silently excluded — no error |
+| Component A (ENABLED) requires component B (DISABLED) | Configure-time error |
+| Component A (DISABLED) requires component B (ENABLED) | No error — A is not built |
 
 ### Example
 
@@ -97,11 +107,8 @@ ul_component_register(
     SOURCES
         src/root_thread.c
         src/hello_world.c
-        src/console.c
     INCLUDE_DIRS include
-    REQUIRES     board_console
     ROOT_THREAD
-    LINKER_FRAGMENT linker.ld.in
 )
 ```
 
@@ -109,85 +116,104 @@ ul_component_register(
 
 ## 4. Discovery and Scan Rules
 
-The build system scans the following locations **in order** when looking for components:
+The build system scans the following locations **in order**:
 
 ```
-1. ${KERNEL_DIR}/components/          built-in kernel components (this repo)
-2. ${ULMK_APPS_DIR}/                  sibling directory named "ulmk_apps"
-3. ${UL_CHIP_DIR}/                    board directory (current policy unchanged)
+1. ${CMAKE_SOURCE_DIR}/components/     built-in kernel components (this repo)
+2. ${CMAKE_SOURCE_DIR}/../ulmk_apps/   sibling app directory (fixed name, not configurable)
+3. ${UL_CHIP_DIR}/                     board directory (existing board.cmake policy, unchanged)
 ```
+
+### Fixed sibling name
+
+The sibling directory is always `ulmk_apps` — this is not a CMake variable. The build silently skips the sibling scan if the directory does not exist.
 
 ### Scan algorithm
 
-For each scan root:
+For each scan root (1 and 2 above; the board dir is handled separately via `board.cmake`):
+
 1. Enumerate immediate subdirectories (non-recursive at this level).
-2. If a subdirectory contains a `CMakeLists.txt` with a `ul_component_register()` call, it is a component candidate.
-3. Call `add_subdirectory()` on the candidate; `ul_component_register()` executes.
-4. If `ENABLED OFF`, the component is registered as known but contributes nothing.
-5. If `ENABLED ON`, the component's sources, include dirs, and optional linker fragment are accumulated.
+2. If a subdirectory contains a `CMakeLists.txt`, call `add_subdirectory()` on it.
+3. `ul_component_register()` inside that `CMakeLists.txt` registers the component.
+4. `ENABLED OFF` → component known but contributes nothing.
+5. `ENABLED ON` → sources, include dirs, and optional linker fragment accumulated.
 
 ### Board directory
 
-The `boards/<board>/` directory is **not** scanned for components via the component system. Board sources are added through `board.cmake` as today. This keeps board-specific code separate from portable components.
-
-> **Note:** A future revision may allow a board to declare companion components (e.g., a board-specific console driver). For now, board console code is either a built-in kernel component (like `board_console`) or placed directly in the board sources.
-
-### `ULMK_APPS_DIR` resolution
-
-```cmake
-# Auto-detected if the sibling exists; overridable on command line.
-set(ULMK_APPS_DIR "${CMAKE_SOURCE_DIR}/../ulmk_apps"
-    CACHE PATH "Path to the ulmk_apps sibling directory")
-```
+`${UL_CHIP_DIR}/` is **not** component-scanned. Board sources are compiled unconditionally via `board.cmake`. Board services expose their C API through headers in the board include path; no scan step is needed.
 
 ---
 
 ## 5. Build Flow
 
-```
-cmake configure:
-  ┌─ scan kernel/components/  → ul_component_register() calls
-  ├─ scan ulmk_apps/          → ul_component_register() calls  (if exists)
-  │   (board scanned separately via board.cmake, unchanged)
-  ├─ validate: exactly one ROOT_THREAD component is ENABLED
-  ├─ accumulate: SRCS, INCLUDE_DIRS, LINKER_FRAGMENTS from all ENABLED components
-  └─ ul_generate_linker_script()  (existing mechanism, extended with component fragments)
+### CMake configure
 
-cmake build:
-  compile: kernel sources + all enabled component sources
-  link:    ulipe.elf  -T generated.ld
+```
+scan kernel/components/     → ul_component_register() calls
+scan ../ulmk_apps/          → ul_component_register() calls  (if directory exists)
+include ${UL_CHIP_DIR}/board.cmake  → board sources + flags (unchanged)
+
+validate:
+  • exactly one ENABLED component has ROOT_THREAD flag
+  • all REQUIRES dependencies of ENABLED components are themselves ENABLED
+
+accumulate from ENABLED components:
+  • sources → added to ulipe_kernel library
+  • include dirs → added to global include path
+  • linker fragments → appended to generated linker script
+
+ul_generate_linker_script()   (existing mechanism, extended with component fragments)
+```
+
+### CMake build
+
+```
+compile: kernel sources + board sources + all enabled component sources
+link:    ulipe.elf  -T generated.ld
+```
+
+### dev.py as CMake frontend
+
+`dev.py build` is a thin frontend that invokes CMake configure + build inside the container. It no longer maintains a parallel source list. CMake is the single source of truth.
+
+```
+dev.py build             → cmake configure (QEMU board) + cmake build
+dev.py build --clean     → rm -rf build/ + cmake configure + cmake build
+dev.py run               → build (if stale) + qemu-system-tricore
+dev.py build --board /p  → cmake configure with UL_CHIP_DIR=/p + build
 ```
 
 ### What changes vs. today
 
 | Today | With components |
 |---|---|
-| `ulmk_apps/` sibling contributes a single `CMakeLists.txt` | Multiple component subdirs, each with its own descriptor |
+| `../ulmk_apps` is a single CMakeLists.txt | Multiple component subdirs, each with its own descriptor |
 | Root thread stub always linked | Root thread comes from the `ROOT_THREAD` component |
-| No per-component include paths | Each component exposes its own `include/` |
+| No per-component include paths | Each component exposes `include/` globally |
 | No per-component linker fragments | Optional `linker.ld.in` per component |
+| dev.py maintains its own source list | dev.py delegates entirely to CMake |
 
 ---
 
 ## 6. Linker Fragment Contract
 
-If a component declares a `LINKER_FRAGMENT`, that `.ld.in` file is appended to the generated linker script after the kernel's own sections.
+If a component declares `LINKER_FRAGMENT`, the `.ld.in` file is appended to the generated linker script after all kernel sections.
 
-### Allowed in component linker fragments
+### Allowed
 
-- `SECTIONS` blocks using `UL_DOMAIN_BSS(name)` / `UL_DOMAIN_DATA(name)` macros (already defined in `include/ul/linker.h`)
-- `ALIGN(UL_MPU_ALIGN)` directives before each domain boundary
+- `SECTIONS` blocks using `UL_DOMAIN_BSS(name)` / `UL_DOMAIN_DATA(name)` macros (`include/ul/linker.h`)
+- `ALIGN(UL_MPU_ALIGN)` before each domain boundary
 
 ### Not allowed
 
-- Redefinition of kernel regions (`KERNEL_FLASH`, `KERNEL_RAM`, etc.)
-- `MEMORY` blocks — those live in Layer 3 (chip `memory.ld`)
+- `MEMORY` blocks — those live in Layer 3 (`memory.ld`)
+- Redefinition of kernel regions (`KERNEL_FLASH`, `KERNEL_RAM`, `SHARED_RAM`, `PERIPH`)
 - Absolute address assignments
 
-### Example fragment
+### Example
 
 ```ld
-/* components/board_console/linker.ld.in */
+/* boards/qemu_tc3xx/board_console.ld.in */
 .domain_board_console (NOLOAD) :
 {
     . = ALIGN(UL_MPU_ALIGN);
@@ -201,77 +227,116 @@ If a component declares a `LINKER_FRAGMENT`, that `.ld.in` file is appended to t
 
 ---
 
-## 7. Root Thread Ownership
+## 7. Root Thread Ownership and Component Init
 
-Exactly **one** enabled component must declare the `ROOT_THREAD` flag. The build system enforces this at configure time:
+Exactly **one** enabled component must declare `ROOT_THREAD`. The build fails at configure time if zero or more than one component declares it.
 
+### Component init convention
+
+Every component's public header exports an `<name>_init()` function. This function:
+
+1. Creates the IPC endpoint and stores it in a module-internal static variable.
+2. Spawns the service thread, which calls `ul_ep_recv` on the pre-created endpoint.
+3. Returns the spawned TID (or `UL_TID_INVALID` on double-init).
+
+Because the endpoint is created in step 1 — before any other thread runs — client calls to the component's API are safe as soon as `<name>_init()` returns. No spin-wait, no race.
+
+```c
+/* include/my_component.h */
+ul_tid_t my_component_init(void);   /* spawns service thread; endpoint is ready on return */
+void     my_component_do_thing(int arg);  /* client API — calls IPC internally */
 ```
-Error: no component declares ROOT_THREAD — image cannot boot.
-Error: multiple components declare ROOT_THREAD: hello_world, other — ambiguous.
-```
 
-The `ROOT_THREAD` component is responsible for the complete system initialisation sequence inside userspace:
+The root thread calls component inits in whatever order is needed:
 
 ```c
 void ul_root_thread(const ul_boot_info_t *info)
 {
-    /* 1. Start service threads for each enabled component. */
-    board_console_start();   /* or however the component exposes its init */
-    hello_world_start();
-
-    /* 2. Hand off the spawn capability if needed. */
-    /* ul_cap_grant(mc_sup_tid, UL_CAP_SPAWN); */
+    board_services_init(info);  /* board-provided weak-overridable function */
+    my_component_init();
 
     ul_thread_exit();
 }
 ```
 
-There is no automatic component initialisation — the root thread calls component init functions explicitly, in the order it chooses. This is a deliberate policy decision: the kernel has no component registry, only threads.
+`board_services_init()` follows the same convention: it creates board service endpoints and spawns board service threads before returning. Its weak no-op stub lives in `stub/board_services_stub.c`. Real boards provide a strong definition in their board sources.
 
 ---
 
-## 8. Component Interactions — IPC Contract
+## 8. Component Service Pattern — IPC as Implementation Detail
 
-Components that expose services to other components must do so via IPC endpoints. Direct function calls across component boundaries are only valid for pure library components (no server thread, no shared state). Most service components will follow this pattern:
+IPC is an implementation mechanism, not part of a component's public interface. Callers use the component's C API; they never manipulate endpoints directly.
 
-### Service component (server side)
+### Structure
+
+```
+my_component/
+├── include/my_component.h    ← public: init + service calls (no ul_ep_t exposed)
+└── src/
+    ├── server.c               ← private: ul_ep_recv loop, business logic
+    └── client.c               ← private: IPC wrappers backing the public API
+```
+
+### Skeleton
 
 ```c
-/* Server thread entry */
-static void my_service_entry(void *arg)
-{
-    ul_ep_t ep = ul_ep_create();
-    my_service_publish_ep(ep);   /* make ep visible to clients */
+/* src/client.c — compiled into every caller's address space */
+#include <my_component.h>
+#include <ul/microkernel.h>
 
+#define MY_SVC_MSG_DO_THING  1u
+
+static ul_ep_t g_ep;
+
+ul_tid_t my_component_init(void)
+{
+    static int done;
+    if (done)
+        return UL_TID_INVALID;
+    done = 1;
+
+    g_ep = ul_ep_create();   /* endpoint ready before server thread starts */
+
+    ul_thread_attr_t attr = {
+        .name       = "mysvc",
+        .entry      = my_service_entry,   /* defined in server.c */
+        .priority   = 5u,
+        .stack_size = 1024u,
+        .privilege  = UL_PRIV_DRIVER,
+    };
+    return ul_thread_create(&attr);
+}
+
+void my_component_do_thing(int arg)
+{
+    ul_msg_t msg = { .label = MY_SVC_MSG_DO_THING };
+    msg.data[0] = (uint32_t)arg;
+    ul_ep_call(g_ep, &msg, NULL);
+}
+```
+
+```c
+/* src/server.c */
+#include <ul/microkernel.h>
+
+extern ul_ep_t g_ep;   /* defined in client.c */
+
+void my_service_entry(void *arg)
+{
     for (;;) {
-        ul_msg_t  msg;
-        ul_tid_t  sender;
-        ul_ep_recv(ep, &msg, &sender);
-        /* handle msg ... */
-        ul_ep_reply(sender, &reply);
+        ul_msg_t msg;
+        ul_tid_t sender;
+        ul_ep_recv(g_ep, &msg, &sender);
+
+        switch (msg.label) {
+        case MY_SVC_MSG_DO_THING:
+            /* handle ... */
+            break;
+        }
+        ul_ep_reply(sender, &(ul_msg_t){0});
     }
 }
 ```
-
-### Client library (client side, compiled into caller)
-
-```c
-/* console.c — compiled into hello_world component */
-void console_puts(const char *s)
-{
-    ul_msg_t msg = { .label = CONSOLE_MSG_PUTS, .ptr = (uintptr_t)s };
-    ul_ep_call(g_console_ep, &msg, NULL);
-}
-```
-
-### Endpoint discovery
-
-How clients find server endpoints is userspace policy. Two simple options:
-
-1. **Root thread passes ep during init** — root thread creates the server, gets back the ep, and passes it as an argument to client threads.
-2. **Global volatile variable** — server publishes its ep into a shared global after creation; clients spin-poll until non-zero. Simple and sufficient for boot-time services.
-
-The spec does not mandate either; components document their own discovery contract.
 
 ---
 
@@ -279,21 +344,21 @@ The spec does not mandate either; components document their own discovery contra
 
 **Location:** `components/hello_world/`
 
-**Purpose:** Reference component demonstrating the full IPC-based console pattern. Acts as the `ROOT_THREAD` provider for development images.
+**Purpose:** Reference component. Provides `ul_root_thread()` and runs a task that prints a counter via the board_console public C API. Illustrative only — comments explain the patterns; the component itself is intentionally minimal.
 
-### Files
+### File layout
 
 ```
 components/hello_world/
 ├── CMakeLists.txt
 ├── include/
-│   └── console.h           # console_puts, console_printf
-├── src/
-│   ├── root_thread.c       # ul_root_thread() — starts board_console + hello task
-│   ├── hello_world.c       # the "hello" task: loops calling console_printf
-│   └── console.c           # client lib: IPC to board_console endpoint
-└── linker.ld.in            # (empty or minimal — hello_world has no private domain)
+│   └── hello_world.h       # hello_world_init()
+└── src/
+    ├── root_thread.c       # ul_root_thread(): calls board_services_init + hello_world_init
+    └── hello_world.c       # hello task: loops, calls board_console_puts
 ```
+
+No `linker.ld.in` — hello_world has no private memory domain.
 
 ### CMakeLists.txt
 
@@ -304,134 +369,203 @@ ul_component_register(
     SOURCES
         src/root_thread.c
         src/hello_world.c
-        src/console.c
     INCLUDE_DIRS include
-    REQUIRES     board_console
     ROOT_THREAD
 )
 ```
 
-### root_thread.c (sketch)
+### Sketches
 
+**root_thread.c:**
 ```c
+#include <hello_world.h>
+#include <ul/microkernel.h>
+#include <board_services.h>   /* board-provided; declares board_services_init() */
+
 void ul_root_thread(const ul_boot_info_t *info)
 {
-    ul_tid_t console_tid = board_console_start(info);
-    ul_cap_grant(console_tid, UL_CAP_TIMER);
-
-    ul_thread_attr_t attr = {
-        .name       = "hello",
-        .entry      = hello_world_entry,
-        .priority   = 10u,
-        .stack_size = 1024u,
-        .privilege  = UL_PRIV_USER,
-    };
-    ul_tid_t hello_tid = ul_thread_create(&attr);
-    ul_cap_grant(hello_tid, UL_CAP_TIMER);
-
+    /*
+     * Board services first: board_services_init() creates HW service endpoints
+     * and spawns their threads before returning. Subsequent component inits can
+     * call board service APIs immediately without spin-waiting.
+     */
+    board_services_init(info);
+    hello_world_init(info);
     ul_thread_exit();
 }
 ```
 
-### console.h public API
-
+**hello_world.c:**
 ```c
-void console_puts(const char *s);
-int  console_printf(const char *fmt, ...);
-```
+#include <hello_world.h>
+#include <board_console.h>    /* board_console_puts(), board_console_putc() */
+#include <ul/microkernel.h>
 
-These call into `board_console` via IPC. They block until the server processes the message.
+/*
+ * Minimal decimal formatter — hello_world has no dependency on any kernel
+ * or library service. All output goes through board_console's public C API.
+ */
+static void print_uint32(uint32_t v)
+{
+    char buf[11];
+    int  i = sizeof(buf) - 1;
+
+    buf[i] = '\0';
+    do {
+        buf[--i] = '0' + (v % 10u);
+        v /= 10u;
+    } while (v && i > 0);
+    board_console_puts(&buf[i]);
+}
+
+static void hello_entry(void *arg)
+{
+    uint32_t n = 0;
+
+    for (;;) {
+        board_console_puts("hello ");
+        print_uint32(n++);
+        board_console_putc('\n');
+        ul_timer_set_deadline(1000000ULL);  /* 1 s in microseconds */
+        ul_timer_wait();
+    }
+}
+
+ul_tid_t hello_world_init(const ul_boot_info_t *info)
+{
+    static int done;
+    if (done)
+        return UL_TID_INVALID;
+    done = 1;
+
+    ul_thread_attr_t attr = {
+        .name       = "hello",
+        .entry      = hello_entry,
+        .priority   = 10u,
+        .stack_size = 1024u,
+        .privilege  = UL_PRIV_USER,
+    };
+    ul_tid_t tid = ul_thread_create(&attr);
+    ul_cap_grant(tid, UL_CAP_TIMER);
+    return tid;
+}
+```
 
 ---
 
-## 10. board_console Component Design
+## 10. board_console — Board Source Service
 
-**Location:** `components/board_console/`
+`board_console` is **not** a portable component. It is a board source compiled via `UL_BOARD_SOURCES` in `boards/qemu_tc3xx/board.cmake`.
 
-**Purpose:** Board-agnostic console service. Maps the board's physical console MMIO into its own memory domain, then exposes an IPC endpoint. Other components use `console_puts`/`console_printf` (from `hello_world/include/console.h`, or a standalone library) to write to the console without needing MMIO access themselves.
+### Rationale
 
-### Files
+The console MMIO address, peripheral type, and initialisation sequence are chip-specific. Placing board_console in board sources avoids a cross-board abstraction at this stage.
 
-```
-components/board_console/
-├── CMakeLists.txt
-├── include/
-│   └── board_console.h     # board_console_start() init function
-├── src/
-│   └── board_console.c     # server thread: ul_mem_map, IPC recv loop
-└── linker.ld.in            # .domain_board_console section (MMIO mapping target)
-```
+### Public C API
 
-### CMakeLists.txt
-
-```cmake
-ul_component_register(
-    NAME         board_console
-    ENABLED      ON
-    SOURCES      src/board_console.c
-    INCLUDE_DIRS include
-    LINKER_FRAGMENT linker.ld.in
-)
-```
-
-### IPC message protocol
+Callers `#include <board_console.h>` and call functions. No endpoint handle is ever exposed outside the module.
 
 ```c
-/* Message labels */
-#define BOARD_CONSOLE_MSG_PUTS   1u   /* ptr → null-terminated string */
-#define BOARD_CONSOLE_MSG_PUTC   2u   /* data[0] → char */
+/* boards/qemu_tc3xx/board_console.h */
+#ifndef BOARD_CONSOLE_H
+#define BOARD_CONSOLE_H
+
+void board_console_putc(char c);
+void board_console_puts(const char *s);
+
+#endif
 ```
 
-Payload fits in the 8-byte `ul_msg_t.contents` inline field for single characters; for strings, the client passes a pointer (requires the server to have a READ grant on the caller's string buffer — or the caller maps the string into a shared region).
+### Location
 
-> **Design decision needed:** For the first version, strings can be limited to 8 bytes inline (sufficient for single-line debug messages). A `ul_mem_grant` path can be added later for longer strings.
+```
+boards/qemu_tc3xx/
+├── board.cmake             # adds board_console.c + board_services.c to UL_BOARD_SOURCES
+├── board_console.h         # public C API — included by any component that uses the console
+├── board_console.c         # client API + server thread + internal endpoint management
+├── board_services.h        # declares board_services_init()
+└── board_services.c        # board_services_init(): creates ep, spawns console thread
+```
 
-### board_console.c (sketch)
+`board_services.h` is also added to the board include path so that `root_thread.c` in `hello_world` can call `board_services_init()` without a compile-time dependency on a specific board's `CMakeLists.txt`.
+
+A weak no-op stub in `stub/board_services_stub.c` allows kernel-only builds (no board services) to link cleanly.
+
+### Implementation sketch
 
 ```c
-static ul_ep_t g_console_ep;  /* published for clients */
+/* boards/qemu_tc3xx/board_console.c */
+#include <board_console.h>
+#include <ul/microkernel.h>
+
+#define CONSOLE_MSG_PUTC  1u
+
+/*
+ * Endpoint created by board_services_init() before the server thread runs.
+ * Visible to both client API functions and the server entry point.
+ */
+static ul_ep_t g_ep;
+
+/* ---- client API ---- */
+
+void board_console_putc(char c)
+{
+    ul_msg_t msg = { .label = CONSOLE_MSG_PUTC };
+    msg.data[0]  = (uint8_t)c;
+    ul_ep_call(g_ep, &msg, NULL);
+}
+
+void board_console_puts(const char *s)
+{
+    while (*s)
+        board_console_putc(*s++);
+}
+
+/* ---- server thread ---- */
 
 static void console_server(void *arg)
 {
-    void *mmio = ul_mem_map(
-        (void *)BOARD_CONSOLE_VIRT_BASE,
-        BOARD_CONSOLE_VIRT_SIZE,
+    volatile uint32_t *virt = ul_mem_map(
+        (void *)UL_ARCH_QEMU_VIRT_BASE,
+        4u,
         UL_PERM_READ | UL_PERM_WRITE,
         UL_MMAP_PERIPH);
-
-    /* initialise low-level console (if needed) */
-    board_console_hw_init(mmio);
-
-    g_console_ep = ul_ep_create();   /* signal clients: ep is ready */
 
     for (;;) {
         ul_msg_t msg;
         ul_tid_t sender;
-        ul_ep_recv(g_console_ep, &msg, &sender);
-
-        switch (msg.label) {
-        case BOARD_CONSOLE_MSG_PUTS:
-            /* write null-terminated payload */
-            board_console_puts(mmio, (const char *)msg.data);
-            break;
-        case BOARD_CONSOLE_MSG_PUTC:
-            board_console_putc(mmio, (char)msg.data[0]);
-            break;
-        }
+        ul_ep_recv(g_ep, &msg, &sender);
+        if (msg.label == CONSOLE_MSG_PUTC)
+            *virt = (uint32_t)msg.data[0];
         ul_ep_reply(sender, &(ul_msg_t){0});
     }
 }
+```
 
-ul_tid_t board_console_start(const ul_boot_info_t *info)
+```c
+/* boards/qemu_tc3xx/board_services.c */
+#include <board_services.h>
+#include <board_console.h>
+#include <ul/microkernel.h>
+
+extern ul_ep_t g_ep;   /* defined in board_console.c */
+
+void board_services_init(const ul_boot_info_t *info)
 {
+    /*
+     * Create endpoint before spawning the thread. Any call to
+     * board_console_putc() after this function returns is safe.
+     */
+    g_ep = ul_ep_create();
+
     ul_thread_attr_t attr = {
         .name       = "bcon",
         .entry      = console_server,
-        .priority   = 1u,    /* high priority — console must never starve */
+        .priority   = 1u,
         .stack_size = 1024u,
         .privilege  = UL_PRIV_DRIVER,
     };
-    return ul_thread_create(&attr);
+    ul_thread_create(&attr);
 }
 ```
 
@@ -439,16 +573,4 @@ ul_tid_t board_console_start(const ul_boot_info_t *info)
 
 ## 11. Open Questions
 
-The following points require your decision before implementation begins:
-
-1. **String payload in IPC:** Should `BOARD_CONSOLE_MSG_PUTS` use the 8-byte inline field (limiting strings to 7 chars + null), or should it require the caller to `ul_mem_grant` a READ on its string buffer? The grant approach is general but adds latency and complexity for a console.
-
-2. **Endpoint discovery:** Should `board_console` publish its endpoint via a global variable (simple, boot-only) or via a named capability table (more robust, more kernel involvement)?
-
-3. **`board_console` as kernel component vs. board source:** Should `board_console` live in `components/board_console/` (portable, board-agnostic server with a board-specific `BOARD_CONSOLE_VIRT_BASE` define) or as a board source in `boards/qemu_tc3xx/`? A kernel component is cleaner for portability; a board source avoids the need for a new scan location.
-
-4. **Component dependency enforcement:** `REQUIRES` is currently advisory. Should the build fail if a required component is `DISABLED`? Or should `REQUIRES` only affect link ordering?
-
-5. **`linker.ld.in` in hello_world:** Does `hello_world` actually need a linker fragment? If it has no private memory domains (all console I/O goes through board_console), the fragment can be omitted entirely.
-
-6. **`ul_component_register` in dev.py:** The `dev.py` build path parses board sources from `board.cmake` directly (not via CMake). Should `dev.py` also parse component `CMakeLists.txt` files for `ENABLED` components and their `SOURCES`, or should the dev.py build be migrated to invoke CMake directly (eliminating the parallel parsing)?
+*(No outstanding decisions. Update this section as new open points arise.)*

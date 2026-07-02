@@ -19,7 +19,6 @@
         *(.text.ul_irq_*)
         *(.text.ul_mem_*)
         *(.text.ul_notif_*)
-        *(.text._start)
         *(.text .text.*)
         *(.rodata .rodata.*)
         _ul_kernel_text_end = .;

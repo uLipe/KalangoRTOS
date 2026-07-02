@@ -36,7 +36,8 @@ endif()
 # ── Board sources ─────────────────────────────────────────────────────────────
 set(UL_BOARD_SOURCES
     qemu_console.c
-    root_thread.c
+    board_console.c
+    board_services.c
 )
 
 # ── QEMU emulation ────────────────────────────────────────────────────────────

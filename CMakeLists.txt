@@ -26,6 +26,12 @@ configure_file(
 include(cmake/linker_api.cmake)
 
 # ---------------------------------------------------------------------------
+# Component API (ul_component_register, ul_components_finalize)
+# ---------------------------------------------------------------------------
+
+include(cmake/component_api.cmake)
+
+# ---------------------------------------------------------------------------
 # Chip / board selection
 # Default to the built-in QEMU platform for CI.
 # Override with: cmake -DUL_CHIP_DIR=<path/to/board> ...
@@ -33,10 +39,6 @@ include(cmake/linker_api.cmake)
 
 set(UL_CHIP_DIR "${CMAKE_SOURCE_DIR}/boards/qemu_tc3xx"
     CACHE PATH "Path to the board directory containing memory.ld")
-
-# ---------------------------------------------------------------------------
-# Kernel static library
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Board descriptor — sets UL_BOARD_CPU, UL_BOARD_CFLAGS, UL_BOARD_SOURCES
@@ -51,6 +53,10 @@ set(_UL_BOARD_SRCS "")
 foreach(_src IN LISTS UL_BOARD_SOURCES)
     list(APPEND _UL_BOARD_SRCS "${UL_CHIP_DIR}/${_src}")
 endforeach()
+
+# ---------------------------------------------------------------------------
+# Kernel static library
+# ---------------------------------------------------------------------------
 
 add_library(ulipe_kernel STATIC
     kernel/kernel_main.c
@@ -68,9 +74,6 @@ add_library(ulipe_kernel STATIC
     kernel/irq/irq.c
     arch/tricore/arch.c
     arch/tricore/ctx_switch.S
-    stub/board_init_stub.c
-    stub/printk_stub.c
-    stub/root_thread_stub.c
     ${_UL_BOARD_SRCS})
 
 target_include_directories(ulipe_kernel PUBLIC
@@ -87,6 +90,35 @@ if(DEFINED UL_BOARD_CFLAGS)
 endif()
 
 # ---------------------------------------------------------------------------
+# Component scan — kernel/components/ then ../ulmk_apps/ sibling
+# ---------------------------------------------------------------------------
+
+message(STATUS "Scanning components:")
+
+file(GLOB _kernel_comp_dirs LIST_DIRECTORIES true
+    "${CMAKE_SOURCE_DIR}/components/*")
+foreach(_dir IN LISTS _kernel_comp_dirs)
+    if(IS_DIRECTORY "${_dir}" AND EXISTS "${_dir}/CMakeLists.txt")
+        get_filename_component(_cname "${_dir}" NAME)
+        add_subdirectory("${_dir}" "${CMAKE_BINARY_DIR}/components/${_cname}")
+    endif()
+endforeach()
+
+set(_ULMK_APPS_DIR "${CMAKE_SOURCE_DIR}/../ulmk_apps")
+if(IS_DIRECTORY "${_ULMK_APPS_DIR}")
+    message(STATUS "Scanning ulmk_apps sibling: ${_ULMK_APPS_DIR}")
+    file(GLOB _app_comp_dirs LIST_DIRECTORIES true "${_ULMK_APPS_DIR}/*")
+    foreach(_dir IN LISTS _app_comp_dirs)
+        if(IS_DIRECTORY "${_dir}" AND EXISTS "${_dir}/CMakeLists.txt")
+            get_filename_component(_cname "${_dir}" NAME)
+            add_subdirectory("${_dir}" "${CMAKE_BINARY_DIR}/ulmk_apps/${_cname}")
+        endif()
+    endforeach()
+endif()
+
+ul_components_finalize()
+
+# ---------------------------------------------------------------------------
 # Kernel executable (kernel + arch startup + apps)
 # ---------------------------------------------------------------------------
 
@@ -95,19 +127,6 @@ add_executable(ulipe_microkernel
     arch/tricore/vectors.S)
 
 target_link_libraries(ulipe_microkernel PRIVATE ulipe_kernel)
-
-# ---------------------------------------------------------------------------
-# App discovery — sibling directory (docs/build_system_spec.md §4)
-# ---------------------------------------------------------------------------
-
-set(APPS_DIR "${CMAKE_SOURCE_DIR}/../ulipeMicroKernel_apps")
-
-if(IS_DIRECTORY "${APPS_DIR}")
-    message(STATUS "Discovered apps directory: ${APPS_DIR}")
-    add_subdirectory("${APPS_DIR}" "${CMAKE_BINARY_DIR}/apps")
-else()
-    message(STATUS "No apps directory found; linking root_thread_stub only")
-endif()
 
 # ---------------------------------------------------------------------------
 # Linker script generation — must be called AFTER all ul_add_app/domain calls

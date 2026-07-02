@@ -21,9 +21,9 @@ set(UL_CONFIG_SCHED_QUANTUM_US 10000 CACHE STRING "Preemptive scheduler time-sli
 # Machine clock frequency in Hz — the input clock to the arch tick timer.
 # The tick timer peripheral varies per architecture; this is the frequency
 # of whatever counter the arch port uses to generate kernel ticks.
-# Must match the board PLL/clock configuration.  Always override per-board;
-# 1 MHz is a placeholder default only.
-set(UL_CONFIG_HW_SYS_CLOCK_HZ 1000000 CACHE STRING "Machine clock frequency fed to the arch tick timer (Hz)")
+# Must match the board PLL/clock configuration.  Always override per-board.
+# 50 MHz matches the QEMU TC397B STM0 simulation rate used in all tests.
+set(UL_CONFIG_HW_SYS_CLOCK_HZ 50000000 CACHE STRING "Machine clock frequency fed to the arch tick timer (Hz)")
 
 # Validate ranges at configure time; fail fast rather than at runtime.
 foreach(sym IN ITEMS
