@@ -1,15 +1,15 @@
 # cmake/linker_api.cmake
 # Public CMake API consumed by the top-level CMakeLists.txt and
-# (eventually) by the ulipeMicroKernel_apps sibling directory.
+# (eventually) by the ulmk_apps sibling directory.
 # Full specification: docs/build_system_spec.md §6
 #
 # Functions:
-#   ul_add_app(name SOURCES <files...> [DOMAIN <domain>])
-#   ul_add_domain(name [REGION <KERNEL_RAM|SHARED_RAM>])
-#   ul_set_root_thread(target)
+#   ulmk_add_app(name SOURCES <files...> [DOMAIN <domain>])
+#   ulmk_add_domain(name [REGION <KERNEL_RAM|SHARED_RAM>])
+#   ulmk_set_root_thread(target)
 #
 # All three accumulate state in internal CMake lists; the top-level
-# CMakeLists.txt invokes _ul_finalize_build() after all ul_add_* calls
+# CMakeLists.txt invokes _ulmk_finalize_build() after all ulmk_add_* calls
 # to wire everything together and invoke generate_ld.py.
 
 # Internal accumulators — do not use directly.
@@ -18,13 +18,13 @@ set(_UL_DOMAINS  "" CACHE INTERNAL "")
 set(_UL_ROOT_TGT "" CACHE INTERNAL "")
 
 # ---------------------------------------------------------------------------
-# ul_add_app
+# ulmk_add_app
 # ---------------------------------------------------------------------------
-function(ul_add_app name)
+function(ulmk_add_app name)
     cmake_parse_arguments(ARG "" "DOMAIN" "SOURCES" ${ARGN})
 
     add_library("app_${name}" OBJECT ${ARG_SOURCES})
-    target_compile_definitions("app_${name}" PRIVATE UL_APP_NAME=${name})
+    target_compile_definitions("app_${name}" PRIVATE ULMK_APP_NAME=${name})
     target_include_directories("app_${name}" PRIVATE
         "${CMAKE_SOURCE_DIR}/include"
         "${CMAKE_BINARY_DIR}/generated")
@@ -36,9 +36,9 @@ function(ul_add_app name)
 endfunction()
 
 # ---------------------------------------------------------------------------
-# ul_add_domain
+# ulmk_add_domain
 # ---------------------------------------------------------------------------
-function(ul_add_domain name)
+function(ulmk_add_domain name)
     cmake_parse_arguments(ARG "" "REGION" "" ${ARGN})
     if(NOT DEFINED ARG_REGION)
         set(ARG_REGION "KERNEL_RAM")
@@ -47,19 +47,19 @@ function(ul_add_domain name)
 endfunction()
 
 # ---------------------------------------------------------------------------
-# ul_set_root_thread
+# ulmk_set_root_thread
 # ---------------------------------------------------------------------------
-function(ul_set_root_thread target)
+function(ulmk_set_root_thread target)
     set(_UL_ROOT_TGT "${target}" CACHE INTERNAL "")
 endfunction()
 
 # ---------------------------------------------------------------------------
-# _ul_finalize_build  (called by top-level CMakeLists.txt after all ul_add_*)
+# _ulmk_finalize_build  (called by top-level CMakeLists.txt after all ulmk_add_*)
 # ---------------------------------------------------------------------------
-function(_ul_finalize_build kernel_target chip_dir)
+function(_ulmk_finalize_build kernel_target chip_dir)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-    set(generated_ld "${CMAKE_BINARY_DIR}/generated/ulipe_microkernel.ld")
+    set(generated_ld "${CMAKE_BINARY_DIR}/generated/ulmk.ld")
 
     # Build argument lists for generate_ld.py
     set(app_args "")
@@ -91,11 +91,11 @@ function(_ul_finalize_build kernel_target chip_dir)
             COMMENT "Generating linker script ${generated_ld}"
     )
 
-    add_custom_target(ul_linker_script DEPENDS "${generated_ld}")
+    add_custom_target(ulmk_linker_script DEPENDS "${generated_ld}")
 
     target_link_options("${kernel_target}" PRIVATE
         "-T${generated_ld}"
-        "-Wl,-Map=${CMAKE_BINARY_DIR}/ulipe_microkernel.map")
+        "-Wl,-Map=${CMAKE_BINARY_DIR}/ulmk.map")
 
-    add_dependencies("${kernel_target}" ul_linker_script)
+    add_dependencies("${kernel_target}" ulmk_linker_script)
 endfunction()

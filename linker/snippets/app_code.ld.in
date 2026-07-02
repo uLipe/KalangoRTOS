@@ -3,18 +3,18 @@
  * @APP_NAME@ is substituted with the app name string.
  *
  * Each app's code is isolated in a separate MPU-aligned section in flash.
- * The _ul_app_@APP_NAME@_text_start/end symbols are used by the kernel to
+ * The _ulmk_app_@APP_NAME@_text_start/end symbols are used by the kernel to
  * configure the CPR (code protection range) for this app's threads.
  *
  * Input sections are produced when app TUs are compiled with:
- *   -DUL_APP_NAME=@APP_NAME@ -ffunction-sections -fdata-sections
+ *   -DULMK_APP_NAME=@APP_NAME@ -ffunction-sections -fdata-sections
  * combined with the UL_APP_TEXT macro in ul/linker.h.
  */
 
-    .app_@APP_NAME@_text : ALIGN(UL_MPU_ALIGN) {
-        _ul_app_@APP_NAME@_text_start = .;
+    .app_@APP_NAME@_text : ALIGN(ULMK_MPU_ALIGN) {
+        _ulmk_app_@APP_NAME@_text_start = .;
         *(.text.@APP_NAME@.*)
         *(.rodata.@APP_NAME@.*)
-        . = ALIGN(UL_MPU_ALIGN);
-        _ul_app_@APP_NAME@_text_end = .;
+        . = ALIGN(ULMK_MPU_ALIGN);
+        _ulmk_app_@APP_NAME@_text_end = .;
     } > KERNEL_FLASH

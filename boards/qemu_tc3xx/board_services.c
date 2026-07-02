@@ -6,24 +6,24 @@
  *
  * Provides the two mandatory board entry points for the QEMU TC3xx target:
  *
- *   ul_board_init()        — called from startup.S before .data copy;
+ *   ulmk_board_init()        — called from startup.S before .data copy;
  *                            no globals, no kernel API allowed.
  *
- *   board_services_init()  — called from ul_root_thread() after the
+ *   board_services_init()  — called from ulmk_root_thread() after the
  *                            kernel is fully initialised; spawns
  *                            background service threads.
  */
 
-#include <ul/microkernel.h>
+#include <ulmk/microkernel.h>
 #include "board_services.h"
 #include "board_console.h"
 
-void ul_board_init(void)
+void ulmk_board_init(void)
 {
 	/* QEMU needs no early hardware setup. */
 }
 
-void board_services_init(const ul_boot_info_t *info)
+void board_services_init(const ulmk_boot_info_t *info)
 {
 	board_console_start(info);
 }

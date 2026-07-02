@@ -7,19 +7,19 @@
  * 32-byte instruction fetch granularity.
  *
  * Input section patterns match the naming conventions for kernel and arch
- * internal functions (all prefixed ul_arch_*, ul_kernel_*, etc.).
+ * internal functions (all prefixed ulmk_arch_*, ulmk_kernel_*, etc.).
  */
 
     .kernel_text : ALIGN(32) {
-        _ul_kernel_text_start = .;
-        *(.text.ul_arch_*)
-        *(.text.ul_kernel_*)
-        *(.text.ul_sched_*)
-        *(.text.ul_ipc_*)
-        *(.text.ul_irq_*)
-        *(.text.ul_mem_*)
-        *(.text.ul_notif_*)
+        _ulmk_kernel_text_start = .;
+        *(.text.ulmk_arch_*)
+        *(.text.ulmk_kernel_*)
+        *(.text.ulmk_sched_*)
+        *(.text.ulmk_ipc_*)
+        *(.text.ulmk_irq_*)
+        *(.text.ulmk_mem_*)
+        *(.text.ulmk_notif_*)
         *(.text .text.*)
         *(.rodata .rodata.*)
-        _ul_kernel_text_end = .;
+        _ulmk_kernel_text_end = .;
     } > KERNEL_FLASH

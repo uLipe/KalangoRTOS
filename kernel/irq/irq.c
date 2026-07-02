@@ -6,58 +6,58 @@
  * Reference: docs/api_spec.md §10
  *
  * Routing model:
- *   ul_irq_bind()   → records irq_nr→(notif_obj, bit) in irq_table
- *   ul_irq_enable() → arms the interrupt controller via arch layer
- *   ul_irq_ack()    → acknowledges the interrupt source (re-arming is driver's job)
- *   ul_kernel_irq_dispatch() → called from generic ISR stub; signals the notif
+ *   ulmk_irq_bind()   → records irq_nr→(notif_obj, bit) in irq_table
+ *   ulmk_irq_enable() → arms the interrupt controller via arch layer
+ *   ulmk_irq_ack()    → acknowledges the interrupt source (re-arming is driver's job)
+ *   ulmk_kern_irq_dispatch() → called from generic ISR stub; signals the notif
  */
 
 #include <stdint.h>
 #include <string.h>
-#include <ul/microkernel.h>
-#include <ul/config.h>
-#include <kernel/include/ul_irq_internal.h>
-#include <kernel/include/ul_notif_internal.h>
-#include <kernel/include/ul_mem_internal.h>
+#include <ulmk/microkernel.h>
+#include <ulmk/config.h>
+#include <kernel/include/ulmk_irq_internal.h>
+#include <kernel/include/ulmk_notif_internal.h>
+#include <kernel/include/ulmk_mem_internal.h>
 #include <kernel/syscall/syscall_router.h>
-#include <ul_arch.h>
+#include <ulmk_arch.h>
 
 /* =========================================================================
  * Binding table — static, kernel-space, hardware-bounded size.
  * ========================================================================= */
 
-static ul_irq_binding_t UL_KERNEL_BSS irq_table[UL_CONFIG_MAX_IRQ_BINDINGS];
+static ulmk_irq_binding_t UL_KERNEL_BSS irq_table[ULMK_CONFIG_MAX_IRQ_BINDINGS];
 
-void ul_irq_table_init(void)
+void ulmk_irq_table_init(void)
 {
 	memset(irq_table, 0, sizeof(irq_table));
 }
 
-int ul_irq_binding_add(uint8_t srpn, ul_notif_obj_t *notif, uint32_t bit)
+int ulmk_irq_binding_add(uint8_t srpn, ulmk_notif_obj_t *notif, uint32_t bit)
 {
 	int               i;
-	ul_arch_irq_key_t key;
+	ulmk_arch_irq_key_t key;
 
-	key = ul_arch_cpu_irq_save();
-	for (i = 0; i < UL_CONFIG_MAX_IRQ_BINDINGS; i++) {
+	key = ulmk_arch_cpu_irq_save();
+	for (i = 0; i < ULMK_CONFIG_MAX_IRQ_BINDINGS; i++) {
 		if (!irq_table[i].notif) {
 			irq_table[i].srpn    = srpn;
 			irq_table[i].notif   = notif;
 			irq_table[i].bit     = bit;
 			irq_table[i].enabled = false;
-			ul_arch_cpu_irq_restore(key);
+			ulmk_arch_cpu_irq_restore(key);
 			return i;
 		}
 	}
-	ul_arch_cpu_irq_restore(key);
+	ulmk_arch_cpu_irq_restore(key);
 	return -1;
 }
 
-ul_irq_binding_t *ul_irq_binding_by_srpn(uint8_t srpn)
+ulmk_irq_binding_t *ulmk_irq_binding_by_srpn(uint8_t srpn)
 {
 	int i;
 
-	for (i = 0; i < UL_CONFIG_MAX_IRQ_BINDINGS; i++) {
+	for (i = 0; i < ULMK_CONFIG_MAX_IRQ_BINDINGS; i++) {
 		if (irq_table[i].notif && irq_table[i].srpn == srpn)
 			return &irq_table[i];
 	}
@@ -68,82 +68,82 @@ ul_irq_binding_t *ul_irq_binding_by_srpn(uint8_t srpn)
  * Kernel syscall handlers
  * ========================================================================= */
 
-uint32_t ul_kern_irq_bind(uint32_t srpn, uint32_t notif_id, uint32_t bit)
+uint32_t ulmk_kern_irq_bind(uint32_t srpn, uint32_t notif_id, uint32_t bit)
 {
-	ul_notif_obj_t *notif;
+	ulmk_notif_obj_t *notif;
 	int             ret;
 
 	if (srpn == 0u || srpn >= 256u || bit > 31u)
-		return (uint32_t)(int32_t)UL_EINVAL;
-	if (srpn == (uint32_t)UL_ARCH_TICK_SRPN)
-		return (uint32_t)(int32_t)UL_EINVAL;
+		return (uint32_t)(int32_t)ULMK_EINVAL;
+	if (srpn == (uint32_t)ULMK_ARCH_TICK_SRPN)
+		return (uint32_t)(int32_t)ULMK_EINVAL;
 
-	notif = ul_notif_by_id((ul_notif_t)notif_id);
+	notif = ulmk_notif_by_id((ulmk_notif_t)notif_id);
 	if (!notif)
-		return (uint32_t)(int32_t)UL_EINVAL;
+		return (uint32_t)(int32_t)ULMK_EINVAL;
 
-	ret = ul_irq_binding_add((uint8_t)srpn, notif, bit);
+	ret = ulmk_irq_binding_add((uint8_t)srpn, notif, bit);
 	if (ret < 0)
-		return (uint32_t)(int32_t)UL_ENOSPC;
+		return (uint32_t)(int32_t)ULMK_ENOSPC;
 
-	ul_arch_irq_src_configure((uint8_t)srpn, (uint8_t)srpn, 0u);
+	ulmk_arch_irq_src_configure((uint8_t)srpn, (uint8_t)srpn, 0u);
 	return 0u;
 }
 
-uint32_t ul_kern_irq_enable(uint32_t srpn)
+uint32_t ulmk_kern_irq_enable(uint32_t srpn)
 {
-	ul_arch_irq_key_t  key;
-	ul_irq_binding_t  *b;
+	ulmk_arch_irq_key_t  key;
+	ulmk_irq_binding_t  *b;
 
 	if (srpn == 0u || srpn >= 256u)
-		return (uint32_t)(int32_t)UL_EINVAL;
+		return (uint32_t)(int32_t)ULMK_EINVAL;
 
-	key = ul_arch_cpu_irq_save();
-	b = ul_irq_binding_by_srpn((uint8_t)srpn);
+	key = ulmk_arch_cpu_irq_save();
+	b = ulmk_irq_binding_by_srpn((uint8_t)srpn);
 	if (!b) {
-		ul_arch_cpu_irq_restore(key);
-		return (uint32_t)(int32_t)UL_EINVAL;
+		ulmk_arch_cpu_irq_restore(key);
+		return (uint32_t)(int32_t)ULMK_EINVAL;
 	}
 	b->enabled = true;
-	ul_arch_cpu_irq_restore(key);
+	ulmk_arch_cpu_irq_restore(key);
 
-	ul_arch_irq_src_enable((uint8_t)srpn);
+	ulmk_arch_irq_src_enable((uint8_t)srpn);
 	return 0u;
 }
 
-uint32_t ul_kern_irq_disable(uint32_t srpn)
+uint32_t ulmk_kern_irq_disable(uint32_t srpn)
 {
-	ul_arch_irq_key_t  key;
-	ul_irq_binding_t  *b;
+	ulmk_arch_irq_key_t  key;
+	ulmk_irq_binding_t  *b;
 
 	if (srpn == 0u || srpn >= 256u)
-		return (uint32_t)(int32_t)UL_EINVAL;
+		return (uint32_t)(int32_t)ULMK_EINVAL;
 
-	key = ul_arch_cpu_irq_save();
-	b = ul_irq_binding_by_srpn((uint8_t)srpn);
+	key = ulmk_arch_cpu_irq_save();
+	b = ulmk_irq_binding_by_srpn((uint8_t)srpn);
 	if (!b) {
-		ul_arch_cpu_irq_restore(key);
-		return (uint32_t)(int32_t)UL_EINVAL;
+		ulmk_arch_cpu_irq_restore(key);
+		return (uint32_t)(int32_t)ULMK_EINVAL;
 	}
 	b->enabled = false;
-	ul_arch_cpu_irq_restore(key);
+	ulmk_arch_cpu_irq_restore(key);
 
-	ul_arch_irq_src_disable((uint8_t)srpn);
+	ulmk_arch_irq_src_disable((uint8_t)srpn);
 	return 0u;
 }
 
-uint32_t ul_kern_irq_ack(uint32_t srpn)
+uint32_t ulmk_kern_irq_ack(uint32_t srpn)
 {
-	ul_irq_binding_t *b;
+	ulmk_irq_binding_t *b;
 
 	if (srpn == 0u || srpn >= 256u)
-		return (uint32_t)(int32_t)UL_EINVAL;
+		return (uint32_t)(int32_t)ULMK_EINVAL;
 
-	b = ul_irq_binding_by_srpn((uint8_t)srpn);
+	b = ulmk_irq_binding_by_srpn((uint8_t)srpn);
 	if (!b)
-		return (uint32_t)(int32_t)UL_EINVAL;
+		return (uint32_t)(int32_t)ULMK_EINVAL;
 
-	ul_arch_irq_src_ack((uint8_t)srpn);
+	ulmk_arch_irq_src_ack((uint8_t)srpn);
 	return 0u;
 }
 
@@ -151,15 +151,15 @@ uint32_t ul_kern_irq_ack(uint32_t srpn)
  * ISR dispatch — called from the arch generic ISR handler.
  *
  * Runs in ISR context: global interrupts disabled, on the dedicated ISR stack.
- * Does not call ul_sched_schedule() directly.  After this returns,
- * _arch_generic_isr_handler calls ul_kernel_irq_check_preempt(), which
+ * Does not call ulmk_sched_schedule() directly.  After this returns,
+ * _arch_generic_isr_handler calls ulmk_kern_irq_check_preempt(), which
  * sets g_preempt_old/new_ctx if a higher-priority thread was woken.
  * The _arch_generic_preempt_isr stub then performs the context switch.
  * ========================================================================= */
 
-void ul_kernel_irq_dispatch(uint8_t srpn)
+void ulmk_kern_irq_dispatch(uint8_t srpn)
 {
-	ul_irq_binding_t *b = ul_irq_binding_by_srpn(srpn);
+	ulmk_irq_binding_t *b = ulmk_irq_binding_by_srpn(srpn);
 
 	if (!b || !b->enabled || !b->notif)
 		return;

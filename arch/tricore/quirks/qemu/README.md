@@ -9,12 +9,12 @@ All defaults in `arch/tricore/include/arch_config.h` target TC27x silicon and TS
 Pass these via `CFLAGS +=` in any test Makefile that targets QEMU:
 
 ```makefile
-CFLAGS += -DUL_ARCH_STM0_BASE=0xF0000000u
-CFLAGS += -DUL_ARCH_SRC_STM0_SR0=0xF0038300u
-CFLAGS += -DUL_ARCH_SRC_SRE_BIT=10u
-CFLAGS += -DUL_ARCH_RAM_BASE=0x90000000u
-CFLAGS += -DUL_ARCH_QEMU_VIRT_CONSOLE=1
-CFLAGS += -DUL_ARCH_IDLE_IS_WAIT=0
+CFLAGS += -DULMK_ARCH_STM0_BASE=0xF0000000u
+CFLAGS += -DULMK_ARCH_SRC_STM0_SR0=0xF0038300u
+CFLAGS += -DULMK_ARCH_SRC_SRE_BIT=10u
+CFLAGS += -DULMK_ARCH_RAM_BASE=0x90000000u
+CFLAGS += -DULMK_ARCH_QEMU_VIRT_CONSOLE=1
+CFLAGS += -DULMK_ARCH_IDLE_IS_WAIT=0
 ```
 
 The test Makefiles that include the EMU detection block apply these
@@ -24,12 +24,12 @@ overrides automatically in the `else` branch when `EMU=qemu`.
 
 | Symbol                   | TC27x / TSIM default | QEMU Linumiz |
 |--------------------------|----------------------|--------------|
-| `UL_ARCH_STM0_BASE`      | `0xF0001000`         | `0xF0000000` |
-| `UL_ARCH_SRC_STM0_SR0`   | `0xF0038490`         | `0xF0038300` |
-| `UL_ARCH_SRC_SRE_BIT`    | `12`                 | `10`         |
-| `UL_ARCH_RAM_BASE`       | `0x70000000`         | `0x90000000` |
-| `UL_ARCH_QEMU_VIRT_CONSOLE` | `0`               | `1`          |
-| `UL_ARCH_IDLE_IS_WAIT`   | `1`                  | `0`          |
+| `ULMK_ARCH_STM0_BASE`      | `0xF0001000`         | `0xF0000000` |
+| `ULMK_ARCH_SRC_STM0_SR0`   | `0xF0038490`         | `0xF0038300` |
+| `ULMK_ARCH_SRC_SRE_BIT`    | `12`                 | `10`         |
+| `ULMK_ARCH_RAM_BASE`       | `0x70000000`         | `0x90000000` |
+| `ULMK_ARCH_QEMU_VIRT_CONSOLE` | `0`               | `1`          |
+| `ULMK_ARCH_IDLE_IS_WAIT`   | `1`                  | `0`          |
 
 ## VIRT Device (console + exit)
 
@@ -37,12 +37,12 @@ QEMU provides a virtual device at `0xBF000000`:
 - `+0x20`: write any byte → emit on stdout
 - `+0x28`: write exit code → `exit(code)` in the hypervisor
 
-`boards/qemu_tc27x/qemu_console.c` implements `ul_printk_char_out()` and
-`ul_sim_exit()` using this device.
+`boards/qemu_tc27x/qemu_console.c` implements `ulmk_printk_char_out()` and
+`ulmk_sim_exit()` using this device.
 
-Without `UL_ARCH_QEMU_VIRT_CONSOLE=1`, the MPU init skips the DPR covering
+Without `ULMK_ARCH_QEMU_VIRT_CONSOLE=1`, the MPU init skips the DPR covering
 `0xBF000000`, which causes a Class-1 trap when a driver-privilege thread
-calls `ul_printk`.
+calls `ulmk_printk`.
 
 ## STM0 Base Address
 
@@ -62,7 +62,7 @@ model but at position **12** in the TC27x SRC hardware register.
 
 QEMU TC277 does not wake the CPU from `WAIT` on timer compare match,
 causing the idle thread to hang and blocking the scheduler tick.
-Set `UL_ARCH_IDLE_IS_WAIT=0` when targeting QEMU to use `NOP` instead.
+Set `ULMK_ARCH_IDLE_IS_WAIT=0` when targeting QEMU to use `NOP` instead.
 
 ## CSA / CDC
 
@@ -76,5 +76,5 @@ real silicon but is more visible in QEMU because `CDE` is always 1.
 
 QEMU only implements DPR slots 0–3; writes to DPR 4+ are silently ignored.
 The MPU init in `arch.c` conditionally skips the VIRT DPR slot (DPR 3)
-when `UL_ARCH_QEMU_VIRT_CONSOLE=0`, so TSIM/silicon builds do not waste a
+when `ULMK_ARCH_QEMU_VIRT_CONSOLE=0`, so TSIM/silicon builds do not waste a
 DPR slot on a non-existent device.

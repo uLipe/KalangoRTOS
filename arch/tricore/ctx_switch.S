@@ -6,12 +6,12 @@
  * arch/tricore/ctx_switch.S
  *
  * -------------------------------------------------------------------------
- * ul_arch_ctx_switch — cooperative context switch
+ * ulmk_arch_ctx_switch — cooperative context switch
  * -------------------------------------------------------------------------
  *
- * void ul_arch_ctx_switch(ul_arch_ctx_t *from, const ul_arch_ctx_t *to)
- *   a4 = from  (ul_arch_ctx_t *) — {pcxi} written here on suspension
- *   a5 = to    (const ul_arch_ctx_t *) — {pcxi} loaded from here on resume
+ * void ulmk_arch_ctx_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to)
+ *   a4 = from  (ulmk_arch_ctx_t *) — {pcxi} written here on suspension
+ *   a5 = to    (const ulmk_arch_ctx_t *) — {pcxi} loaded from here on resume
  *
  * On TriCore every CALL saves the upper context to a new CSA frame (UL=1)
  * and updates PCXI.  SVLCX saves the lower context to another CSA frame
@@ -33,18 +33,18 @@
  *   Upper (CALL/RFE):    PCXI PSW A10 A11 D8-D11 A12-A15 D12-D15
  *   Lower (SVLCX/RSLCX): PCXI A11 A2 A3 D0-D3 A4-A7 D4-D7
  *
- * For a freshly fabricated thread "to", ul_arch_ctx_init() builds:
+ * For a freshly fabricated thread "to", ulmk_arch_ctx_init() builds:
  *   lower_csa[0]  = upper_link | UL_FLAG  (→ upper frame)
- *   lower_csa[1]  = _ul_thread_trampoline (A11 after RSLCX; RFE uses
+ *   lower_csa[1]  = _ulmk_thread_trampoline (A11 after RSLCX; RFE uses
  *                                          this for PC before restoring upper)
  *   lower_csa[8]  = arg pointer           (A4 after RSLCX, ABI pointer arg)
  *   upper_csa[1]  = PSW
  *   upper_csa[2]  = stack_top             (A10)
- *   upper_csa[3]  = _ul_thread_trampoline (A11 register after RFE)
+ *   upper_csa[3]  = _ulmk_thread_trampoline (A11 register after RFE)
  *   upper_csa[10] = entry function        (A14 after RFE, trampoline calls it)
  *
  * -------------------------------------------------------------------------
- * _ul_thread_trampoline — first instruction of every new thread
+ * _ulmk_thread_trampoline — first instruction of every new thread
  * -------------------------------------------------------------------------
  *
  * After RSLCX + RFE:
@@ -55,17 +55,17 @@
  * TriCore ABI: pointer args in A4-A7.  A4 is ready; just call via A14.
  */
 
-    .extern ul_arch_cpu_halt
+    .extern ulmk_arch_cpu_halt
 
 /* ---------------------------------------------------------------------------
- * ul_arch_ctx_switch
+ * ulmk_arch_ctx_switch
  * ------------------------------------------------------------------------ */
 
     .text
-    .global ul_arch_ctx_switch
-    .type   ul_arch_ctx_switch, @function
+    .global ulmk_arch_ctx_switch
+    .type   ulmk_arch_ctx_switch, @function
 
-ul_arch_ctx_switch:
+ulmk_arch_ctx_switch:
     /*
      * Mask all maskable interrupts for the duration of the switch.
      *
@@ -101,18 +101,18 @@ ul_arch_ctx_switch:
     rfe                          /* restore "to" upper context; free frame;
                                   * jump to A11 (entry or return address)  */
 
-    .size ul_arch_ctx_switch, . - ul_arch_ctx_switch
+    .size ulmk_arch_ctx_switch, . - ulmk_arch_ctx_switch
 
 /* ---------------------------------------------------------------------------
- * _ul_thread_trampoline
+ * _ulmk_thread_trampoline
  * ------------------------------------------------------------------------ */
 
-    .global _ul_thread_trampoline
-    .type   _ul_thread_trampoline, @function
+    .global _ulmk_thread_trampoline
+    .type   _ulmk_thread_trampoline, @function
 
-_ul_thread_trampoline:
+_ulmk_thread_trampoline:
     calli   %a14                 /* entry(arg): A14=entry fn, A4=arg ptr   */
-    call    ul_arch_cpu_halt
+    call    ulmk_arch_cpu_halt
     j       .
 
-    .size _ul_thread_trampoline, . - _ul_thread_trampoline
+    .size _ulmk_thread_trampoline, . - _ulmk_thread_trampoline

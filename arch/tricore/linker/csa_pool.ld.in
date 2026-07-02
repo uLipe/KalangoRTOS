@@ -4,14 +4,14 @@
  *
  * Reserves a contiguous NOLOAD region for the CSA free list.
  * Each CSA frame is exactly 64 bytes; the pool must be 64-byte aligned.
- * startup.S uses _ul_csa_pool_start and _ul_csa_pool_end to build the
+ * startup.S uses _ulmk_csa_pool_start and _ulmk_csa_pool_end to build the
  * FCX/LCX linked list before the first CALL or interrupt.
  *
- * UL_CSA_POOL_SIZE must be defined in the chip memory.ld (multiple of 64).
+ * ULMK_CSA_POOL_SIZE must be defined in the chip memory.ld (multiple of 64).
  */
 
     .csa_pool (NOLOAD) : ALIGN(64) {
-        _ul_csa_pool_start = .;
-        . += UL_CSA_POOL_SIZE;
-        _ul_csa_pool_end = .;
+        _ulmk_csa_pool_start = .;
+        . += ULMK_CSA_POOL_SIZE;
+        _ulmk_csa_pool_end = .;
     } > KERNEL_RAM

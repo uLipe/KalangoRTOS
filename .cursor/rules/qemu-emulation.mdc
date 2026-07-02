@@ -32,7 +32,7 @@ KIT_AURIX_TC397B_TRB   (TC3xx, QEMU -machine flag)
 
 ## Rules
 
-- **No polling fallback**: timer interrupts are mandatory. `UL_ARCH_IDLE_IS_WAIT=0`
+- **No polling fallback**: timer interrupts are mandatory. `ULMK_ARCH_IDLE_IS_WAIT=0`
   (NOP idle) is required in all QEMU builds to keep the instruction counter advancing.
 - **No TSIM**: TSIM has been removed. QEMU is the sole emulation environment.
 - **No workarounds**: QEMU emulates TriCore correctly; no software emulation of

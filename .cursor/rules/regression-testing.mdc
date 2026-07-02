@@ -29,13 +29,13 @@ scheduler quantum is undefined and tests will fail:
 
 ```makefile
 gen_config:
-	@mkdir -p $(GEN_INC)/ul
-	@printf '#ifndef UL_CONFIG_H\n#define UL_CONFIG_H\n' > $(GEN_INC)/ul/config.h
+	@mkdir -p $(GEN_INC)/ulmk
+	@printf '#ifndef ULMK_CONFIG_H\n#define ULMK_CONFIG_H\n' > $(GEN_INC)/ulmk/config.h
 	# ... other defines ...
-	@printf '#define UL_CONFIG_SCHED_QUANTUM_US    10000\n' >> $(GEN_INC)/ul/config.h
-	@printf '#define UL_CONFIG_SCHED_QUANTUM_TICKS 10\n'   >> $(GEN_INC)/ul/config.h
-	@printf '#endif\n' >> $(GEN_INC)/ul/config.h
+	@printf '#define ULMK_CONFIG_SCHED_QUANTUM_US    10000\n' >> $(GEN_INC)/ulmk/config.h
+	@printf '#define ULMK_CONFIG_SCHED_QUANTUM_TICKS 10\n'   >> $(GEN_INC)/ulmk/config.h
+	@printf '#endif\n' >> $(GEN_INC)/ulmk/config.h
 ```
 
-Forgetting `UL_CONFIG_SCHED_QUANTUM_TICKS` leaves `ticks_remaining` undefined
+Forgetting `ULMK_CONFIG_SCHED_QUANTUM_TICKS` leaves `ticks_remaining` undefined
 → every tick triggers preemption → scheduler-dependent tests fail silently.

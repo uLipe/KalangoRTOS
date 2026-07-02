@@ -4,7 +4,7 @@
  *
  * Context-switch stress test — tests/ctx_switch/ctx_switch_stress.c
  *
- * Two kernel threads (A and B) alternate via ul_arch_ctx_switch, each
+ * Two kernel threads (A and B) alternate via ulmk_arch_ctx_switch, each
  * incrementing a shared counter on every activation.  The test passes
  * when the counter reaches STRESS_TARGET.
  *
@@ -19,9 +19,9 @@
 
 #include <stdint.h>
 #include "../test_support.h"
-#include <ul/microkernel.h>
-#include <ul_arch.h>
-#include <kernel/include/ul_printk.h>
+#include <ulmk/microkernel.h>
+#include <ulmk_arch.h>
+#include <kernel/include/ulmk_printk.h>
 
 /*
  * Pool budget with the SVLCX/RSLCX/RFE context-switch implementation:
@@ -29,7 +29,7 @@
  *     frame leak per switch (unlike the old JI-based approach).
  *   - While a thread is suspended it holds 2 frames (CALL + SVLCX).
  *   - A running thread holds ~1-2 frames for each active call level.
- *   - ul_printk call chain is ~5 levels deep.
+ *   - ulmk_printk call chain is ~5 levels deep.
  *   - Total worst-case: 2 suspended × 2 + 1 running × 7 ≈ 11 frames.
  *   - Default 64-frame pool (boot_test.ld) is sufficient.
  *
@@ -52,11 +52,11 @@
  */
 static volatile uint32_t g_count
 	__attribute__((section(".bss.g_count")));
-static ul_arch_ctx_t g_ctx_root
+static ulmk_arch_ctx_t g_ctx_root
 	__attribute__((section(".bss.g_ctx_root")));
-static ul_arch_ctx_t g_ctx_a
+static ulmk_arch_ctx_t g_ctx_a
 	__attribute__((section(".bss.g_ctx_a")));
-static ul_arch_ctx_t g_ctx_b
+static ulmk_arch_ctx_t g_ctx_b
 	__attribute__((section(".bss.g_ctx_b")));
 static uint8_t g_stack_a[2048]
 	__attribute__((aligned(8), section(".bss.g_stack_a")));
@@ -71,15 +71,15 @@ static void thread_a_fn(void *arg)
 	for (;;) {
 		g_count++;
 		if (g_count >= STRESS_TARGET) {
-			ul_printk("ctx_stress: PASS count=%u\n",
+			ulmk_printk("ctx_stress: PASS count=%u\n",
 				  (unsigned int)g_count);
-			ul_sim_exit(0);
+			ulmk_sim_exit(0);
 		}
 		if ((g_count % STRESS_PRINT_EVERY) == 0u)
-			ul_printk("ctx_stress: [%u/%u]\n",
+			ulmk_printk("ctx_stress: [%u/%u]\n",
 				  (unsigned int)g_count,
 				  (unsigned int)STRESS_TARGET);
-		ul_arch_ctx_switch(&g_ctx_a, &g_ctx_b);
+		ulmk_arch_ctx_switch(&g_ctx_a, &g_ctx_b);
 	}
 }
 
@@ -89,37 +89,37 @@ static void thread_b_fn(void *arg)
 	for (;;) {
 		g_count++;
 		if (g_count >= STRESS_TARGET) {
-			ul_printk("ctx_stress: PASS count=%u\n",
+			ulmk_printk("ctx_stress: PASS count=%u\n",
 				  (unsigned int)g_count);
-			ul_sim_exit(0);
+			ulmk_sim_exit(0);
 		}
 		if ((g_count % STRESS_PRINT_EVERY) == 0u)
-			ul_printk("ctx_stress: [%u/%u]\n",
+			ulmk_printk("ctx_stress: [%u/%u]\n",
 				  (unsigned int)g_count,
 				  (unsigned int)STRESS_TARGET);
-		ul_arch_ctx_switch(&g_ctx_b, &g_ctx_a);
+		ulmk_arch_ctx_switch(&g_ctx_b, &g_ctx_a);
 	}
 }
 
-void ul_root_thread(const ul_boot_info_t *info)
+void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
 	(void)info;
 
-	ul_printk("ctx_stress: start\n");
+	ulmk_printk("ctx_stress: start\n");
 
-	ul_arch_ctx_init(&g_ctx_a, thread_a_fn, NULL,
+	ulmk_arch_ctx_init(&g_ctx_a, thread_a_fn, NULL,
 			 (uintptr_t)(g_stack_a + sizeof(g_stack_a)),
-			 UL_PRIV_KERNEL);
-	ul_arch_ctx_init(&g_ctx_b, thread_b_fn, NULL,
+			 ULMK_PRIV_KERNEL);
+	ulmk_arch_ctx_init(&g_ctx_b, thread_b_fn, NULL,
 			 (uintptr_t)(g_stack_b + sizeof(g_stack_b)),
-			 UL_PRIV_KERNEL);
+			 ULMK_PRIV_KERNEL);
 
 	/*
 	 * Launch thread_a.  g_ctx_root captures the current (root thread)
 	 * SP+RA so this context could be resumed, but in practice thread_a
-	 * or thread_b will call ul_sim_exit before switching back here.
+	 * or thread_b will call ulmk_sim_exit before switching back here.
 	 */
-	ul_arch_ctx_switch(&g_ctx_root, &g_ctx_a);
+	ulmk_arch_ctx_switch(&g_ctx_root, &g_ctx_a);
 
 	for (;;)
 		;

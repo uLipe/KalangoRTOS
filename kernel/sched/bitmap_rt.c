@@ -20,15 +20,15 @@
  */
 
 #include <stddef.h>
-#include <kernel/include/ul_thread_internal.h>
-#include <kernel/include/ul_sched.h>
-#include <ul_arch.h>
+#include <kernel/include/ulmk_thread_internal.h>
+#include <kernel/include/ulmk_sched.h>
+#include <ulmk_arch.h>
 
 #define BITMAP_WORDS	8u		/* 8 × 32 = 256 priority levels */
 
 static uint32_t     bitmap[BITMAP_WORDS];
-static ul_thread_t *level_head[256];
-static ul_thread_t *level_tail[256];
+static ulmk_thread_t *level_head[256];
+static ulmk_thread_t *level_tail[256];
 
 /*
  * Return the priority of the highest-priority ready thread (lowest bit set
@@ -52,7 +52,7 @@ static uint8_t bitmap_first_set(void)
 			 * bit_index = 31 - CLZ(w & -w).
 			 */
 			return (uint8_t)(i * 32u +
-					 31u - ul_arch_cpu_clz(w & (uint32_t)(-(int32_t)w)));
+					 31u - ulmk_arch_cpu_clz(w & (uint32_t)(-(int32_t)w)));
 		}
 	}
 	return 255u;
@@ -80,7 +80,7 @@ static void bitmap_rt_init(void)
 	}
 }
 
-static void bitmap_rt_enqueue(ul_thread_t *t)
+static void bitmap_rt_enqueue(ulmk_thread_t *t)
 {
 	uint8_t p = t->priority;
 
@@ -97,7 +97,7 @@ static void bitmap_rt_enqueue(ul_thread_t *t)
 	t->state = UL_THREAD_STATE_READY;
 }
 
-static void bitmap_rt_dequeue(ul_thread_t *t)
+static void bitmap_rt_dequeue(ulmk_thread_t *t)
 {
 	uint8_t p = t->priority;
 
@@ -128,10 +128,10 @@ static void bitmap_rt_dequeue(ul_thread_t *t)
 		bitmap_clear(p);
 }
 
-static ul_thread_t *bitmap_rt_pick_next(void)
+static ulmk_thread_t *bitmap_rt_pick_next(void)
 {
 	uint8_t      p;
-	ul_thread_t *t;
+	ulmk_thread_t *t;
 
 	p = bitmap_first_set();
 	t = level_head[p];
@@ -152,12 +152,12 @@ static ul_thread_t *bitmap_rt_pick_next(void)
 	return t;
 }
 
-static ul_thread_t *bitmap_rt_peek_next(void)
+static ulmk_thread_t *bitmap_rt_peek_next(void)
 {
 	return level_head[bitmap_first_set()];
 }
 
-const ul_sched_class_t ul_bitmap_rt_class = {
+const ulmk_sched_class_t ulmk_bitmap_rt_class = {
 	.name      = "bitmap-rt",
 	.init      = bitmap_rt_init,
 	.enqueue   = bitmap_rt_enqueue,

@@ -1,4 +1,4 @@
-# ulipeMicroKernel
+# ulmk
 
 A small, seL4-inspired microkernel for automotive-grade embedded systems,
 targeting AURIX TriCore TC2xx/TC3xx.  Isolation is enforced by the hardware MPU
@@ -11,15 +11,15 @@ O(1) bitmap scheduler, synchronous IPC with priority inheritance.
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  ul_root_thread()                               │
+│  ulmk_root_thread()                               │
 │  board_services (console, clocks, …)            │  userspace
-│  components (hello_world, drivers, apps, …)     │  (UL_PRIV_DRIVER / USER)
+│  components (hello_world, drivers, apps, …)     │  (ULMK_PRIV_DRIVER / USER)
 ├─────────────────────────────────────────────────┤
 │  kernel/  — scheduler, IPC, memory, IRQ table   │  supervisor
 │  arch/    — context switch, MPU, tick, atomics  │
 ├─────────────────────────────────────────────────┤
-│  board/   — ul_board_init, ul_printk_char_out   │  hardware
-│  chip     — MEMORY block (external, UL_CHIP_DIR)│
+│  board/   — ulmk_board_init, ulmk_printk_char_out   │  hardware
+│  chip     — MEMORY block (external, ULMK_CHIP_DIR)│
 └─────────────────────────────────────────────────┘
 ```
 
@@ -30,7 +30,7 @@ Key properties:
 - **Synchronous IPC.**  Caller blocks until server replies.  Priority
   inheritance prevents priority inversion.
 - **Component model.**  Each feature is a component: a directory with a
-  `CMakeLists.txt` calling `ul_component_register()`.  The build auto-discovers
+  `CMakeLists.txt` calling `ulmk_component_register()`.  The build auto-discovers
   components in `components/` and in the optional `../ulmk_apps/` sibling.
 - **No weak symbols.**  Board and component sources provide strong definitions.
   A missing symbol is a link error, not a silent no-op.
@@ -40,10 +40,10 @@ Key properties:
 ## Application model
 
 ```
-ul_root_thread()                 ← provided by the ROOT_THREAD component
+ulmk_root_thread()                 ← provided by the ROOT_THREAD component
     board_services_init(info)    ← provided by the board (console, etc.)
     my_component_init()          ← provided by each enabled component
-    ul_thread_exit()
+    ulmk_thread_exit()
 ```
 
 See `docs/application_development_guide.md` for a complete walkthrough.
@@ -89,10 +89,10 @@ python3 tools/dev.py build --board /path/to/my_board
 CMake configure variables of interest:
 
 ```bash
--DUL_CHIP_DIR=boards/qemu_tc3xx           # board selection (default)
--DUL_CONFIG_MAX_THREADS=32                # TCB pool size
--DUL_CONFIG_HW_SYS_CLOCK_HZ=50000000     # system clock (Hz); match your board
--DUL_CONFIG_TICK_HZ=1000                  # scheduler tick rate
+-DULMK_CHIP_DIR=boards/qemu_tc3xx           # board selection (default)
+-DULMK_CONFIG_MAX_THREADS=32                # TCB pool size
+-DULMK_CONFIG_HW_SYS_CLOCK_HZ=50000000     # system clock (Hz); match your board
+-DULMK_CONFIG_TICK_HZ=1000                  # scheduler tick rate
 ```
 
 ### Run on QEMU (inside the container)
@@ -104,12 +104,12 @@ python3 tools/dev.py run
 Expected output:
 
 ```
-ulipeMicroKernel: kernel entry
+ulmk: kernel entry
 [DBG] sched init done
 ...
-ulipeMicroKernel: switching to root thread
-ulipeMicroKernel: hello from userspace — tick #0
-ulipeMicroKernel: hello from userspace — tick #1
+ulmk: switching to root thread
+ulmk: hello from userspace — tick #0
+ulmk: hello from userspace — tick #1
 ...
 ```
 
@@ -136,15 +136,15 @@ All 8 tests must pass before submitting a patch.
 CMakeLists.txt               top-level build orchestrator
 cmake/
   toolchain-tricore-gcc.cmake
-  component_api.cmake          ul_component_register, ul_components_finalize
+  component_api.cmake          ulmk_component_register, ulmk_components_finalize
   config.cmake                 6 kernel configuration symbols
-  linker_api.cmake             ul_generate_linker_script
+  linker_api.cmake             ulmk_generate_linker_script
   generate_ld.py               assembles the generated linker script
 kernel/                      platform-independent kernel
 arch/tricore/                TriCore TC1.6.x port
 boards/qemu_tc3xx/           QEMU AURIX TC397B board (CI platform)
 components/hello_world/      reference component (ROOT_THREAD)
-include/ul/microkernel.h     public API (all syscall wrappers)
+include/ulmk/microkernel.h     public API (all syscall wrappers)
 linker/                      arch-independent linker fragments
 stub/                        documentation-only stub templates
 tests/                       integration tests (standalone Makefiles)

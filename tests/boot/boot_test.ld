@@ -21,9 +21,9 @@ MEMORY {
     SRAM    (rwx) : ORIGIN = 0x70000000, LENGTH = 240K
 }
 
-_ul_kernel_stack_size = 4096;
-_ul_isr_stack_size    = 2048;
-_ul_csa_pool_frames   = 256;
+_ulmk_kernel_stack_size = 4096;
+_ulmk_isr_stack_size    = 2048;
+_ulmk_csa_pool_frames   = 256;
 
 SECTIONS {
     .startup ORIGIN(PFLASH) : {
@@ -42,9 +42,9 @@ SECTIONS {
         . = ALIGN(4);
     } > PFLASH
 
-    __ul_kernel_data_load = LOADADDR(.kernel_data);
+    __ulmk_kernel_data_load = LOADADDR(.kernel_data);
     .kernel_data : {
-        _ul_kernel_data_start = .;
+        _ulmk_kernel_data_start = .;
         *(.data .data.*)
         *(.sdata .sdata.*)
         /*
@@ -56,36 +56,36 @@ SECTIONS {
          */
         *(*)
         . = ALIGN(4);
-        _ul_kernel_data_end = .;
+        _ulmk_kernel_data_end = .;
     } > SRAM AT > PFLASH
 
     .bss (NOLOAD) : {
-        _ul_kernel_bss_start = .;
+        _ulmk_kernel_bss_start = .;
         *(.bss .bss.*)
         *(.kernel.bss)
         *(.sbss .sbss.*)
         *(COMMON)
         . = ALIGN(4);
-        _ul_kernel_bss_end = .;
+        _ulmk_kernel_bss_end = .;
     } > SRAM
-    PROVIDE(__bss_start = _ul_kernel_bss_start);
-    PROVIDE(__bss_end   = _ul_kernel_bss_end);
+    PROVIDE(__bss_start = _ulmk_kernel_bss_start);
+    PROVIDE(__bss_end   = _ulmk_kernel_bss_end);
 
     .csa_pool (NOLOAD) : ALIGN(64) {
-        _ul_csa_pool_start = .;
-        . += _ul_csa_pool_frames * 64;
-        _ul_csa_pool_end = .;
+        _ulmk_csa_pool_start = .;
+        . += _ulmk_csa_pool_frames * 64;
+        _ulmk_csa_pool_end = .;
     } > SRAM
 
     .stack (NOLOAD) : ALIGN(8) {
-        . += _ul_kernel_stack_size;
-        _ul_kernel_stack_top = .;
+        . += _ulmk_kernel_stack_size;
+        _ulmk_kernel_stack_top = .;
     } > SRAM
 
     .isr_stack (NOLOAD) : ALIGN(8) {
-        _ul_isr_stack_bottom = .;
-        . += _ul_isr_stack_size;
-        _ul_isr_stack_top = .;
+        _ulmk_isr_stack_bottom = .;
+        . += _ulmk_isr_stack_size;
+        _ulmk_isr_stack_top = .;
     } > SRAM
 
     /* Small-data anchors — point to base of SRAM; no real small-data in test. */
@@ -96,13 +96,13 @@ SECTIONS {
 
     PROVIDE(end      = __bss_end);
     PROVIDE(__HEAP     = __bss_end);
-    PROVIDE(__HEAP_END = ORIGIN(SRAM) + LENGTH(SRAM) - _ul_kernel_stack_size);
+    PROVIDE(__HEAP_END = ORIGIN(SRAM) + LENGTH(SRAM) - _ulmk_kernel_stack_size);
 
     /*
      * User pool: RAM from the top of the ISR stack (end of all static
      * sections) to the end of SRAM.  Must NOT start at __bss_end because
      * .csa_pool, .stack and .isr_stack are placed after .bss.
      */
-    _ul_user_pool_start = _ul_isr_stack_top;
-    _ul_user_pool_end   = ORIGIN(SRAM) + LENGTH(SRAM);
+    _ulmk_user_pool_start = _ulmk_isr_stack_top;
+    _ulmk_user_pool_end   = ORIGIN(SRAM) + LENGTH(SRAM);
 }

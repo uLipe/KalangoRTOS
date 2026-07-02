@@ -21,7 +21,7 @@ K&R style — opening brace on the same line as the statement, closing brace on 
 
 ```c
 /* functions: opening brace on its OWN line */
-int ul_thread_yield(void)
+int ulmk_thread_yield(void)
 {
 	...
 }
@@ -42,7 +42,7 @@ Single-statement bodies: **always** use braces.
 
 ## Spaces
 - Space after keywords: `if (`, `for (`, `while (`, `switch (`
-- No space between function name and `(`: `ul_thread_yield()`
+- No space between function name and `(`: `ulmk_thread_yield()`
 - Space around binary operators: `a + b`, `x = y`
 - No space inside parentheses: `(x + y)`, not `( x + y )`
 
@@ -50,8 +50,8 @@ Single-statement bodies: **always** use braces.
 - Functions and variables: `snake_case`
 - Macros and constants: `UPPER_SNAKE_CASE`
 - Typedefs: `snake_case_t`
-- Public API: prefixed with module name — `ul_thread_*`, `ul_ep_*`, `ul_irq_*`
-- Kernel-internal: no `ul_` prefix needed
+- Public API: prefixed with module name — `ulmk_thread_*`, `ulmk_ep_*`, `ulmk_irq_*`
+- Kernel-internal: no `ulmk_` prefix needed
 
 ## Comments
 Prefer `/* */` over `//`. Block comments:
@@ -77,8 +77,8 @@ No comments that just narrate what the code does.
 
 ## Typedefs
 Use `typedef` only for:
-- Opaque handles exposed in public API (`ul_ep_t`, `ul_tid_t`)
-- Function pointer types (`ul_irq_handler_t`)
-- Fixed-layout structs in public API (`ul_msg_t`, `ul_thread_attr_t`)
+- Opaque handles exposed in public API (`ulmk_ep_t`, `ulmk_tid_t`)
+- Function pointer types (`ulmk_irq_handler_t`)
+- Fixed-layout structs in public API (`ulmk_msg_t`, `ulmk_thread_attr_t`)
 
 Do **not** typedef internal structs; use `struct foo` directly.

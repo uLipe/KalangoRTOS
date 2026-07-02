@@ -54,7 +54,7 @@ def parse_flags(chip_memory_ld: str) -> dict:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="ulipeMicroKernel linker script generator")
+    ap = argparse.ArgumentParser(description="ulmk linker script generator")
     ap.add_argument("--chip-dir",   required=True)
     ap.add_argument("--arch-dir",   required=True)
     ap.add_argument("--kernel-dir", required=True)

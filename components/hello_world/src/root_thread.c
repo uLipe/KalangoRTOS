@@ -4,27 +4,27 @@
  *
  * Root thread entry — components/hello_world/src/root_thread.c
  *
- * Provides the ul_root_thread() entry point required by the kernel boot model.
+ * Provides the ulmk_root_thread() entry point required by the kernel boot model.
  * Initialisation order:
  *   1. board_services_init() — starts board hardware services (console, etc.)
  *      and returns with every service endpoint ready.
  *   2. hello_world_init()    — spawns the hello task.
- *   3. ul_thread_exit()      — root thread terminates; scheduler takes over.
+ *   3. ulmk_thread_exit()      — root thread terminates; scheduler takes over.
  *
  * board_services_init() is resolved at link time: the board provides a strong
  * definition; stub/board_services_stub.c provides a weak no-op fallback.
  */
 
-#include <ul/microkernel.h>
+#include <ulmk/microkernel.h>
 #include <hello_world.h>
 
 /* Resolved at link time by the board's board_services.c (strong) or
  * stub/board_services_stub.c (weak no-op). */
-void board_services_init(const ul_boot_info_t *info);
+void board_services_init(const ulmk_boot_info_t *info);
 
-void ul_root_thread(const ul_boot_info_t *info)
+void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
 	board_services_init(info);
 	hello_world_init(info);
-	ul_thread_exit();
+	ulmk_thread_exit();
 }

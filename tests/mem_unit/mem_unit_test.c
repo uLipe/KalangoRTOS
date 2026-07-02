@@ -13,7 +13,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
-#include "../../kernel/include/ul_mem_internal.h"
+#include "../../kernel/include/ulmk_mem_internal.h"
 
 static int g_pass;
 static int g_fail;
@@ -35,7 +35,7 @@ static uint8_t pool_buf[16384] __attribute__((aligned(64)));
 static void reset_pool(void)
 {
 	memset(pool_buf, 0xCC, sizeof(pool_buf));
-	ul_heap_init((uintptr_t)pool_buf, sizeof(pool_buf));
+	ulmk_heap_init((uintptr_t)pool_buf, sizeof(pool_buf));
 }
 
 static void test_basic_alloc(void)
@@ -45,11 +45,11 @@ static void test_basic_alloc(void)
 	printf("test_basic_alloc\n");
 	reset_pool();
 
-	p = ul_heap_alloc(64);
+	p = ulmk_heap_alloc(64);
 	CHECK(p != NULL, "alloc 64 bytes returns non-NULL");
 	CHECK(((uintptr_t)p % 64) == 0, "returned pointer is 64-byte aligned");
 
-	p = ul_heap_alloc(128);
+	p = ulmk_heap_alloc(128);
 	CHECK(p != NULL, "alloc 128 bytes returns non-NULL");
 	CHECK(((uintptr_t)p % 64) == 0, "128-byte alloc is 64-byte aligned");
 }
@@ -62,7 +62,7 @@ static void test_alloc_write(void)
 	printf("test_alloc_write\n");
 	reset_pool();
 
-	p = (uint8_t *)ul_heap_alloc(256);
+	p = (uint8_t *)ulmk_heap_alloc(256);
 	CHECK(p != NULL, "alloc 256 bytes");
 
 	for (i = 0; i < 256; i++)
@@ -85,12 +85,12 @@ static void test_free_and_realloc(void)
 	printf("test_free_and_realloc\n");
 	reset_pool();
 
-	p1 = ul_heap_alloc(64);
+	p1 = ulmk_heap_alloc(64);
 	CHECK(p1 != NULL, "initial alloc succeeds");
 
-	ul_heap_free(p1);
+	ulmk_heap_free(p1);
 
-	p2 = ul_heap_alloc(64);
+	p2 = ulmk_heap_alloc(64);
 	CHECK(p2 != NULL, "alloc after free succeeds");
 	(void)p2;
 }
@@ -107,20 +107,20 @@ static void test_coalescing(void)
 	printf("test_coalescing\n");
 	reset_pool();
 
-	p1 = ul_heap_alloc(64);
-	p2 = ul_heap_alloc(64);
-	p3 = ul_heap_alloc(64);
+	p1 = ulmk_heap_alloc(64);
+	p2 = ulmk_heap_alloc(64);
+	p3 = ulmk_heap_alloc(64);
 	CHECK(p1 && p2 && p3, "three 64-byte allocs succeed");
 
-	free_before = ul_heap_free_bytes();
-	ul_heap_free(p1);
-	ul_heap_free(p2);
-	ul_heap_free(p3);
-	free_after = ul_heap_free_bytes();
+	free_before = ulmk_heap_free_bytes();
+	ulmk_heap_free(p1);
+	ulmk_heap_free(p2);
+	ulmk_heap_free(p3);
+	free_after = ulmk_heap_free_bytes();
 
 	CHECK(free_after > free_before, "free bytes increased after releasing blocks");
 
-	big = ul_heap_alloc(128);
+	big = ulmk_heap_alloc(128);
 	CHECK(big != NULL, "alloc of larger region succeeds after coalescing");
 	(void)big;
 }
@@ -134,16 +134,16 @@ static void test_exhaustion(void)
 	printf("test_exhaustion\n");
 	reset_pool();
 
-	free_start = ul_heap_free_bytes();
+	free_start = ulmk_heap_free_bytes();
 	allocated  = 0u;
 
-	while ((p = ul_heap_alloc(64)) != NULL)
+	while ((p = ulmk_heap_alloc(64)) != NULL)
 		allocated += 64u;
 
 	CHECK(allocated > 0u, "allocated at least one block before exhaustion");
 	CHECK(allocated <= free_start, "allocated no more than pool capacity");
 
-	p = ul_heap_alloc(64);
+	p = ulmk_heap_alloc(64);
 	CHECK(p == NULL, "alloc returns NULL when pool is exhausted");
 }
 
@@ -152,7 +152,7 @@ static void test_null_free(void)
 	printf("test_null_free\n");
 	reset_pool();
 
-	ul_heap_free(NULL);
+	ulmk_heap_free(NULL);
 	CHECK(1, "free(NULL) does not crash");
 }
 
@@ -166,15 +166,15 @@ static void test_multiple_sizes(void)
 	reset_pool();
 
 	for (i = 0; i < 8; i++) {
-		ptrs[i] = ul_heap_alloc(sizes[i]);
+		ptrs[i] = ulmk_heap_alloc(sizes[i]);
 		CHECK(ptrs[i] != NULL, "alloc of varying size succeeds");
 	}
 
 	for (i = 0; i < 8; i += 2)
-		ul_heap_free(ptrs[i]);
+		ulmk_heap_free(ptrs[i]);
 
 	for (i = 0; i < 4; i++) {
-		void *p = ul_heap_alloc(64);
+		void *p = ulmk_heap_alloc(64);
 		CHECK(p != NULL, "realloc into freed holes succeeds");
 		(void)p;
 	}
@@ -191,7 +191,7 @@ static void test_alignment_varied_sizes(void)
 	reset_pool();
 
 	for (i = 0; i < n; i++) {
-		p = ul_heap_alloc((size_t)odd_sizes[i]);
+		p = ulmk_heap_alloc((size_t)odd_sizes[i]);
 		CHECK(p != NULL, "alloc of non-multiple-of-64 size");
 		CHECK(((uintptr_t)p % 64) == 0,
 		      "result is 64-byte aligned for odd size");
@@ -206,10 +206,10 @@ static void test_aligned_alloc(void)
 	printf("test_aligned_alloc\n");
 	reset_pool();
 
-	p = ul_heap_aligned_alloc(128, 64);
+	p = ulmk_heap_aligned_alloc(128, 64);
 	CHECK(p != NULL, "aligned_alloc(128, 64) returns non-NULL");
 	CHECK(((uintptr_t)p % 128) == 0, "result is 128-byte aligned");
-	ul_heap_free(p);
+	ulmk_heap_free(p);
 }
 
 int main(void)

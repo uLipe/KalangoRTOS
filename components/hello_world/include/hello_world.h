@@ -13,13 +13,13 @@
 #ifndef HELLO_WORLD_H
 #define HELLO_WORLD_H
 
-#include <ul/microkernel.h>
+#include <ulmk/microkernel.h>
 
 /*
- * Spawn the hello task thread.  Call once from ul_root_thread() after
+ * Spawn the hello task thread.  Call once from ulmk_root_thread() after
  * board_services_init() has been called.  Returns the thread ID; returns
- * UL_TID_INVALID on a duplicate call (double-init guard).
+ * ULMK_TID_INVALID on a duplicate call (double-init guard).
  */
-ul_tid_t hello_world_init(const ul_boot_info_t *info);
+ulmk_tid_t hello_world_init(const ulmk_boot_info_t *info);
 
 #endif /* HELLO_WORLD_H */

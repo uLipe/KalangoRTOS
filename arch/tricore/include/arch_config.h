@@ -16,35 +16,35 @@
  *
  * For QEMU Linumiz (boards/qemu_tc3xx) the following overrides apply:
  *
- *   -DUL_ARCH_SRC_STM0_SR0=0xF0038300u  (IR slot 0xC0, SRE at bit 10)
- *   -DUL_ARCH_SRC_SRE_BIT=10u
- *   -DUL_ARCH_RAM_BASE=0x70000000u       (CPU0 DSPR)
- *   -DUL_ARCH_IDLE_IS_WAIT=0             (NOP idle in QEMU)
- *   -DUL_ARCH_QEMU_VIRT_CONSOLE=1        (enable VIRT device DPR range)
+ *   -DULMK_ARCH_SRC_STM0_SR0=0xF0038300u  (IR slot 0xC0, SRE at bit 10)
+ *   -DULMK_ARCH_SRC_SRE_BIT=10u
+ *   -DULMK_ARCH_RAM_BASE=0x70000000u       (CPU0 DSPR)
+ *   -DULMK_ARCH_IDLE_IS_WAIT=0             (NOP idle in QEMU)
+ *   -DULMK_ARCH_QEMU_VIRT_CONSOLE=1        (enable VIRT device DPR range)
  */
 
-#ifndef UL_ARCH_TRICORE_CONFIG_H
-#define UL_ARCH_TRICORE_CONFIG_H
+#ifndef ULMK_ARCH_TRICORE_CONFIG_H
+#define ULMK_ARCH_TRICORE_CONFIG_H
 
 /* =========================================================================
  * MPU hardware limits (TC2xx data sheet, DCON0/DPRE/DPWE registers)
  * ========================================================================= */
 
-#define UL_ARCH_NUM_DPR		18	/* data protection ranges */
-#define UL_ARCH_NUM_CPR		10	/* code protection ranges */
-#define UL_ARCH_NUM_PRS		 4	/* protection register sets */
+#define ULMK_ARCH_NUM_DPR		18	/* data protection ranges */
+#define ULMK_ARCH_NUM_CPR		10	/* code protection ranges */
+#define ULMK_ARCH_NUM_PRS		 4	/* protection register sets */
 
 /*
  * Max MPU regions tracked per thread (code + data combined).
- * Must not exceed UL_ARCH_NUM_DPR + UL_ARCH_NUM_CPR.
+ * Must not exceed ULMK_ARCH_NUM_DPR + ULMK_ARCH_NUM_CPR.
  */
-#define UL_ARCH_MAX_REGIONS	12
+#define ULMK_ARCH_MAX_REGIONS	12
 
 /*
  * Minimum alignment for MPU region base and size.
  * TriCore DPR/CPR granularity is 8 bytes; we use 64 to match CSA frames.
  */
-#define UL_ARCH_REGION_ALIGN	64
+#define ULMK_ARCH_REGION_ALIGN	64
 
 /* =========================================================================
  * PSW initial values for fabricated thread contexts.
@@ -60,62 +60,62 @@
  * IS=0: thread uses its own stack (A10), not ISP.
  * GW=1: allow writes to small-data global registers (A0, A1, A8, A9).
  *
- * NOTE: ul_arch_ctx_init() reads the live kernel PSW and overrides IS=0
+ * NOTE: ulmk_arch_ctx_init() reads the live kernel PSW and overrides IS=0
  * and CDC=0 at thread creation time, so these constants are for reference
  * and test/tooling use only.
  * ========================================================================= */
-#define UL_ARCH_PSW_USER	0x00000180u	/* IO=0, IS=0, GW=1, CDE=1, CDC=0 */
-#define UL_ARCH_PSW_DRIVER	0x00000580u	/* IO=1, IS=0, GW=1, CDE=1, CDC=0 */
-#define UL_ARCH_PSW_SUPER	0x00000980u	/* IO=2, IS=0, GW=1, CDE=1, CDC=0 */
+#define ULMK_ARCH_PSW_USER	0x00000180u	/* IO=0, IS=0, GW=1, CDE=1, CDC=0 */
+#define ULMK_ARCH_PSW_DRIVER	0x00000580u	/* IO=1, IS=0, GW=1, CDE=1, CDC=0 */
+#define ULMK_ARCH_PSW_SUPER	0x00000980u	/* IO=2, IS=0, GW=1, CDE=1, CDC=0 */
 
 /* =========================================================================
  * CSA pool constraints
  * Each CSA frame is exactly 64 bytes; FCX/LCX encode segment + offset.
  * ========================================================================= */
 
-#define UL_ARCH_CSA_FRAME_SIZE	64
-#define UL_ARCH_CSA_MIN_COUNT	64	/* minimum frames in the pool */
+#define ULMK_ARCH_CSA_FRAME_SIZE	64
+#define ULMK_ARCH_CSA_MIN_COUNT	64	/* minimum frames in the pool */
 
 /* =========================================================================
  * STM0 peripheral registers
  *
  * Default: TC3xx / TC2xx hardware address 0xF0001000.
- * Override via -DUL_ARCH_STM0_BASE if a board maps it elsewhere.
+ * Override via -DULMK_ARCH_STM0_BASE if a board maps it elsewhere.
  * ========================================================================= */
 
-#ifndef UL_ARCH_STM0_BASE
-#define UL_ARCH_STM0_BASE	0xF0001000u
+#ifndef ULMK_ARCH_STM0_BASE
+#define ULMK_ARCH_STM0_BASE	0xF0001000u
 #endif
-#define UL_ARCH_STM0_TIM0	(UL_ARCH_STM0_BASE + 0x010u)
-#define UL_ARCH_STM0_CMP0	(UL_ARCH_STM0_BASE + 0x030u)
-#define UL_ARCH_STM0_CMCON	(UL_ARCH_STM0_BASE + 0x038u)
-#define UL_ARCH_STM0_ICR	(UL_ARCH_STM0_BASE + 0x03Cu)
-#define UL_ARCH_STM0_ISCR	(UL_ARCH_STM0_BASE + 0x040u)
+#define ULMK_ARCH_STM0_TIM0	(ULMK_ARCH_STM0_BASE + 0x010u)
+#define ULMK_ARCH_STM0_CMP0	(ULMK_ARCH_STM0_BASE + 0x030u)
+#define ULMK_ARCH_STM0_CMCON	(ULMK_ARCH_STM0_BASE + 0x038u)
+#define ULMK_ARCH_STM0_ICR	(ULMK_ARCH_STM0_BASE + 0x03Cu)
+#define ULMK_ARCH_STM0_ISCR	(ULMK_ARCH_STM0_BASE + 0x040u)
 
 /*
  * Service Request Control for STM0 channel 0.
  *
  * TC27x hardware: SRC_STM0SR0 = 0xF0038490, SRE at bit 12.
  * QEMU Linumiz (TC3xx): IR slot 0xC0 → 0xF0038300, SRE at bit 10.
- * Override via -DUL_ARCH_SRC_STM0_SR0 and -DUL_ARCH_SRC_SRE_BIT.
+ * Override via -DULMK_ARCH_SRC_STM0_SR0 and -DULMK_ARCH_SRC_SRE_BIT.
  */
-#ifndef UL_ARCH_SRC_STM0_SR0
-#define UL_ARCH_SRC_STM0_SR0	0xF0038490u
+#ifndef ULMK_ARCH_SRC_STM0_SR0
+#define ULMK_ARCH_SRC_STM0_SR0	0xF0038490u
 #endif
 
-#ifndef UL_ARCH_SRC_SRE_BIT
-#define UL_ARCH_SRC_SRE_BIT	12u
+#ifndef ULMK_ARCH_SRC_SRE_BIT
+#define ULMK_ARCH_SRC_SRE_BIT	12u
 #endif
 
 /*
  * STM SRPN assigned to the kernel tick interrupt.
  * Priority 1 is the lowest non-disabled priority; preempts code at CCPN=0.
  */
-#define UL_ARCH_TICK_SRPN	1u
+#define ULMK_ARCH_TICK_SRPN	1u
 
-/* SRC write value: SRPN=UL_ARCH_TICK_SRPN, TOS=0 (CPU0), SRE=1 */
-#ifndef UL_ARCH_SRC_CONFIG_VAL
-#define UL_ARCH_SRC_CONFIG_VAL	(UL_ARCH_TICK_SRPN | (1u << UL_ARCH_SRC_SRE_BIT))
+/* SRC write value: SRPN=ULMK_ARCH_TICK_SRPN, TOS=0 (CPU0), SRE=1 */
+#ifndef ULMK_ARCH_SRC_CONFIG_VAL
+#define ULMK_ARCH_SRC_CONFIG_VAL	(ULMK_ARCH_TICK_SRPN | (1u << ULMK_ARCH_SRC_SRE_BIT))
 #endif
 
 
@@ -126,42 +126,42 @@
  * which is the correct low-power idle on TriCore silicon.
  *
  * QEMU Linumiz treats a CPU in WAIT state as "no progress" and may stall
- * before the timer interrupt fires.  Use -DUL_ARCH_IDLE_IS_WAIT=0 in all
+ * before the timer interrupt fires.  Use -DULMK_ARCH_IDLE_IS_WAIT=0 in all
  * QEMU builds (NOP busy-wait keeps the instruction counter advancing).
  * ========================================================================= */
-#ifndef UL_ARCH_IDLE_IS_WAIT
-#define UL_ARCH_IDLE_IS_WAIT	1
+#ifndef ULMK_ARCH_IDLE_IS_WAIT
+#define ULMK_ARCH_IDLE_IS_WAIT	1
 #endif
 
 /* =========================================================================
  * Memory map — board-specific TC27x layout
- * Used by ul_arch_mpu_init() to configure static DPR/CPR ranges.
+ * Used by ulmk_arch_mpu_init() to configure static DPR/CPR ranges.
  * ========================================================================= */
 
-#ifndef UL_ARCH_FLASH_BASE
-#define UL_ARCH_FLASH_BASE	0x80000000u	/* TC27x NC PFlash alias */
+#ifndef ULMK_ARCH_FLASH_BASE
+#define ULMK_ARCH_FLASH_BASE	0x80000000u	/* TC27x NC PFlash alias */
 #endif
-#define UL_ARCH_FLASH_SIZE	0x00200000u	/* 2 MiB */
+#define ULMK_ARCH_FLASH_SIZE	0x00200000u	/* 2 MiB */
 
-#ifndef UL_ARCH_RAM_BASE
-#define UL_ARCH_RAM_BASE	0x70000000u	/* TC2xx/TC3xx CPU0 DSPR */
+#ifndef ULMK_ARCH_RAM_BASE
+#define ULMK_ARCH_RAM_BASE	0x70000000u	/* TC2xx/TC3xx CPU0 DSPR */
 #endif
-#ifndef UL_ARCH_RAM_SIZE
-#define UL_ARCH_RAM_SIZE	0x00100000u	/* 1 MiB */
+#ifndef ULMK_ARCH_RAM_SIZE
+#define ULMK_ARCH_RAM_SIZE	0x00100000u	/* 1 MiB */
 #endif
 
-#define UL_ARCH_PERIPH_BASE	0xF0000000u	/* TC2xx peripheral bus */
-#define UL_ARCH_PERIPH_SIZE	0x10000000u	/* 256 MiB */
+#define ULMK_ARCH_PERIPH_BASE	0xF0000000u	/* TC2xx peripheral bus */
+#define ULMK_ARCH_PERIPH_SIZE	0x10000000u	/* 256 MiB */
 
 /*
  * QEMU Linumiz virtual device (0xBF000000): putchar and exit registers.
- * Only used when UL_ARCH_QEMU_VIRT_CONSOLE is defined (QEMU builds).
+ * Only used when ULMK_ARCH_QEMU_VIRT_CONSOLE is defined (QEMU builds).
  */
-#ifndef UL_ARCH_QEMU_VIRT_CONSOLE
-#define UL_ARCH_QEMU_VIRT_CONSOLE	0
+#ifndef ULMK_ARCH_QEMU_VIRT_CONSOLE
+#define ULMK_ARCH_QEMU_VIRT_CONSOLE	0
 #endif
-#define UL_ARCH_QEMU_VIRT_BASE		0xBF000000u
-#define UL_ARCH_QEMU_VIRT_SIZE		0x00001000u
+#define ULMK_ARCH_QEMU_VIRT_BASE		0xBF000000u
+#define ULMK_ARCH_QEMU_VIRT_SIZE		0x00001000u
 
 /* =========================================================================
  * MPU CSFR addresses — TC2xx data sheet (CPU vol. §3.4)
@@ -185,37 +185,37 @@
  * ========================================================================= */
 
 /* DPR lower/upper at slot n */
-#define UL_ARCH_CSFR_DPR_L(n)	(0xC000u + (n) * 8u)
-#define UL_ARCH_CSFR_DPR_U(n)	(0xC004u + (n) * 8u)
+#define ULMK_ARCH_CSFR_DPR_L(n)	(0xC000u + (n) * 8u)
+#define ULMK_ARCH_CSFR_DPR_U(n)	(0xC004u + (n) * 8u)
 
 /* CPR lower/upper at slot n */
-#define UL_ARCH_CSFR_CPR_L(n)	(0xD000u + (n) * 8u)
-#define UL_ARCH_CSFR_CPR_U(n)	(0xD004u + (n) * 8u)
+#define ULMK_ARCH_CSFR_CPR_L(n)	(0xD000u + (n) * 8u)
+#define ULMK_ARCH_CSFR_CPR_U(n)	(0xD004u + (n) * 8u)
 
 /* Enable registers (constant CSFR addresses) */
-#define UL_ARCH_CSFR_CPRE_0	0xE000u
-#define UL_ARCH_CSFR_CPRE_1	0xE004u
-#define UL_ARCH_CSFR_CPRE_2	0xE008u
-#define UL_ARCH_CSFR_CPRE_3	0xE00Cu
+#define ULMK_ARCH_CSFR_CPRE_0	0xE000u
+#define ULMK_ARCH_CSFR_CPRE_1	0xE004u
+#define ULMK_ARCH_CSFR_CPRE_2	0xE008u
+#define ULMK_ARCH_CSFR_CPRE_3	0xE00Cu
 
-#define UL_ARCH_CSFR_DPRE_0	0xE010u
-#define UL_ARCH_CSFR_DPRE_1	0xE014u
-#define UL_ARCH_CSFR_DPRE_2	0xE018u
-#define UL_ARCH_CSFR_DPRE_3	0xE01Cu
+#define ULMK_ARCH_CSFR_DPRE_0	0xE010u
+#define ULMK_ARCH_CSFR_DPRE_1	0xE014u
+#define ULMK_ARCH_CSFR_DPRE_2	0xE018u
+#define ULMK_ARCH_CSFR_DPRE_3	0xE01Cu
 
-#define UL_ARCH_CSFR_DPWE_0	0xE020u
-#define UL_ARCH_CSFR_DPWE_1	0xE024u
-#define UL_ARCH_CSFR_DPWE_2	0xE028u
-#define UL_ARCH_CSFR_DPWE_3	0xE02Cu
+#define ULMK_ARCH_CSFR_DPWE_0	0xE020u
+#define ULMK_ARCH_CSFR_DPWE_1	0xE024u
+#define ULMK_ARCH_CSFR_DPWE_2	0xE028u
+#define ULMK_ARCH_CSFR_DPWE_3	0xE02Cu
 
-#define UL_ARCH_CSFR_CPXE_0	0xE040u
-#define UL_ARCH_CSFR_CPXE_1	0xE044u
-#define UL_ARCH_CSFR_CPXE_2	0xE048u
-#define UL_ARCH_CSFR_CPXE_3	0xE04Cu
+#define ULMK_ARCH_CSFR_CPXE_0	0xE040u
+#define ULMK_ARCH_CSFR_CPXE_1	0xE044u
+#define ULMK_ARCH_CSFR_CPXE_2	0xE048u
+#define ULMK_ARCH_CSFR_CPXE_3	0xE04Cu
 
 /* SYSCON.PROTEN = bit 1: enables the protection system */
-#define UL_ARCH_CSFR_SYSCON	0xFE14u
-#define UL_ARCH_SYSCON_PROTEN	(1u << 1)
+#define ULMK_ARCH_CSFR_SYSCON	0xFE14u
+#define ULMK_ARCH_SYSCON_PROTEN	(1u << 1)
 
 /*
  * Static DPR/CPR slot assignments:
@@ -242,38 +242,38 @@
  *   0 = kernel PRS (used by root thread and kernel internals)
  *   1 = user PRS  (all non-kernel threads)
  */
-#define UL_ARCH_MPU_KERNEL_DPR	0
-#define UL_ARCH_MPU_SRAM_DPR	1  /* SRAM (was PERIPH_DPR — repurposed) */
-#define UL_ARCH_MPU_FLASH_DPR	2
-#define UL_ARCH_MPU_VIRT_DPR	3  /* console + full peripheral range */
-#define UL_ARCH_MPU_USER_DPR_BASE 6
-#define UL_ARCH_MPU_CPR_ALL	0
+#define ULMK_ARCH_MPU_KERNEL_DPR	0
+#define ULMK_ARCH_MPU_SRAM_DPR	1  /* SRAM (was PERIPH_DPR — repurposed) */
+#define ULMK_ARCH_MPU_FLASH_DPR	2
+#define ULMK_ARCH_MPU_VIRT_DPR	3  /* console + full peripheral range */
+#define ULMK_ARCH_MPU_USER_DPR_BASE 6
+#define ULMK_ARCH_MPU_CPR_ALL	0
 
 /* PSW.PRS value for non-kernel threads */
-#define UL_ARCH_PRS_USER	1u
+#define ULMK_ARCH_PRS_USER	1u
 
 /* =========================================================================
  * Syscall ABI — register assignments for SYSCALL instruction
  * ========================================================================= */
 
-#define UL_ARCH_SYSCALL_NR_REG	 "d15"
-#define UL_ARCH_SYSCALL_ARG0_REG "d4"
-#define UL_ARCH_SYSCALL_ARG1_REG "d5"
-#define UL_ARCH_SYSCALL_ARG2_REG "d6"
-#define UL_ARCH_SYSCALL_ARG3_REG "d7"
-#define UL_ARCH_SYSCALL_RET_REG  "d2"
+#define ULMK_ARCH_SYSCALL_NR_REG	 "d15"
+#define ULMK_ARCH_SYSCALL_ARG0_REG "d4"
+#define ULMK_ARCH_SYSCALL_ARG1_REG "d5"
+#define ULMK_ARCH_SYSCALL_ARG2_REG "d6"
+#define ULMK_ARCH_SYSCALL_ARG3_REG "d7"
+#define ULMK_ARCH_SYSCALL_RET_REG  "d2"
 
 /* =========================================================================
  * TriCore CSFR addresses used by the arch port
  * ========================================================================= */
 
-#define UL_ARCH_CSFR_BTV	0xFE24u	/* Base Trap Vector */
-#define UL_ARCH_CSFR_BIV	0xFE20u	/* Base Interrupt Vector */
-#define UL_ARCH_CSFR_ISP	0xFE28u	/* Interrupt Stack Pointer */
-#define UL_ARCH_CSFR_ICR	0xFE2Cu	/* Interrupt Control Register */
-#define UL_ARCH_CSFR_FCX	0xFE38u	/* Free Context Pointer */
-#define UL_ARCH_CSFR_LCX	0xFE3Cu	/* Last Context Pointer */
-#define UL_ARCH_CSFR_PCXI	0xFE00u	/* Previous Context Pointer */
-#define UL_ARCH_CSFR_PSW	0xFE04u	/* Program Status Word */
+#define ULMK_ARCH_CSFR_BTV	0xFE24u	/* Base Trap Vector */
+#define ULMK_ARCH_CSFR_BIV	0xFE20u	/* Base Interrupt Vector */
+#define ULMK_ARCH_CSFR_ISP	0xFE28u	/* Interrupt Stack Pointer */
+#define ULMK_ARCH_CSFR_ICR	0xFE2Cu	/* Interrupt Control Register */
+#define ULMK_ARCH_CSFR_FCX	0xFE38u	/* Free Context Pointer */
+#define ULMK_ARCH_CSFR_LCX	0xFE3Cu	/* Last Context Pointer */
+#define ULMK_ARCH_CSFR_PCXI	0xFE00u	/* Previous Context Pointer */
+#define ULMK_ARCH_CSFR_PSW	0xFE04u	/* Program Status Word */
 
-#endif /* UL_ARCH_TRICORE_CONFIG_H */
+#endif /* ULMK_ARCH_TRICORE_CONFIG_H */

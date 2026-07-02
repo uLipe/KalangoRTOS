@@ -1,5 +1,5 @@
 # =============================================================================
-# ulipeMicroKernel — TriCore development environment
+# ulmk — TriCore development environment
 #
 # Two stages:
 #   toolchain  — GCC + CMake + Ninja  (~5 min, cacheable layer)
@@ -21,7 +21,7 @@
 # -----------------------------------------------------------------------------
 FROM ubuntu:24.04 AS toolchain
 
-LABEL description="ulipeMicroKernel TriCore toolchain"
+LABEL description="ulmk TriCore toolchain"
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

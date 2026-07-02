@@ -1,4 +1,4 @@
-# ulipeMicroKernel — Linker Script Specification
+# ulmk — Linker Script Specification
 
 **Version:** 0.2
 **Target:** Three-layer linker model — kernel-common / arch / chip (chip input is external)
@@ -75,8 +75,8 @@ concerns and only passes a defined contract to the next:
 - App code sections and memory domain sections are **not hardcoded** anywhere.
   They are generated as snippets from CMake declarations and concatenated at
   configure time.
-- All symbols exported to C code use the `_ul_` prefix.
-- MPU alignment is parameterised via `UL_MPU_ALIGN`, defined in the chip input.
+- All symbols exported to C code use the `_ulmk_` prefix.
+- MPU alignment is parameterised via `ULMK_MPU_ALIGN`, defined in the chip input.
 
 ---
 
@@ -103,7 +103,7 @@ arch/tricore/linker/                 # LAYER 2: arch-owned, TriCore-specific
 └── small_data.ld.in                 # small-data ABI anchors (A0/A1/A8/A9)
 
 <chip_dir>/                          # LAYER 3: chip input (EXTERNAL, not in repo)
-├── memory.ld                        # MEMORY block + UL_MPU_ALIGN + HAVE_* flags
+├── memory.ld                        # MEMORY block + ULMK_MPU_ALIGN + HAVE_* flags
 └── bmhd.ld.in                       # optional: chip boot header section
 ```
 
@@ -156,10 +156,10 @@ Must define the `MEMORY {}` block with these abstract region names:
 Must also define these linker variables:
 
 ```ld
-UL_MPU_ALIGN         = <value>;   /* MPU region boundary alignment */
-UL_KERNEL_STACK_SIZE = <value>;   /* kernel supervisor stack, bytes */
-UL_ISR_STACK_SIZE    = <value>;   /* ISR stack (ISP), bytes */
-UL_CSA_POOL_SIZE     = <value>;   /* CSA pool size, bytes (only if HAVE_CSA) */
+ULMK_MPU_ALIGN         = <value>;   /* MPU region boundary alignment */
+ULMK_KERNEL_STACK_SIZE = <value>;   /* kernel supervisor stack, bytes */
+ULMK_ISR_STACK_SIZE    = <value>;   /* ISR stack (ISP), bytes */
+ULMK_CSA_POOL_SIZE     = <value>;   /* CSA pool size, bytes (only if HAVE_CSA) */
 ```
 
 And optionally activate arch fragments via feature flags:
@@ -195,7 +195,7 @@ This is the only place `OUTPUT_FORMAT` and `OUTPUT_ARCH` appear. The chip input
 must not redefine them.
 
 **`csa_pool.ld.in`** — included by the generator when `HAVE_CSA = 1` in the chip
-`memory.ld`. Defines the CSA pool section using `UL_CSA_POOL_SIZE` (see §4.5).
+`memory.ld`. Defines the CSA pool section using `ULMK_CSA_POOL_SIZE` (see §4.5).
 
 **`small_data.ld.in`** — included by the generator when `HAVE_SMALL_DATA = 1`.
 Defines `.sdata`/`.sbss` and exports the four GP anchor symbols (see §4.6).
@@ -213,7 +213,7 @@ The arch layer must **not** contain any concrete memory addresses. It may refere
 
 Reserves flash space for the CPU trap/exception vector table and the interrupt vector
 table. The kernel writes the addresses of `BTV` and `BIV` into hardware registers
-during `ul_arch_init()` — the linker symbols tell it where those tables are.
+during `ulmk_arch_init()` — the linker symbols tell it where those tables are.
 
 ```ld
 /* --- Arch boot header (only if HAVE_BMHD) --- */
@@ -225,14 +225,14 @@ during `ul_arch_init()` — the linker symbols tell it where those tables are.
 /* --- Trap vector table --- */
 
 .trap_table : ALIGN(256) {
-    _ul_trap_table = .;
+    _ulmk_trap_table = .;
     KEEP(*(.trap_table))
 } > KERNEL_FLASH
 
 /* --- Interrupt vector table --- */
 
 .int_table : ALIGN(256) {
-    _ul_int_table = .;
+    _ulmk_int_table = .;
     KEEP(*(.int_table))
 } > KERNEL_FLASH
 ```
@@ -241,8 +241,8 @@ during `ul_arch_init()` — the linker symbols tell it where those tables are.
 
 | Symbol | Type | Description |
 |--------|------|-------------|
-| `_ul_trap_table` | address | Base address of the trap vector table (→ BTV register) |
-| `_ul_int_table`  | address | Base address of the interrupt vector table (→ BIV register) |
+| `_ulmk_trap_table` | address | Base address of the trap vector table (→ BTV register) |
+| `_ulmk_int_table`  | address | Base address of the interrupt vector table (→ BIV register) |
 
 **Notes:**
 
@@ -265,16 +265,16 @@ in supervisor mode; no MPU region is needed to allow the kernel to access its ow
 
 ```ld
 .kernel_text : ALIGN(32) {
-    _ul_kernel_text_start = .;
-    *(.text.ul_arch_*)
-    *(.text.ul_kernel_*)
-    *(.text.ul_sched_*)
-    *(.text.ul_ipc_*)
-    *(.text.ul_irq_*)
-    *(.text.ul_mem_*)
-    *(.text.ul_notif_*)
+    _ulmk_kernel_text_start = .;
+    *(.text.ulmk_arch_*)
+    *(.text.ulmk_kernel_*)
+    *(.text.ulmk_sched_*)
+    *(.text.ulmk_ipc_*)
+    *(.text.ulmk_irq_*)
+    *(.text.ulmk_mem_*)
+    *(.text.ulmk_notif_*)
     *(.rodata .rodata.*)
-    _ul_kernel_text_end = .;
+    _ulmk_kernel_text_end = .;
 } > KERNEL_FLASH
 ```
 
@@ -282,14 +282,14 @@ in supervisor mode; no MPU region is needed to allow the kernel to access its ow
 
 | Symbol | Description |
 |--------|-------------|
-| `_ul_kernel_text_start` | Start of kernel executable code |
-| `_ul_kernel_text_end`   | End of kernel executable code |
+| `_ulmk_kernel_text_start` | Start of kernel executable code |
+| `_ulmk_kernel_text_end`   | End of kernel executable code |
 
 **Notes:**
 
 - The section input patterns match the function name prefixes enforced by the
-  arch and kernel coding conventions (all internal functions use `ul_arch_*`,
-  `ul_kernel_*`, etc.).
+  arch and kernel coding conventions (all internal functions use `ulmk_arch_*`,
+  `ulmk_kernel_*`, etc.).
 - Rodata is merged here rather than in a separate section; this simplifies the
   MPU config for supervisor mode (one range covers code + constants).
 - The `ALIGN(32)` satisfies TriCore's 32-byte instruction fetch granularity.
@@ -303,25 +303,25 @@ in supervisor mode; no MPU region is needed to allow the kernel to access its ow
 Kernel mutable state. Supervisor-only; no MPU region is exposed to userspace.
 
 ```ld
-.kernel_data : ALIGN(UL_MPU_ALIGN) {
-    _ul_kernel_data_start = .;
-    *(.data.ul_arch_*)
-    *(.data.ul_kernel_*)
-    *(.data.ul_sched_*)
-    *(.data.ul_ipc_*)
-    *(.data.ul_irq_*)
-    *(.data.ul_mem_*)
-    *(.data.ul_notif_*)
-    *(.bss.ul_arch_*)
-    *(.bss.ul_kernel_*)
-    *(.bss.ul_sched_*)
-    *(.bss.ul_ipc_*)
-    *(.bss.ul_irq_*)
-    *(.bss.ul_mem_*)
-    *(.bss.ul_notif_*)
+.kernel_data : ALIGN(ULMK_MPU_ALIGN) {
+    _ulmk_kernel_data_start = .;
+    *(.data.ulmk_arch_*)
+    *(.data.ulmk_kernel_*)
+    *(.data.ulmk_sched_*)
+    *(.data.ulmk_ipc_*)
+    *(.data.ulmk_irq_*)
+    *(.data.ulmk_mem_*)
+    *(.data.ulmk_notif_*)
+    *(.bss.ulmk_arch_*)
+    *(.bss.ulmk_kernel_*)
+    *(.bss.ulmk_sched_*)
+    *(.bss.ulmk_ipc_*)
+    *(.bss.ulmk_irq_*)
+    *(.bss.ulmk_mem_*)
+    *(.bss.ulmk_notif_*)
     COMMON
-    . = ALIGN(UL_MPU_ALIGN);
-    _ul_kernel_data_end = .;
+    . = ALIGN(ULMK_MPU_ALIGN);
+    _ulmk_kernel_data_end = .;
 } > KERNEL_RAM
 ```
 
@@ -329,14 +329,14 @@ Kernel mutable state. Supervisor-only; no MPU region is exposed to userspace.
 
 | Symbol | Description |
 |--------|-------------|
-| `_ul_kernel_data_start` | Start of kernel data/bss region |
-| `_ul_kernel_data_end`   | End of kernel data/bss region |
+| `_ulmk_kernel_data_start` | Start of kernel data/bss region |
+| `_ulmk_kernel_data_end`   | End of kernel data/bss region |
 
 **Notes:**
 
-- `startup.S` uses `_ul_kernel_data_start` / `_ul_kernel_data_end` to zero the bss
+- `startup.S` uses `_ulmk_kernel_data_start` / `_ulmk_kernel_data_end` to zero the bss
   and copy initialised data from flash LMA to RAM VMA.
-- Aligned to `UL_MPU_ALIGN` on both ends so the arch can optionally configure
+- Aligned to `ULMK_MPU_ALIGN` on both ends so the arch can optionally configure
   a single read-only MPU range that locks kernel RAM from userspace.
 
 ---
@@ -349,39 +349,39 @@ Two stacks for kernel privilege modes. NOLOAD: they are not initialised at boot.
 
 ```ld
 .kernel_stack (NOLOAD) : ALIGN(8) {
-    _ul_kernel_stack_bottom = .;
-    . += UL_KERNEL_STACK_SIZE;
-    _ul_kernel_stack_top = .;
+    _ulmk_kernel_stack_bottom = .;
+    . += ULMK_KERNEL_STACK_SIZE;
+    _ulmk_kernel_stack_top = .;
 } > KERNEL_RAM
 
 .isr_stack (NOLOAD) : ALIGN(8) {
-    _ul_isr_stack_bottom = .;
-    . += UL_ISR_STACK_SIZE;
-    _ul_isr_stack_top = .;
+    _ulmk_isr_stack_bottom = .;
+    . += ULMK_ISR_STACK_SIZE;
+    _ulmk_isr_stack_top = .;
 } > KERNEL_RAM
 ```
 
-`UL_KERNEL_STACK_SIZE` and `UL_ISR_STACK_SIZE` must be defined by the arch `memory.ld`
+`ULMK_KERNEL_STACK_SIZE` and `ULMK_ISR_STACK_SIZE` must be defined by the arch `memory.ld`
 or by the top-level CMakeLists before the linker is assembled. Defaults:
 
 ```
-UL_KERNEL_STACK_SIZE = 4096;
-UL_ISR_STACK_SIZE    = 2048;
+ULMK_KERNEL_STACK_SIZE = 4096;
+ULMK_ISR_STACK_SIZE    = 2048;
 ```
 
 **Exported symbols:**
 
 | Symbol | Description |
 |--------|-------------|
-| `_ul_kernel_stack_bottom` | Bottom of the kernel (supervisor) stack |
-| `_ul_kernel_stack_top`    | Top of the kernel stack; initial SP |
-| `_ul_isr_stack_bottom`    | Bottom of the ISR stack (TriCore ISP) |
-| `_ul_isr_stack_top`       | Top of the ISR stack; initial ISP |
+| `_ulmk_kernel_stack_bottom` | Bottom of the kernel (supervisor) stack |
+| `_ulmk_kernel_stack_top`    | Top of the kernel stack; initial SP |
+| `_ulmk_isr_stack_bottom`    | Bottom of the ISR stack (TriCore ISP) |
+| `_ulmk_isr_stack_top`       | Top of the ISR stack; initial ISP |
 
 **Notes:**
 
-- `startup.S` loads `_ul_kernel_stack_top` into the stack pointer (SP / A10)
-  and `_ul_isr_stack_top` into the interrupt stack pointer (ISP / A11) before
+- `startup.S` loads `_ulmk_kernel_stack_top` into the stack pointer (SP / A10)
+  and `_ulmk_isr_stack_top` into the interrupt stack pointer (ISP / A11) before
   calling any C code.
 - Keeping them separate allows stack-overrun detection: if the ISR stack
   overflows into the kernel stack, the kernel stack sentinel catches it.
@@ -400,24 +400,24 @@ and 64-byte aligned.
 
 ```ld
 .csa_pool (NOLOAD) : ALIGN(64) {
-    _ul_csa_pool_start = .;
-    . += UL_CSA_POOL_SIZE;
-    _ul_csa_pool_end = .;
+    _ulmk_csa_pool_start = .;
+    . += ULMK_CSA_POOL_SIZE;
+    _ulmk_csa_pool_end = .;
 } > KERNEL_RAM
 ```
 
 Default:
 
 ```
-UL_CSA_POOL_SIZE = 16384;   /* 256 CSAs × 64 bytes */
+ULMK_CSA_POOL_SIZE = 16384;   /* 256 CSAs × 64 bytes */
 ```
 
 **Exported symbols:**
 
 | Symbol | Description |
 |--------|-------------|
-| `_ul_csa_pool_start` | First CSA frame address (written into FCX by startup.S) |
-| `_ul_csa_pool_end`   | One-past-last CSA frame (used to compute LCX) |
+| `_ulmk_csa_pool_start` | First CSA frame address (written into FCX by startup.S) |
+| `_ulmk_csa_pool_end`   | One-past-last CSA frame (used to compute LCX) |
 
 **Notes:**
 
@@ -428,7 +428,7 @@ UL_CSA_POOL_SIZE = 16384;   /* 256 CSAs × 64 bytes */
 - `startup.S` must initialise the CSA free list (FCX/LCX/PCX chain) **before**
   enabling interrupts or calling any C function. The linker symbols provide the
   bounds.
-- `_ul_csa_pool_start` must lie in a physical SRAM segment whose segment number
+- `_ulmk_csa_pool_start` must lie in a physical SRAM segment whose segment number
   can be encoded in the 4-bit PCXI.PCXS field. DSPR of Core 0 (`0x70000000`) is
   always segment 7, which is valid.
 
@@ -483,15 +483,15 @@ _small_data4_ = ADDR(.sdata2) + 0x8000;   /* alias; A9 mirrors A1 range */
 
 **File:** `linker/kernel/domain_table.ld.in`
 
-Collects all `UL_DEFINE_DOMAIN(name, perms)` descriptors into a contiguous read-only
+Collects all `ULMK_DEFINE_DOMAIN(name, perms)` descriptors into a contiguous read-only
 table in flash. The kernel iterates this table at boot to register every declared
 memory domain.
 
 ```ld
 .domain_table : ALIGN(4) {
-    _ul_domain_table_start = .;
+    _ulmk_domain_table_start = .;
     KEEP(*(.domain_table))
-    _ul_domain_table_end = .;
+    _ulmk_domain_table_end = .;
 } > KERNEL_FLASH
 ```
 
@@ -499,15 +499,15 @@ memory domain.
 
 | Symbol | Description |
 |--------|-------------|
-| `_ul_domain_table_start` | Start of the domain descriptor array |
-| `_ul_domain_table_end`   | One-past-end of the domain descriptor array |
+| `_ulmk_domain_table_start` | Start of the domain descriptor array |
+| `_ulmk_domain_table_end`   | One-past-end of the domain descriptor array |
 
 **Notes:**
 
 - `KEEP` is mandatory: descriptors have no direct references from other code and
   would be eliminated by `--gc-sections` otherwise.
 - The kernel computes the number of registered domains at boot as
-  `(_ul_domain_table_end - _ul_domain_table_start) / sizeof(ul_domain_desc_t)`.
+  `(_ulmk_domain_table_end - _ulmk_domain_table_start) / sizeof(ulmk_domain_desc_t)`.
 - This table is strictly read-only after boot. Writing to it from userspace is
   prevented by the MPU configuration of `.kernel_text` (which covers flash).
 
@@ -521,10 +521,10 @@ Marks the remaining KERNEL_RAM after all static allocations as the physical
 memory pool managed by the kernel's physical allocator.
 
 ```ld
-.user_pool (NOLOAD) : ALIGN(UL_MPU_ALIGN) {
-    _ul_user_pool_start = .;
+.user_pool (NOLOAD) : ALIGN(ULMK_MPU_ALIGN) {
+    _ulmk_user_pool_start = .;
     . = ORIGIN(KERNEL_RAM) + LENGTH(KERNEL_RAM);
-    _ul_user_pool_end = .;
+    _ulmk_user_pool_end = .;
 } > KERNEL_RAM
 ```
 
@@ -532,14 +532,14 @@ memory pool managed by the kernel's physical allocator.
 
 | Symbol | Description |
 |--------|-------------|
-| `_ul_user_pool_start` | First byte of the physical allocator pool |
-| `_ul_user_pool_end`   | One-past-end of the physical allocator pool |
+| `_ulmk_user_pool_start` | First byte of the physical allocator pool |
+| `_ulmk_user_pool_end`   | One-past-end of the physical allocator pool |
 
 **Notes:**
 
-- The physical allocator (`ul_arch_phys_alloc`) uses these symbols as its entire
+- The physical allocator (`ulmk_arch_phys_alloc`) uses these symbols as its entire
   managed range. It does not know about any other memory region.
-- Thread stacks, `ul_mem_map(ANON)` buffers, and IPC endpoint structures are all
+- Thread stacks, `ulmk_mem_map(ANON)` buffers, and IPC endpoint structures are all
   carved from this pool.
 - Dynamic domain data sections (`.domain_NAME`) placed in `KERNEL_RAM` by app
   snippets are laid out **before** `.user_pool`, so the pool naturally starts
@@ -559,16 +559,16 @@ fragments and `user_pool`.
 
 **Template:** `linker/snippets/app_code.ld.in`
 
-One instance per app registered with `ul_add_app()` in CMake.
+One instance per app registered with `ulmk_add_app()` in CMake.
 
 ```ld
 /* Generated for app: @APP_NAME@ */
-.app_@APP_NAME@_text : ALIGN(UL_MPU_ALIGN) {
-    _ul_app_@APP_NAME@_text_start = .;
+.app_@APP_NAME@_text : ALIGN(ULMK_MPU_ALIGN) {
+    _ulmk_app_@APP_NAME@_text_start = .;
     *(.text.@APP_NAME@.*)
     *(.rodata.@APP_NAME@.*)
-    . = ALIGN(UL_MPU_ALIGN);
-    _ul_app_@APP_NAME@_text_end = .;
+    . = ALIGN(ULMK_MPU_ALIGN);
+    _ulmk_app_@APP_NAME@_text_end = .;
 } > KERNEL_FLASH
 ```
 
@@ -578,18 +578,18 @@ Parameters: `@APP_NAME@` — replaced by the app name string.
 
 | Symbol | Description |
 |--------|-------------|
-| `_ul_app_NAME_text_start` | Start of the app's executable code region |
-| `_ul_app_NAME_text_end`   | End of the app's executable code region |
+| `_ulmk_app_NAME_text_start` | Start of the app's executable code region |
+| `_ulmk_app_NAME_text_end`   | End of the app's executable code region |
 
 **Notes:**
 
 - The input section patterns (`.text.NAME.*`, `.rodata.NAME.*`) are produced when
   the compiler flag `-ffunction-sections -fdata-sections` is combined with the
   `UL_APP_SECTION(name)` macro (see §8). Each TU in the app is compiled with
-  `-DUL_APP_NAME=asclin_driver`, and the macro redirects `.text` into
+  `-DULMK_APP_NAME=asclin_driver`, and the macro redirects `.text` into
   `.text.asclin_driver.<function>`.
 - The app's code section boundaries are registered with the kernel's MPU manager
-  at boot by scanning `_ul_domain_table_*` and matching names.
+  at boot by scanning `_ulmk_domain_table_*` and matching names.
 
 ---
 
@@ -597,16 +597,16 @@ Parameters: `@APP_NAME@` — replaced by the app name string.
 
 **Template:** `linker/snippets/domain_data.ld.in`
 
-One instance per domain registered with `ul_add_domain()` in CMake.
+One instance per domain registered with `ulmk_add_domain()` in CMake.
 
 ```ld
 /* Generated for domain: @DOMAIN_NAME@ */
-.domain_@DOMAIN_NAME@ (NOLOAD) : ALIGN(UL_MPU_ALIGN) {
-    _ul_domain_@DOMAIN_NAME@_start = .;
+.domain_@DOMAIN_NAME@ (NOLOAD) : ALIGN(ULMK_MPU_ALIGN) {
+    _ulmk_domain_@DOMAIN_NAME@_start = .;
     *(.domain_@DOMAIN_NAME@.data .domain_@DOMAIN_NAME@.data.*)
     *(.domain_@DOMAIN_NAME@.bss  .domain_@DOMAIN_NAME@.bss.*)
-    . = ALIGN(UL_MPU_ALIGN);
-    _ul_domain_@DOMAIN_NAME@_end = .;
+    . = ALIGN(ULMK_MPU_ALIGN);
+    _ulmk_domain_@DOMAIN_NAME@_end = .;
 } > KERNEL_RAM
 ```
 
@@ -615,12 +615,12 @@ overridden to `SHARED_RAM`:
 
 ```ld
 /* Generated for shared domain: @DOMAIN_NAME@ */
-.domain_@DOMAIN_NAME@ (NOLOAD) : ALIGN(UL_MPU_ALIGN) {
-    _ul_domain_@DOMAIN_NAME@_start = .;
+.domain_@DOMAIN_NAME@ (NOLOAD) : ALIGN(ULMK_MPU_ALIGN) {
+    _ulmk_domain_@DOMAIN_NAME@_start = .;
     *(.domain_@DOMAIN_NAME@.data .domain_@DOMAIN_NAME@.data.*)
     *(.domain_@DOMAIN_NAME@.bss  .domain_@DOMAIN_NAME@.bss.*)
-    . = ALIGN(UL_MPU_ALIGN);
-    _ul_domain_@DOMAIN_NAME@_end = .;
+    . = ALIGN(ULMK_MPU_ALIGN);
+    _ulmk_domain_@DOMAIN_NAME@_end = .;
 } > SHARED_RAM
 ```
 
@@ -630,8 +630,8 @@ Parameters: `@DOMAIN_NAME@` — replaced by the domain name string.
 
 | Symbol | Description |
 |--------|-------------|
-| `_ul_domain_NAME_start` | Start of the domain's data region (base for MPU range) |
-| `_ul_domain_NAME_end`   | End of the domain's data region (limit for MPU range) |
+| `_ulmk_domain_NAME_start` | Start of the domain's data region (base for MPU range) |
+| `_ulmk_domain_NAME_end`   | End of the domain's data region (limit for MPU range) |
 
 ---
 
@@ -641,30 +641,30 @@ Complete list of linker symbols consumed by C code in the kernel and arch port:
 
 | Symbol | Consumer | Description |
 |--------|----------|-------------|
-| `_ul_trap_table` | `ul_arch_init()` | Written into BTV / equivalent trap vector register |
-| `_ul_int_table` | `ul_arch_init()` | Written into BIV / equivalent interrupt base register |
-| `_ul_kernel_text_start` | MPU setup | Code range for supervisor CPR |
-| `_ul_kernel_text_end` | MPU setup | Code range for supervisor CPR |
-| `_ul_kernel_data_start` | `startup.S`, MPU setup | Data/bss init range; supervisor DPR |
-| `_ul_kernel_data_end` | `startup.S`, MPU setup | Data/bss init range; supervisor DPR |
-| `_ul_kernel_stack_top` | `startup.S` | Initial SP value |
-| `_ul_kernel_stack_bottom` | Stack sentinel | Underflow detection |
-| `_ul_isr_stack_top` | `startup.S` | Initial ISP value (TriCore A11) |
-| `_ul_isr_stack_bottom` | Stack sentinel | Underflow detection |
-| `_ul_csa_pool_start` | `startup.S` | FCX initialisation; passed in `ul_boot_info_t` |
-| `_ul_csa_pool_end` | `startup.S` | LCX upper bound |
+| `_ulmk_trap_table` | `ulmk_arch_init()` | Written into BTV / equivalent trap vector register |
+| `_ulmk_int_table` | `ulmk_arch_init()` | Written into BIV / equivalent interrupt base register |
+| `_ulmk_kernel_text_start` | MPU setup | Code range for supervisor CPR |
+| `_ulmk_kernel_text_end` | MPU setup | Code range for supervisor CPR |
+| `_ulmk_kernel_data_start` | `startup.S`, MPU setup | Data/bss init range; supervisor DPR |
+| `_ulmk_kernel_data_end` | `startup.S`, MPU setup | Data/bss init range; supervisor DPR |
+| `_ulmk_kernel_stack_top` | `startup.S` | Initial SP value |
+| `_ulmk_kernel_stack_bottom` | Stack sentinel | Underflow detection |
+| `_ulmk_isr_stack_top` | `startup.S` | Initial ISP value (TriCore A11) |
+| `_ulmk_isr_stack_bottom` | Stack sentinel | Underflow detection |
+| `_ulmk_csa_pool_start` | `startup.S` | FCX initialisation; passed in `ulmk_boot_info_t` |
+| `_ulmk_csa_pool_end` | `startup.S` | LCX upper bound |
 | `_small_data_` | `startup.S` | Loaded into A0 |
 | `_small_data2_` | `startup.S` | Loaded into A1 |
 | `_small_data3_` | `startup.S` | Loaded into A8 |
 | `_small_data4_` | `startup.S` | Loaded into A9 |
-| `_ul_domain_table_start` | `ul_kernel_main()` | Start of domain descriptor scan |
-| `_ul_domain_table_end` | `ul_kernel_main()` | End of domain descriptor scan |
-| `_ul_user_pool_start` | `ul_arch_phys_alloc_init()` | Physical allocator base |
-| `_ul_user_pool_end` | `ul_arch_phys_alloc_init()` | Physical allocator limit |
-| `_ul_app_NAME_text_start` | MPU setup per thread | Per-app code range for CPR |
-| `_ul_app_NAME_text_end` | MPU setup per thread | Per-app code range for CPR |
-| `_ul_domain_NAME_start` | MPU setup per thread | Per-domain data range for DPR |
-| `_ul_domain_NAME_end` | MPU setup per thread | Per-domain data range for DPR |
+| `_ulmk_domain_table_start` | `ulmk_kern_main()` | Start of domain descriptor scan |
+| `_ulmk_domain_table_end` | `ulmk_kern_main()` | End of domain descriptor scan |
+| `_ulmk_user_pool_start` | `ulmk_arch_phys_alloc_init()` | Physical allocator base |
+| `_ulmk_user_pool_end` | `ulmk_arch_phys_alloc_init()` | Physical allocator limit |
+| `_ulmk_app_NAME_text_start` | MPU setup per thread | Per-app code range for CPR |
+| `_ulmk_app_NAME_text_end` | MPU setup per thread | Per-app code range for CPR |
+| `_ulmk_domain_NAME_start` | MPU setup per thread | Per-domain data range for DPR |
+| `_ulmk_domain_NAME_end` | MPU setup per thread | Per-domain data range for DPR |
 
 ---
 
@@ -678,8 +678,8 @@ python3 cmake/generate_ld.py
     --arch-dir  arch/tricore/linker/  # Layer 2: arch fragments (prologue, csa_pool, small_data)
     --kernel-dir linker/kernel/       # Layer 1: kernel-common fragments
     --snippets  linker/snippets/      # app_code.ld.in + domain_data.ld.in templates
-    --app-list  ${UL_APP_LIST}        # space-separated list of registered app names
-    --dom-list  ${UL_DOMAIN_LIST}     # space-separated list of registered domain names
+    --app-list  ${ULMK_APP_LIST}        # space-separated list of registered app names
+    --dom-list  ${ULMK_DOMAIN_LIST}     # space-separated list of registered domain names
     --output    ${CMAKE_BINARY_DIR}/generated.ld
 ```
 
@@ -693,24 +693,24 @@ Drivers and applications register themselves via two CMake functions:
 
 ```cmake
 # Declare an application (driver or userspace task)
-ul_add_app(
+ulmk_add_app(
     NAME    asclin_driver      # unique name; becomes section prefix
     SOURCES src/asclin.c
     DOMAIN  asclin             # associated data domain (optional)
     STACK   2048               # in bytes; allocated from user_pool at boot
-    PRIV    DRIVER             # UL_PRIV_DRIVER or UL_PRIV_USER
+    PRIV    DRIVER             # ULMK_PRIV_DRIVER or ULMK_PRIV_USER
 )
 
 # Declare a memory domain
-ul_add_domain(
+ulmk_add_domain(
     NAME   asclin
-    PERMS  "UL_PERM_READ | UL_PERM_WRITE | UL_PERM_USER"
+    PERMS  "ULMK_PERM_READ | ULMK_PERM_WRITE | ULMK_PERM_USER"
     SHARED false               # true → placed in SHARED_RAM
 )
 ```
 
-`ul_add_app` and `ul_add_domain` are defined in `cmake/linker_api.cmake`. They
-append to internal CMake lists (`UL_APP_LIST`, `UL_DOMAIN_LIST`) and set associated
+`ulmk_add_app` and `ulmk_add_domain` are defined in `cmake/linker_api.cmake`. They
+append to internal CMake lists (`ULMK_APP_LIST`, `ULMK_DOMAIN_LIST`) and set associated
 properties. They do not directly generate output.
 
 ### 7.3 Section ordering rationale
@@ -721,15 +721,15 @@ KERNEL_FLASH layout (low → high address):
   [trap_table]     ← hardware register points here; ALIGN(256)
   [int_table]      ← hardware register points here; ALIGN(256)
   [kernel_text]    ← kernel code; no MPU alignment needed (supervisor)
-  [app_NAME_text]  ← one per app; each ALIGN(UL_MPU_ALIGN) front and back
+  [app_NAME_text]  ← one per app; each ALIGN(ULMK_MPU_ALIGN) front and back
   [domain_table]   ← read-only; no MPU alignment needed
 
 KERNEL_RAM layout (low → high address):
-  [kernel_data]    ← supervisor only; ALIGN(UL_MPU_ALIGN) both ends
+  [kernel_data]    ← supervisor only; ALIGN(ULMK_MPU_ALIGN) both ends
   [kernel_stack]   ← grows downward; ALIGN(8)
   [isr_stack]      ← grows downward; ALIGN(8)
   [csa_pool]       ← NOLOAD; ALIGN(64) — arch-optional
-  [domain_NAME]    ← one per domain; each ALIGN(UL_MPU_ALIGN) front and back
+  [domain_NAME]    ← one per domain; each ALIGN(ULMK_MPU_ALIGN) front and back
   [small_data]     ← sdata/sbss; ALIGN(4) — arch-optional
   [user_pool]      ← remainder of RAM; expands to end of KERNEL_RAM
 
@@ -741,7 +741,7 @@ SHARED_RAM layout:
 
 ## 8. C Macro API — linker.h
 
-**Header:** `include/ul/linker.h`
+**Header:** `include/ulmk/linker.h`
 
 Used by drivers and apps to place variables into the correct linker sections and to
 register domain descriptors.
@@ -749,52 +749,52 @@ register domain descriptors.
 ```c
 /*
  * Place a zero-initialised variable in the named domain's bss section.
- * The linker collects all UL_DOMAIN_BSS(foo) vars into .domain_foo.bss.
+ * The linker collects all ULMK_DOMAIN_BSS(foo) vars into .domain_foo.bss.
  */
-#define UL_DOMAIN_BSS(name) \
+#define ULMK_DOMAIN_BSS(name) \
 	__attribute__((section(".domain_" #name ".bss")))
 
 /*
  * Place an initialised variable in the named domain's data section.
- * The linker collects all UL_DOMAIN_DATA(foo) vars into .domain_foo.data.
+ * The linker collects all ULMK_DOMAIN_DATA(foo) vars into .domain_foo.data.
  */
-#define UL_DOMAIN_DATA(name) \
+#define ULMK_DOMAIN_DATA(name) \
 	__attribute__((section(".domain_" #name ".data")))
 
 /*
  * Shorthand: place in the current module's domain.
- * Requires #define UL_MODULE_NAME <name> before including this header.
+ * Requires #define ULMK_MODULE_NAME <name> before including this header.
  */
-#define UL_PRIVATE      UL_DOMAIN_BSS(UL_MODULE_NAME)
-#define UL_PRIVATE_INIT UL_DOMAIN_DATA(UL_MODULE_NAME)
+#define ULMK_PRIVATE      ULMK_DOMAIN_BSS(ULMK_MODULE_NAME)
+#define ULMK_PRIVATE_INIT ULMK_DOMAIN_DATA(ULMK_MODULE_NAME)
 
 /*
  * Register a domain descriptor in .domain_table.
  * The kernel reads this table at boot and configures MPU ranges.
  *
- * perms: bitwise OR of UL_PERM_READ, UL_PERM_WRITE, UL_PERM_EXEC, UL_PERM_USER
+ * perms: bitwise OR of ULMK_PERM_READ, ULMK_PERM_WRITE, ULMK_PERM_EXEC, ULMK_PERM_USER
  */
-#define UL_DEFINE_DOMAIN(dname, perms)                                  \
-	extern uint8_t _ul_domain_##dname##_start[];                    \
-	extern uint8_t _ul_domain_##dname##_end[];                      \
-	static const ul_domain_desc_t __ul_domain_desc_##dname          \
+#define ULMK_DEFINE_DOMAIN(dname, perms)                                  \
+	extern uint8_t _ulmk_domain_##dname##_start[];                    \
+	extern uint8_t _ulmk_domain_##dname##_end[];                      \
+	static const ulmk_domain_desc_t __ulmk_domain_desc_##dname          \
 		__attribute__((section(".domain_table"), used)) = {     \
 		.name  = #dname,                                        \
-		.start = (uintptr_t)_ul_domain_##dname##_start,        \
-		.end   = (uintptr_t)_ul_domain_##dname##_end,          \
+		.start = (uintptr_t)_ulmk_domain_##dname##_start,        \
+		.end   = (uintptr_t)_ulmk_domain_##dname##_end,          \
 		.perms = (perms),                                       \
 	}
 
 /*
  * Place a function in the app-specific code section so the linker script's
  * app_code snippet can isolate it.
- * Used internally by ul_add_app() CMake function via -DUL_APP_NAME=<name>.
+ * Used internally by ulmk_add_app() CMake function via -DULMK_APP_NAME=<name>.
  */
-#ifdef UL_APP_NAME
+#ifdef ULMK_APP_NAME
 #define UL_APP_TEXT \
-	__attribute__((section(".text." UL_STR(UL_APP_NAME) "." __func__)))
+	__attribute__((section(".text." UL_STR(ULMK_APP_NAME) "." __func__)))
 #define UL_APP_RODATA \
-	__attribute__((section(".rodata." UL_STR(UL_APP_NAME))))
+	__attribute__((section(".rodata." UL_STR(ULMK_APP_NAME))))
 #else
 #define UL_APP_TEXT
 #define UL_APP_RODATA
@@ -809,18 +809,18 @@ register domain descriptors.
 ```c
 /* drivers/asclin/asclin.c */
 
-#define UL_MODULE_NAME asclin
-#include <ul/linker.h>
-#include <ul/linker_defs.h>   /* ul_domain_desc_t, UL_PERM_* */
+#define ULMK_MODULE_NAME asclin
+#include <ulmk/linker.h>
+#include <ulmk/linker_defs.h>   /* ulmk_domain_desc_t, UL_PERM_* */
 
-UL_PRIVATE static uint8_t  rx_buf[512];
-UL_PRIVATE static uint16_t rx_head;
-UL_PRIVATE static uint16_t rx_tail;
-UL_PRIVATE_INIT static uint32_t baud_rate = 115200;
+ULMK_PRIVATE static uint8_t  rx_buf[512];
+ULMK_PRIVATE static uint16_t rx_head;
+ULMK_PRIVATE static uint16_t rx_tail;
+ULMK_PRIVATE_INIT static uint32_t baud_rate = 115200;
 
-UL_DEFINE_DOMAIN(asclin, UL_PERM_READ | UL_PERM_WRITE | UL_PERM_USER);
+ULMK_DEFINE_DOMAIN(asclin, ULMK_PERM_READ | ULMK_PERM_WRITE | ULMK_PERM_USER);
 
-#undef UL_MODULE_NAME
+#undef ULMK_MODULE_NAME
 ```
 
 ---
@@ -835,10 +835,10 @@ The TC27x chip directory (`--chip-dir boards/tc27x/` or passed from the board CM
 /* TC27x memory map — Core 0 centric                          */
 /* No OUTPUT_FORMAT/ARCH/ENTRY here; those are in arch layer. */
 
-UL_MPU_ALIGN         = 64;
-UL_KERNEL_STACK_SIZE = 4096;
-UL_ISR_STACK_SIZE    = 2048;
-UL_CSA_POOL_SIZE     = 16384;   /* 256 CSAs × 64 bytes */
+ULMK_MPU_ALIGN         = 64;
+ULMK_KERNEL_STACK_SIZE = 4096;
+ULMK_ISR_STACK_SIZE    = 2048;
+ULMK_CSA_POOL_SIZE     = 16384;   /* 256 CSAs × 64 bytes */
 
 HAVE_CSA        = 1;
 HAVE_SMALL_DATA = 1;
@@ -882,10 +882,10 @@ ENTRY(_start)
 **`boards/qemu_tc27x/memory.ld`** — simplified layout for the Linumiz QEMU-AURIX target:
 
 ```ld
-UL_MPU_ALIGN         = 64;
-UL_KERNEL_STACK_SIZE = 4096;
-UL_ISR_STACK_SIZE    = 2048;
-UL_CSA_POOL_SIZE     = 16384;
+ULMK_MPU_ALIGN         = 64;
+ULMK_KERNEL_STACK_SIZE = 4096;
+ULMK_ISR_STACK_SIZE    = 2048;
+ULMK_CSA_POOL_SIZE     = 16384;
 
 HAVE_CSA        = 1;
 HAVE_SMALL_DATA = 1;
@@ -910,7 +910,7 @@ error occurs.
 
 | Constant | Value (TC27x) | Reason |
 |----------|---------------|--------|
-| `UL_MPU_ALIGN` | 64 | CSA frame boundary; TriCore DPR minimum is 8 bytes but 64 is natural |
+| `ULMK_MPU_ALIGN` | 64 | CSA frame boundary; TriCore DPR minimum is 8 bytes but 64 is natural |
 | Trap vector alignment | 256 | 8 trap classes × 32 bytes each; must fit in BTV address field |
 | Interrupt vector alignment | 256 | BIV address field; each entry is 32 bytes |
 | CSA frame size | 64 | Fixed by TriCore architecture; not configurable |
@@ -920,4 +920,4 @@ error occurs.
 ---
 
 *This document defines the linker contract. Implementation is in `linker/`, `cmake/`,
-and `include/ul/linker.h`. Arch inputs live in `arch/<ARCH>/memory.ld`.*
+and `include/ulmk/linker.h`. Arch inputs live in `arch/<ARCH>/memory.ld`.*

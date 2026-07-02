@@ -34,11 +34,11 @@ small-data ABI, OUTPUT_FORMAT) live in Layer 2. Nothing arch- or chip-specific i
 | `PERIPH` | rw | yes |
 | `KERNEL_FLASH_NC` | rx | only if `HAVE_BMHD = 1` |
 
-Variables: `UL_MPU_ALIGN`, `UL_KERNEL_STACK_SIZE`, `UL_ISR_STACK_SIZE`, `UL_CSA_POOL_SIZE`.
+Variables: `ULMK_MPU_ALIGN`, `ULMK_KERNEL_STACK_SIZE`, `ULMK_ISR_STACK_SIZE`, `ULMK_CSA_POOL_SIZE`.
 Flags: `HAVE_CSA = 1`, `HAVE_SMALL_DATA = 1`, `HAVE_BMHD = 1`.
 
-TC27x: `UL_MPU_ALIGN = 64`, all three HAVE flags set.
-QEMU:  `UL_MPU_ALIGN = 64`, `HAVE_CSA = 1`, `HAVE_SMALL_DATA = 1` (no BMHD).
+TC27x: `ULMK_MPU_ALIGN = 64`, all three HAVE flags set.
+QEMU:  `ULMK_MPU_ALIGN = 64`, `HAVE_CSA = 1`, `HAVE_SMALL_DATA = 1` (no BMHD).
 
 ## Arch Layer (Layer 2 — in repo)
 
@@ -51,14 +51,14 @@ QEMU:  `UL_MPU_ALIGN = 64`, `HAVE_CSA = 1`, `HAVE_SMALL_DATA = 1` (no BMHD).
 
 | Fragment | Region | Key exported symbols |
 |----------|--------|----------------------|
-| `vectors` | KERNEL_FLASH | `_ul_trap_table`, `_ul_int_table` |
-| `kernel_text` | KERNEL_FLASH | `_ul_kernel_text_start/end` |
-| `kernel_data` | KERNEL_RAM | `_ul_kernel_data_start/end` |
-| `kernel_stacks` | KERNEL_RAM | `_ul_kernel_stack_top`, `_ul_isr_stack_top` |
-| `csa_pool` (HAVE_CSA) | KERNEL_RAM | `_ul_csa_pool_start/end` |
+| `vectors` | KERNEL_FLASH | `_ulmk_trap_table`, `_ulmk_int_table` |
+| `kernel_text` | KERNEL_FLASH | `_ulmk_kernel_text_start/end` |
+| `kernel_data` | KERNEL_RAM | `_ulmk_kernel_data_start/end` |
+| `kernel_stacks` | KERNEL_RAM | `_ulmk_kernel_stack_top`, `_ulmk_isr_stack_top` |
+| `csa_pool` (HAVE_CSA) | KERNEL_RAM | `_ulmk_csa_pool_start/end` |
 | `small_data` (HAVE_SMALL_DATA) | KERNEL_RAM | `_small_data_` … `_small_data4_` |
-| `domain_table` | KERNEL_FLASH | `_ul_domain_table_start/end` |
-| `user_pool` | KERNEL_RAM | `_ul_user_pool_start/end` |
+| `domain_table` | KERNEL_FLASH | `_ulmk_domain_table_start/end` |
+| `user_pool` | KERNEL_RAM | `_ulmk_user_pool_start/end` |
 
 ## Domain Generation Pipeline
 
@@ -66,33 +66,33 @@ Three layers that must stay consistent:
 
 **1. C (compile time)** — driver declares membership and descriptor:
 ```c
-#define UL_MODULE_NAME asclin
-#include <ul/linker.h>
+#define ULMK_MODULE_NAME asclin
+#include <ulmk/linker.h>
 
-UL_PRIVATE static uint8_t rx_buf[512];          /* → .domain_asclin.bss  */
-UL_DEFINE_DOMAIN(asclin, UL_PERM_READ | UL_PERM_WRITE | UL_PERM_USER);
+ULMK_PRIVATE static uint8_t rx_buf[512];          /* → .domain_asclin.bss  */
+ULMK_DEFINE_DOMAIN(asclin, ULMK_PERM_READ | ULMK_PERM_WRITE | ULMK_PERM_USER);
 ```
 
 **2. CMake (configure time)** — registers the domain name for the generator:
 ```cmake
-ul_add_domain(NAME asclin PERMS "UL_PERM_READ | UL_PERM_WRITE | UL_PERM_USER")
+ulmk_add_domain(NAME asclin PERMS "ULMK_PERM_READ | ULMK_PERM_WRITE | ULMK_PERM_USER")
 ```
 
 **3. generate_ld.py** — renders `domain_data.ld.in` per domain, exporting:
-- `_ul_domain_NAME_start` / `_ul_domain_NAME_end` → used by kernel MPU setup
-- `_ul_domain_table_*` (from `UL_DEFINE_DOMAIN`) → scanned at boot to configure DPR ranges
+- `_ulmk_domain_NAME_start` / `_ulmk_domain_NAME_end` → used by kernel MPU setup
+- `_ulmk_domain_table_*` (from `ULMK_DEFINE_DOMAIN`) → scanned at boot to configure DPR ranges
 
-## C Macro API (`include/ul/linker.h`)
+## C Macro API (`include/ulmk/linker.h`)
 
-- `UL_DOMAIN_BSS(name)` — place zero-init var in `.domain_name.bss`
-- `UL_DOMAIN_DATA(name)` — place init var in `.domain_name.data`
-- `UL_PRIVATE` — shorthand for `UL_DOMAIN_BSS(UL_MODULE_NAME)`
-- `UL_PRIVATE_INIT` — shorthand for `UL_DOMAIN_DATA(UL_MODULE_NAME)`
-- `UL_DEFINE_DOMAIN(name, perms)` — inject descriptor into `.domain_table`
+- `ULMK_DOMAIN_BSS(name)` — place zero-init var in `.domain_name.bss`
+- `ULMK_DOMAIN_DATA(name)` — place init var in `.domain_name.data`
+- `ULMK_PRIVATE` — shorthand for `ULMK_DOMAIN_BSS(ULMK_MODULE_NAME)`
+- `ULMK_PRIVATE_INIT` — shorthand for `ULMK_DOMAIN_DATA(ULMK_MODULE_NAME)`
+- `ULMK_DEFINE_DOMAIN(name, perms)` — inject descriptor into `.domain_table`
 
 ## Alignment Rules
 
-- `UL_MPU_ALIGN = 64` on TC27x — every domain/app section boundary must be 64-byte aligned
+- `ULMK_MPU_ALIGN = 64` on TC27x — every domain/app section boundary must be 64-byte aligned
 - Vector tables: `ALIGN(256)` — fixed by hardware BTV/BIV address field
 - CSA pool: `ALIGN(64)` — one CSA frame = 64 bytes, mandatory
 - Stacks: `ALIGN(8)` — TriCore ABI minimum

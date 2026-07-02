@@ -5,8 +5,8 @@
  * Userspace console API — boards/qemu_tc3xx/console.h
  *
  * Provides character output for userspace threads running on the QEMU
- * TC3xx target.  Internally maps the virtual debug device via ul_mem_map
- * (UL_MMAP_PERIPH) so no direct MMIO access is performed before mapping.
+ * TC3xx target.  Internally maps the virtual debug device via ulmk_mem_map
+ * (ULMK_MMAP_PERIPH) so no direct MMIO access is performed before mapping.
  *
  * Usage:
  *   console_init();          -- call once from the root thread

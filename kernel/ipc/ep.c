@@ -18,31 +18,31 @@
  *
  * Two-layer design:
  *   ep_*_impl() — core logic with native C pointer types; testable on host.
- *   ul_kern_ep_*() — syscall ABI wrappers; cast uint32_t args and delegate.
+ *   ulmk_kern_ep_*() — syscall ABI wrappers; cast uint32_t args and delegate.
  *
  * Capability enforcement: deferred — any valid endpoint ID may be used.
  */
 
 #include <stdint.h>
 #include <stddef.h>
-#include <ul/microkernel.h>
-#include <kernel/include/ul_ep_internal.h>
-#include <kernel/include/ul_notif_internal.h>
-#include <kernel/include/ul_sched.h>
+#include <ulmk/microkernel.h>
+#include <kernel/include/ulmk_ep_internal.h>
+#include <kernel/include/ulmk_notif_internal.h>
+#include <kernel/include/ulmk_sched.h>
 #include <kernel/syscall/syscall_router.h>
-#include <ul_arch.h>
+#include <ulmk_arch.h>
 
 #ifndef UL_UNIT_TEST
-#include <kernel/include/ul_mem_internal.h>
+#include <kernel/include/ulmk_mem_internal.h>
 #else
-#include <ul/config.h>
+#include <ulmk/config.h>
 #endif
 
 #ifdef UL_UNIT_TEST
-ul_endpoint_t ep_pool[UL_CONFIG_MAX_ENDPOINTS];
+ulmk_endpoint_t ep_pool[ULMK_CONFIG_MAX_ENDPOINTS];
 #endif
 
-int ul_ep_init(ul_endpoint_t *ep, ul_ep_t id)
+int ulmk_ep_init(ulmk_endpoint_t *ep, ulmk_ep_t id)
 {
 	ep->id         = id;
 	ep->active     = true;
@@ -51,20 +51,20 @@ int ul_ep_init(ul_endpoint_t *ep, ul_ep_t id)
 	return 0;
 }
 
-ul_endpoint_t *ul_ep_by_id(ul_ep_t id)
+ulmk_endpoint_t *ulmk_ep_by_id(ulmk_ep_t id)
 {
 #ifdef UL_UNIT_TEST
 	/*
 	 * Unit test mode: integer IDs index into the static pool.
 	 * ep_pool is accessible to tests via extern.
 	 */
-	if (id == UL_EP_INVALID || (uint32_t)id >= UL_CONFIG_MAX_ENDPOINTS)
+	if (id == ULMK_EP_INVALID || (uint32_t)id >= ULMK_CONFIG_MAX_ENDPOINTS)
 		return NULL;
 	if (!ep_pool[(uint32_t)id].active)
 		return NULL;
 	return &ep_pool[(uint32_t)id];
 #else
-	ul_endpoint_t *ep = (ul_endpoint_t *)(uintptr_t)id;
+	ulmk_endpoint_t *ep = (ulmk_endpoint_t *)(uintptr_t)id;
 
 	if (!ep || !ep->active)
 		return NULL;
@@ -72,15 +72,15 @@ ul_endpoint_t *ul_ep_by_id(ul_ep_t id)
 #endif
 }
 
-void ul_ep_recv_queue_remove(ul_thread_t *th)
+void ulmk_ep_recv_queue_remove(ulmk_thread_t *th)
 {
-	ul_endpoint_t  *ep;
-	ul_thread_t   **pp;
+	ulmk_endpoint_t  *ep;
+	ulmk_thread_t   **pp;
 
-	if (th->blocked_ep == UL_EP_INVALID)
+	if (th->blocked_ep == ULMK_EP_INVALID)
 		return;
 
-	ep = ul_ep_by_id(th->blocked_ep);
+	ep = ulmk_ep_by_id(th->blocked_ep);
 	if (!ep)
 		return;
 
@@ -90,7 +90,7 @@ void ul_ep_recv_queue_remove(ul_thread_t *th)
 	if (*pp) {
 		*pp = th->ipc_next;
 		th->ipc_next   = NULL;
-		th->blocked_ep = UL_EP_INVALID;
+		th->blocked_ep = ULMK_EP_INVALID;
 	}
 }
 
@@ -98,9 +98,9 @@ void ul_ep_recv_queue_remove(ul_thread_t *th)
  * Helpers
  * ========================================================================= */
 
-static void ipc_enqueue_tail(ul_thread_t **head, ul_thread_t *th)
+static void ipc_enqueue_tail(ulmk_thread_t **head, ulmk_thread_t *th)
 {
-	ul_thread_t **pp = head;
+	ulmk_thread_t **pp = head;
 
 	while (*pp)
 		pp = &(*pp)->ipc_next;
@@ -108,8 +108,8 @@ static void ipc_enqueue_tail(ul_thread_t **head, ul_thread_t *th)
 	*pp = th;
 }
 
-static void deliver_to_server(ul_thread_t *server, ul_thread_t *caller,
-			      const ul_msg_t *msg)
+static void deliver_to_server(ulmk_thread_t *server, ulmk_thread_t *caller,
+			      const ulmk_msg_t *msg)
 {
 	server->ipc_msg    = *msg;
 	server->ipc_sender = caller->tid;
@@ -120,47 +120,47 @@ static void deliver_to_server(ul_thread_t *server, ul_thread_t *caller,
 
 	server->state          = UL_THREAD_STATE_READY;
 	server->blocked_reason = UL_BLOCKED_NONE;
-	server->blocked_ep     = UL_EP_INVALID;
+	server->blocked_ep     = ULMK_EP_INVALID;
 
-	if (server->blocked_notif != UL_NOTIF_INVALID) {
-		ul_notif_obj_t *n = ul_notif_by_id(server->blocked_notif);
+	if (server->blocked_notif != ULMK_NOTIF_INVALID) {
+		ulmk_notif_obj_t *n = ulmk_notif_by_id(server->blocked_notif);
 
 		if (n && n->waiter == server)
 			n->waiter = NULL;
-		server->blocked_notif = UL_NOTIF_INVALID;
+		server->blocked_notif = ULMK_NOTIF_INVALID;
 	}
 
-	ul_sched_enqueue(server);
+	ulmk_sched_enqueue(server);
 }
 
 /* =========================================================================
  * Core implementation (_impl functions — native pointer types)
  * ========================================================================= */
 
-int ep_call_impl(ul_ep_t ep_id, ul_msg_t *msg)
+int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 {
-	ul_endpoint_t *ep;
-	ul_thread_t   *cur;
+	ulmk_endpoint_t *ep;
+	ulmk_thread_t   *cur;
 
 	if (!msg)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
-	ep = ul_ep_by_id(ep_id);
+	ep = ulmk_ep_by_id(ep_id);
 	if (!ep)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
-	cur = ul_sched_current();
+	cur = ulmk_sched_current();
 	if (!cur)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
 	cur->ipc_msg           = *msg;
-	cur->ipc_sender        = UL_TID_INVALID;
+	cur->ipc_sender        = ULMK_TID_INVALID;
 	cur->blocked_reason    = UL_BLOCKED_IPC_CALL;
 	cur->blocked_ep        = ep_id;
 	cur->ipc_msg_outptr    = msg;
 
 	if (ep->recv_queue) {
-		ul_thread_t *srv = ep->recv_queue;
+		ulmk_thread_t *srv = ep->recv_queue;
 
 		ep->recv_queue = srv->ipc_next;
 		deliver_to_server(srv, cur, &cur->ipc_msg);
@@ -169,11 +169,11 @@ int ep_call_impl(ul_ep_t ep_id, ul_msg_t *msg)
 	}
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
-	ul_sched_dequeue(cur);
-	ul_sched_schedule();
+	ulmk_sched_dequeue(cur);
+	ulmk_sched_schedule();
 
 	/* Re-fetch cur: local var may be stale after context switch. */
-	cur = ul_sched_current();
+	cur = ulmk_sched_current();
 	if (cur && cur->ipc_msg_outptr) {
 		*cur->ipc_msg_outptr = cur->ipc_msg;
 		cur->ipc_msg_outptr  = NULL;
@@ -181,24 +181,24 @@ int ep_call_impl(ul_ep_t ep_id, ul_msg_t *msg)
 	return 0;
 }
 
-int ep_recv_impl(ul_ep_t ep_id, ul_msg_t *msg, ul_tid_t *sender)
+int ep_recv_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, ulmk_tid_t *sender)
 {
-	ul_endpoint_t *ep;
-	ul_thread_t   *cur;
+	ulmk_endpoint_t *ep;
+	ulmk_thread_t   *cur;
 
 	if (!msg)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
-	ep = ul_ep_by_id(ep_id);
+	ep = ulmk_ep_by_id(ep_id);
 	if (!ep)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
-	cur = ul_sched_current();
+	cur = ulmk_sched_current();
 	if (!cur)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
 	if (ep->send_queue) {
-		ul_thread_t *caller = ep->send_queue;
+		ulmk_thread_t *caller = ep->send_queue;
 
 		ep->send_queue   = caller->ipc_next;
 		caller->ipc_next = NULL;
@@ -219,12 +219,12 @@ int ep_recv_impl(ul_ep_t ep_id, ul_msg_t *msg, ul_tid_t *sender)
 	ipc_enqueue_tail(&ep->recv_queue, cur);
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
-	ul_sched_dequeue(cur);
-	ul_sched_schedule();
+	ulmk_sched_dequeue(cur);
+	ulmk_sched_schedule();
 
-	cur = ul_sched_current();
+	cur = ulmk_sched_current();
 	if (!cur)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
 	if (cur->ipc_msg_outptr) {
 		*cur->ipc_msg_outptr = cur->ipc_msg;
@@ -237,17 +237,17 @@ int ep_recv_impl(ul_ep_t ep_id, ul_msg_t *msg, ul_tid_t *sender)
 	return 0;
 }
 
-int ep_reply_impl(ul_tid_t sender_tid, const ul_msg_t *reply)
+int ep_reply_impl(ulmk_tid_t sender_tid, const ulmk_msg_t *reply)
 {
-	ul_thread_t *cur    = ul_sched_current();
-	ul_thread_t *caller;
+	ulmk_thread_t *cur    = ulmk_sched_current();
+	ulmk_thread_t *caller;
 
 	if (!reply)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
-	caller = ul_thread_by_tid(sender_tid);
+	caller = ulmk_thread_by_tid(sender_tid);
 	if (!caller || caller->blocked_reason != UL_BLOCKED_IPC_CALL)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
 	if (cur)
 		cur->priority = cur->saved_prio;
@@ -255,68 +255,68 @@ int ep_reply_impl(ul_tid_t sender_tid, const ul_msg_t *reply)
 	caller->ipc_msg        = *reply;
 	caller->state          = UL_THREAD_STATE_READY;
 	caller->blocked_reason = UL_BLOCKED_NONE;
-	caller->blocked_ep     = UL_EP_INVALID;
-	ul_sched_enqueue(caller);
+	caller->blocked_ep     = ULMK_EP_INVALID;
+	ulmk_sched_enqueue(caller);
 
 	return 0;
 }
 
-int ep_reply_recv_impl(ul_ep_t ep_id, ul_tid_t sender_tid,
-		       const ul_msg_t *reply, ul_msg_t *next,
-		       ul_tid_t *next_sender)
+int ep_reply_recv_impl(ulmk_ep_t ep_id, ulmk_tid_t sender_tid,
+		       const ulmk_msg_t *reply, ulmk_msg_t *next,
+		       ulmk_tid_t *next_sender)
 {
 	if (!next)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
-	if (sender_tid != UL_TID_INVALID)
+	if (sender_tid != ULMK_TID_INVALID)
 		ep_reply_impl(sender_tid, reply);
 
 	return ep_recv_impl(ep_id, next, next_sender);
 }
 
-int ep_grant_impl(ul_ep_t ep_id, ul_tid_t target_tid)
+int ep_grant_impl(ulmk_ep_t ep_id, ulmk_tid_t target_tid)
 {
-	if (!ul_ep_by_id(ep_id))
-		return -UL_EINVAL;
-	if (!ul_thread_by_tid(target_tid))
-		return -UL_EINVAL;
+	if (!ulmk_ep_by_id(ep_id))
+		return -ULMK_EINVAL;
+	if (!ulmk_thread_by_tid(target_tid))
+		return -ULMK_EINVAL;
 	return 0;
 }
 
-int ep_recv_or_notif_impl(ul_ep_t ep_id, ul_notif_t notif_id,
-			  uint32_t mask, ul_recv_or_notif_result_t *res)
+int ep_recv_or_notif_impl(ulmk_ep_t ep_id, ulmk_notif_t notif_id,
+			  uint32_t mask, ulmk_recv_or_notif_result_t *res)
 {
-	ul_endpoint_t  *ep;
-	ul_notif_obj_t *n;
-	ul_thread_t    *cur;
+	ulmk_endpoint_t  *ep;
+	ulmk_notif_obj_t *n;
+	ulmk_thread_t    *cur;
 	uint32_t        matched;
 
 	if (!res)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
-	ep = ul_ep_by_id(ep_id);
+	ep = ulmk_ep_by_id(ep_id);
 	if (!ep)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
-	n = ul_notif_by_id(notif_id);
+	n = ulmk_notif_by_id(notif_id);
 	if (!n)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
-	cur = ul_sched_current();
+	cur = ulmk_sched_current();
 	if (!cur)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
 	matched = n->bits & mask;
 	if (matched) {
 		n->bits         &= ~matched;
 		res->is_notif    = 1;
 		res->notif_bits  = matched;
-		res->sender      = UL_TID_INVALID;
+		res->sender      = ULMK_TID_INVALID;
 		return 1;
 	}
 
 	if (ep->send_queue) {
-		ul_thread_t *caller = ep->send_queue;
+		ulmk_thread_t *caller = ep->send_queue;
 
 		ep->send_queue   = caller->ipc_next;
 		caller->ipc_next = NULL;
@@ -330,7 +330,7 @@ int ep_recv_or_notif_impl(ul_ep_t ep_id, ul_notif_t notif_id,
 		return 0;
 	}
 
-	cur->ipc_sender        = UL_TID_INVALID;
+	cur->ipc_sender        = ULMK_TID_INVALID;
 	cur->blocked_reason    = UL_BLOCKED_IPC_OR_NOTIF;
 	cur->blocked_ep        = ep_id;
 	cur->blocked_notif     = notif_id;
@@ -344,21 +344,21 @@ int ep_recv_or_notif_impl(ul_ep_t ep_id, ul_notif_t notif_id,
 	n->wait_mask = mask;
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
-	ul_sched_dequeue(cur);
-	ul_sched_schedule();
+	ulmk_sched_dequeue(cur);
+	ulmk_sched_schedule();
 
 	/* Re-fetch cur: local var may be stale after context switch. */
-	cur = ul_sched_current();
+	cur = ulmk_sched_current();
 	if (!cur)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
 	res = cur->rn_result_outptr;
 	cur->rn_result_outptr = NULL;
 
 	if (!res)
-		return -UL_EINVAL;
+		return -ULMK_EINVAL;
 
-	if (cur->ipc_sender != UL_TID_INVALID) {
+	if (cur->ipc_sender != ULMK_TID_INVALID) {
 		res->is_notif   = 0;
 		res->msg        = cur->ipc_msg;
 		res->sender     = cur->ipc_sender;
@@ -367,7 +367,7 @@ int ep_recv_or_notif_impl(ul_ep_t ep_id, ul_notif_t notif_id,
 	} else {
 		res->is_notif   = 1;
 		res->notif_bits = cur->notif_received;
-		res->sender     = UL_TID_INVALID;
+		res->sender     = ULMK_TID_INVALID;
 		return 1;
 	}
 }
@@ -376,98 +376,98 @@ int ep_recv_or_notif_impl(ul_ep_t ep_id, ul_notif_t notif_id,
  * Syscall ABI wrappers — cast uint32_t args, delegate to _impl.
  * ========================================================================= */
 
-uint32_t ul_kern_ep_create(void)
+uint32_t ulmk_kern_ep_create(void)
 {
 #ifdef UL_UNIT_TEST
 	uint32_t i;
 
-	for (i = 0u; i < UL_CONFIG_MAX_ENDPOINTS; i++) {
+	for (i = 0u; i < ULMK_CONFIG_MAX_ENDPOINTS; i++) {
 		if (!ep_pool[i].active) {
-			ul_ep_init(&ep_pool[i], (ul_ep_t)i);
+			ulmk_ep_init(&ep_pool[i], (ulmk_ep_t)i);
 			return (uint32_t)i;
 		}
 	}
-	return (uint32_t)(int32_t)(-UL_ENOSPC);
+	return (uint32_t)(int32_t)(-ULMK_ENOSPC);
 #else
-	ul_endpoint_t *ep = (ul_endpoint_t *)ul_heap_alloc(sizeof(ul_endpoint_t));
+	ulmk_endpoint_t *ep = (ulmk_endpoint_t *)ulmk_heap_alloc(sizeof(ulmk_endpoint_t));
 
 	if (!ep)
-		return (uint32_t)(int32_t)(-UL_ENOMEM);
-	ul_ep_init(ep, (ul_ep_t)(uintptr_t)ep);
+		return (uint32_t)(int32_t)(-ULMK_ENOMEM);
+	ulmk_ep_init(ep, (ulmk_ep_t)(uintptr_t)ep);
 	return (uint32_t)(uintptr_t)ep;
 #endif
 }
 
-uint32_t ul_kern_ep_call(uint32_t ep_id, uint32_t msg_ptr)
+uint32_t ulmk_kern_ep_call(uint32_t ep_id, uint32_t msg_ptr)
 {
 	return (uint32_t)(int32_t)ep_call_impl(
-		(ul_ep_t)ep_id,
-		(ul_msg_t *)(uintptr_t)msg_ptr);
+		(ulmk_ep_t)ep_id,
+		(ulmk_msg_t *)(uintptr_t)msg_ptr);
 }
 
-uint32_t ul_kern_ep_recv(uint32_t ep_id, uint32_t msg_ptr,
+uint32_t ulmk_kern_ep_recv(uint32_t ep_id, uint32_t msg_ptr,
 			 uint32_t sender_ptr)
 {
 	return (uint32_t)(int32_t)ep_recv_impl(
-		(ul_ep_t)ep_id,
-		(ul_msg_t  *)(uintptr_t)msg_ptr,
-		(ul_tid_t  *)(uintptr_t)sender_ptr);
+		(ulmk_ep_t)ep_id,
+		(ulmk_msg_t  *)(uintptr_t)msg_ptr,
+		(ulmk_tid_t  *)(uintptr_t)sender_ptr);
 }
 
-uint32_t ul_kern_ep_reply(uint32_t sender_tid_u32, uint32_t reply_ptr)
+uint32_t ulmk_kern_ep_reply(uint32_t sender_tid_u32, uint32_t reply_ptr)
 {
 	return (uint32_t)(int32_t)ep_reply_impl(
-		(ul_tid_t)sender_tid_u32,
-		(const ul_msg_t *)(uintptr_t)reply_ptr);
+		(ulmk_tid_t)sender_tid_u32,
+		(const ulmk_msg_t *)(uintptr_t)reply_ptr);
 }
 
-uint32_t ul_kern_ep_reply_recv(uint32_t ep_id, uint32_t sender_tid_u32,
+uint32_t ulmk_kern_ep_reply_recv(uint32_t ep_id, uint32_t sender_tid_u32,
 			       uint32_t args_ptr)
 {
-	const ul_reply_recv_args_t *args =
-		(const ul_reply_recv_args_t *)(uintptr_t)args_ptr;
+	const ulmk_reply_recv_args_t *args =
+		(const ulmk_reply_recv_args_t *)(uintptr_t)args_ptr;
 
 	if (!args)
-		return (uint32_t)(int32_t)(-UL_EINVAL);
+		return (uint32_t)(int32_t)(-ULMK_EINVAL);
 
 	return (uint32_t)(int32_t)ep_reply_recv_impl(
-		(ul_ep_t)ep_id,
-		(ul_tid_t)sender_tid_u32,
+		(ulmk_ep_t)ep_id,
+		(ulmk_tid_t)sender_tid_u32,
 		args->reply, args->next, args->next_sender);
 }
 
-uint32_t ul_kern_ep_grant(uint32_t ep_id, uint32_t target_tid)
+uint32_t ulmk_kern_ep_grant(uint32_t ep_id, uint32_t target_tid)
 {
 	return (uint32_t)(int32_t)ep_grant_impl(
-		(ul_ep_t)ep_id, (ul_tid_t)target_tid);
+		(ulmk_ep_t)ep_id, (ulmk_tid_t)target_tid);
 }
 
-uint32_t ul_kern_ep_recv_or_notif(uint32_t ep_id, uint32_t notif_id,
+uint32_t ulmk_kern_ep_recv_or_notif(uint32_t ep_id, uint32_t notif_id,
 				  uint32_t mask, uint32_t result_ptr)
 {
 	return (uint32_t)(int32_t)ep_recv_or_notif_impl(
-		(ul_ep_t)ep_id,
-		(ul_notif_t)notif_id,
+		(ulmk_ep_t)ep_id,
+		(ulmk_notif_t)notif_id,
 		mask,
-		(ul_recv_or_notif_result_t *)(uintptr_t)result_ptr);
+		(ulmk_recv_or_notif_result_t *)(uintptr_t)result_ptr);
 }
 
-uint32_t ul_kern_ep_destroy(uint32_t ep_id)
+uint32_t ulmk_kern_ep_destroy(uint32_t ep_id)
 {
 #ifdef UL_UNIT_TEST
 	uint32_t i = (uint32_t)ep_id;
 
-	if (i >= UL_CONFIG_MAX_ENDPOINTS || !ep_pool[i].active)
-		return (uint32_t)(int32_t)(-UL_EINVAL);
+	if (i >= ULMK_CONFIG_MAX_ENDPOINTS || !ep_pool[i].active)
+		return (uint32_t)(int32_t)(-ULMK_EINVAL);
 	ep_pool[i].active = false;
 	return 0u;
 #else
-	ul_endpoint_t *ep = (ul_endpoint_t *)(uintptr_t)ep_id;
+	ulmk_endpoint_t *ep = (ulmk_endpoint_t *)(uintptr_t)ep_id;
 
 	if (!ep || !ep->active)
-		return (uint32_t)(int32_t)(-UL_EINVAL);
+		return (uint32_t)(int32_t)(-ULMK_EINVAL);
 	ep->active = false;
-	ul_heap_free(ep);
+	ulmk_heap_free(ep);
 	return 0u;
 #endif
 }

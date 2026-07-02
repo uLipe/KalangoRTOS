@@ -11,14 +11,14 @@
  * Head = highest-priority ready thread → pick_next() is O(1).
  * enqueue() inserts at the tail of the same-priority group → O(n).
  * dequeue() removes by pointer scan → O(n).
- * Both are acceptable for UL_CONFIG_MAX_THREADS ≤ 32.
+ * Both are acceptable for ULMK_CONFIG_MAX_THREADS ≤ 32.
  */
 
 #include <stddef.h>
-#include <kernel/include/ul_thread_internal.h>
-#include <kernel/include/ul_sched.h>
+#include <kernel/include/ulmk_thread_internal.h>
+#include <kernel/include/ulmk_sched.h>
 
-static ul_thread_t *rq_head;
+static ulmk_thread_t *rq_head;
 
 static void fifo_rt_init(void)
 {
@@ -31,9 +31,9 @@ static void fifo_rt_init(void)
  * Threads with equal or higher priority number (same or lower urgency)
  * stay behind.
  */
-static void fifo_rt_enqueue(ul_thread_t *t)
+static void fifo_rt_enqueue(ulmk_thread_t *t)
 {
-	ul_thread_t **pp = &rq_head;
+	ulmk_thread_t **pp = &rq_head;
 
 	while (*pp && (*pp)->priority <= t->priority)
 		pp = &(*pp)->next;
@@ -43,9 +43,9 @@ static void fifo_rt_enqueue(ul_thread_t *t)
 	t->state = UL_THREAD_STATE_READY;
 }
 
-static void fifo_rt_dequeue(ul_thread_t *t)
+static void fifo_rt_dequeue(ulmk_thread_t *t)
 {
-	ul_thread_t **pp = &rq_head;
+	ulmk_thread_t **pp = &rq_head;
 
 	while (*pp && *pp != t)
 		pp = &(*pp)->next;
@@ -56,17 +56,17 @@ static void fifo_rt_dequeue(ul_thread_t *t)
 	t->next = NULL;
 }
 
-static ul_thread_t *fifo_rt_pick_next(void)
+static ulmk_thread_t *fifo_rt_pick_next(void)
 {
 	return rq_head;
 }
 
-static ul_thread_t *fifo_rt_peek_next(void)
+static ulmk_thread_t *fifo_rt_peek_next(void)
 {
 	return rq_head;
 }
 
-const ul_sched_class_t ul_fifo_rt_class = {
+const ulmk_sched_class_t ulmk_fifo_rt_class = {
 	.name      = "fifo-rt",
 	.init      = fifo_rt_init,
 	.enqueue   = fifo_rt_enqueue,

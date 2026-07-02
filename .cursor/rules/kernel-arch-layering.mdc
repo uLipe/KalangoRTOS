@@ -8,8 +8,8 @@ alwaysApply: true
 ## Dependency Direction
 
 ```
-kernel/ → arch/ (via ul_arch.h API only)
-arch/   → board/ (via board primitives, e.g. ul_printk_char_out)
+kernel/ → arch/ (via ulmk_arch.h API only)
+arch/   → board/ (via board primitives, e.g. ulmk_printk_char_out)
 board/  → nothing above
 ```
 
@@ -20,28 +20,28 @@ board/  → nothing above
 
 | Symbol prefix | Lives in | Called by |
 |---|---|---|
-| `ul_arch_*` | `arch/tricore/` | `kernel/` only |
-| `ul_kernel_*` | `kernel/` | `arch/tricore/` only (callbacks) |
-| `ul_printk_char_out` | board (weak symbol) | arch + kernel |
+| `ulmk_arch_*` | `arch/tricore/` | `kernel/` only |
+| `ulmk_kernel_*` | `kernel/` | `arch/tricore/` only (callbacks) |
+| `ulmk_printk_char_out` | board (weak symbol) | arch + kernel |
 
 ## Fault handler pattern
 
 ```c
 /* kernel/kernel_main.c — NO arch code */
-void ul_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
+void ulmk_kernel_trap_fault(uint8_t trap_class, uint8_t tin)
 {
-    ul_printk("TRAP class=%u tin=%u\n", trap_class, tin);
-    ul_arch_trap_dump(trap_class, tin); /* arch does the hw-specific dump */
+    ulmk_printk("TRAP class=%u tin=%u\n", trap_class, tin);
+    ulmk_arch_trap_dump(trap_class, tin); /* arch does the hw-specific dump */
     for (;;);
 }
 
 /* arch/tricore/arch.c — all PCXI/CSA/CSFR logic lives here */
-void ul_arch_trap_dump(uint8_t trap_class, uint8_t tin) { ... }
+void ulmk_arch_trap_dump(uint8_t trap_class, uint8_t tin) { ... }
 ```
 
 ## Adding a new arch operation
 
-1. Declare `ul_arch_foo()` in `arch/tricore/include/ul_arch.h`
+1. Declare `ulmk_arch_foo()` in `arch/tricore/include/ulmk_arch.h`
 2. Implement in `arch/tricore/arch.c` (or a sub-file `arch/tricore/foo.c`)
 3. Call from `kernel/` through the declared prototype
 4. Never inline the implementation in a kernel source file

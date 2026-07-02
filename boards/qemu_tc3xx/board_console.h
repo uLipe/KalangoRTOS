@@ -16,14 +16,14 @@
 #ifndef BOARD_CONSOLE_H
 #define BOARD_CONSOLE_H
 
-#include <ul/microkernel.h>
+#include <ulmk/microkernel.h>
 
 /*
  * Spawn the console service thread and initialise the internal IPC endpoint.
  * Must be called from the root thread before any board_console_putc/puts call.
  * Returns the TID of the spawned server thread.
  */
-ul_tid_t board_console_start(const ul_boot_info_t *info);
+ulmk_tid_t board_console_start(const ulmk_boot_info_t *info);
 
 /* Write one character to the console (blocking IPC call). */
 void board_console_putc(char c);

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Launch an interactive development shell inside the ulipeMicroKernel container.
+Launch an interactive development shell inside the ulmk container.
 
 The workspace root is mounted at /workspace inside the container.
 Exiting the shell (Ctrl-D or `exit`) stops and removes the container.
@@ -139,14 +139,14 @@ def _build_shell(board_container: str, qemu_machine: str,
         "echo '--- configure ---'",
         "cmake -S /workspace -B /build/ulipe \\",
         "    -DCMAKE_TOOLCHAIN_FILE=/workspace/cmake/toolchain-tricore-gcc.cmake \\",
-        f"    -DUL_CHIP_DIR={board_container} \\",
+        f"    -DULMK_CHIP_DIR={board_container} \\",
         "    -GNinja \\",
         "    --no-warn-unused-cli",
         "",
         "echo '--- build ---'",
         "ninja -C /build/ulipe",
         "",
-        "echo 'Build OK → /build/ulipe/ulipe_microkernel'",
+        "echo 'Build OK → /build/ulipe/ulmk'",
     ]
 
     if run_qemu:
@@ -154,7 +154,7 @@ def _build_shell(board_container: str, qemu_machine: str,
             "",
             "echo '--- running in QEMU (Ctrl-C to stop) ---'",
             f"qemu-system-tricore -machine {qemu_machine} \\",
-            "    -kernel /build/ulipe/ulipe_microkernel -nographic",
+            "    -kernel /build/ulipe/ulmk -nographic",
         ]
 
     return "\n".join(lines)
@@ -317,7 +317,7 @@ def _run_tests(args: argparse.Namespace) -> None:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="ulipeMicroKernel TriCore dev container",
+        description="ulmk TriCore dev container",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

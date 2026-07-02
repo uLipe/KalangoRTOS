@@ -12,9 +12,9 @@ Full spec: `docs/build_system_spec.md`.
 Single ELF output. Isolation is by MPU sections, not separate binaries.
 
 ```
-ulipeMicroKernel/          ← kernel repo (this); only QEMU board built-in
-ulipeMicroKernel_apps/     ← apps repo (sibling, optional)
-<anywhere>/my_board/       ← real board chip input (external); pointed by UL_CHIP_DIR
+ulmk/          ← kernel repo (this); only QEMU board built-in
+ulmk_apps/     ← apps repo (sibling, optional)
+<anywhere>/my_board/       ← real board chip input (external); pointed by ULMK_CHIP_DIR
 build/                     ← generated artefacts (never committed)
 ```
 
@@ -26,7 +26,7 @@ Only `boards/qemu_tc27x/` is shipped with the kernel — it is the CI platform.
 Top-level `CMakeLists.txt` checks for sibling at configure time:
 
 ```cmake
-set(UL_APPS_DIR "${CMAKE_SOURCE_DIR}/../ulipeMicroKernel_apps" CACHE PATH "")
+set(UL_APPS_DIR "${CMAKE_SOURCE_DIR}/../ulmk_apps" CACHE PATH "")
 if(EXISTS "${UL_APPS_DIR}/CMakeLists.txt")
     add_subdirectory(${UL_APPS_DIR} _apps)
 else()
@@ -39,23 +39,23 @@ Override: `-DUL_APPS_DIR=/path/to/apps`
 ## Chip Selection
 
 ```bash
-cmake -B build -DUL_CHIP_DIR=boards/qemu_tc27x   # QEMU
-cmake -B build -DUL_CHIP_DIR=boards/tc27x         # real HW
+cmake -B build -DULMK_CHIP_DIR=boards/qemu_tc27x   # QEMU
+cmake -B build -DULMK_CHIP_DIR=boards/tc27x         # real HW
 ```
 
-`UL_CHIP_DIR` must point to a directory with `memory.ld` (chip input Layer 3,
+`ULMK_CHIP_DIR` must point to a directory with `memory.ld` (chip input Layer 3,
 see linker-spec rule and `docs/linker_spec.md §9`).
 
 ## CMake API (defined in cmake/linker_api.cmake)
 
 ```cmake
-ul_add_app(NAME <n> SOURCES <f…> DOMAIN <d> STACK <bytes> PRIV DRIVER|USER)
-ul_add_domain(NAME <n> PERMS "<expr>" SHARED TRUE|FALSE)
-ul_set_root_thread(SOURCE <file>)   # exactly one per build
-ul_generate_linker_script()         # call after all ul_add_* calls
+ulmk_add_app(NAME <n> SOURCES <f…> DOMAIN <d> STACK <bytes> PRIV DRIVER|USER)
+ulmk_add_domain(NAME <n> PERMS "<expr>" SHARED TRUE|FALSE)
+ulmk_set_root_thread(SOURCE <file>)   # exactly one per build
+ulmk_generate_linker_script()         # call after all ulmk_add_* calls
 ```
 
-`ul_add_app` compiles sources with `-DUL_APP_NAME=<name>` → functions land in
+`ulmk_add_app` compiles sources with `-DULMK_APP_NAME=<name>` → functions land in
 `.text.<name>.*` sections → captured by `app_code.ld.in` snippet.
 
 ## Build Flow
@@ -63,8 +63,8 @@ ul_generate_linker_script()         # call after all ul_add_* calls
 ```
 cmake configure:
   linker_api.cmake loaded
-  sibling / UL_APPS_DIR checked → ul_add_app/domain/root_thread calls
-  ul_generate_linker_script() → PRE_LINK: generate_ld.py → build/generated.ld
+  sibling / UL_APPS_DIR checked → ulmk_add_app/domain/root_thread calls
+  ulmk_generate_linker_script() → PRE_LINK: generate_ld.py → build/generated.ld
 
 cmake build:
   compile kernel, arch, apps, root_thread
@@ -77,14 +77,14 @@ cmake build:
 Exactly 5 symbols — CMake cache variables, no Kconfig, no separate config file:
 
 ```cmake
--DUL_CONFIG_MAX_THREADS=32       # TCB pool size
--DUL_CONFIG_MAX_ENDPOINTS=64     # IPC endpoint pool
--DUL_CONFIG_MAX_NOTIFS=32        # notification object pool
--DUL_CONFIG_MAX_IRQ_BINDINGS=16  # SRPN→notif binding table
--DUL_CONFIG_TICK_HZ=1000         # scheduler tick rate
+-DULMK_CONFIG_MAX_THREADS=32       # TCB pool size
+-DULMK_CONFIG_MAX_ENDPOINTS=64     # IPC endpoint pool
+-DULMK_CONFIG_MAX_NOTIFS=32        # notification object pool
+-DULMK_CONFIG_MAX_IRQ_BINDINGS=16  # SRPN→notif binding table
+-DULMK_CONFIG_TICK_HZ=1000         # scheduler tick rate
 ```
 
-`configure_file(cmake/config.h.in ${CMAKE_BINARY_DIR}/include/ul/config.h)`
+`configure_file(cmake/config.h.in ${CMAKE_BINARY_DIR}/include/ulmk/config.h)`
 
 The header is internal to the kernel. User code does not include it.
 Everything else is either a hardware constant (arch_config.h), a memory-sizing
@@ -94,26 +94,26 @@ parameter (memory.ld), or a userspace policy decision.
 
 Apps provide exactly one:
 ```c
-void ul_root_thread(const ul_boot_info_t *info);
+void ulmk_root_thread(const ulmk_boot_info_t *info);
 ```
-Kernel-only builds use `stub/root_thread_stub.c` (calls `ul_thread_exit()`).
+Kernel-only builds use `stub/root_thread_stub.c` (calls `ulmk_thread_exit()`).
 
-## ul_board_init — Optional Chip Setup Callback
+## ulmk_board_init — Optional Chip Setup Callback
 
 ```c
 /* stub/board_init_stub.c — weak no-op; user overrides with strong symbol */
-__attribute__((weak)) void ul_board_init(void) {}
+__attribute__((weak)) void ulmk_board_init(void) {}
 ```
 
 Runs as the FIRST C function in the system, before .data copy, before any kernel
 API. Intended for PLL, flash wait states, external RAM. No CMake registration —
-just define `ul_board_init()` anywhere in the link and the strong symbol wins.
+just define `ulmk_board_init()` anywhere in the link and the strong symbol wins.
 
-**Constraints:** no .data vars, no ul_* API, no interrupt enable, must return.
+**Constraints:** no .data vars, no ulmk_* API, no interrupt enable, must return.
 
 Boot sequence:
 ```
-_start → ul_board_init() → .data copy → .bss zero → ul_arch_init() → ul_kernel_main()
+_start → ulmk_board_init() → .data copy → .bss zero → ulmk_arch_init() → ulmk_kern_main()
 ```
 
-When a dedicated bootloader is used, leave `ul_board_init()` as the no-op stub.
+When a dedicated bootloader is used, leave `ulmk_board_init()` as the no-op stub.

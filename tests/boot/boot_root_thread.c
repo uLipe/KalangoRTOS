@@ -10,18 +10,18 @@
  *      the kernel never writes to them, so any non-zero value means
  *      startup.S failed to zero BSS (would be UB on real hardware with
  *      non-zero SRAM at reset).
- *      NOTE: scanning the full [_ul_kernel_bss_start, _ul_kernel_bss_end)
+ *      NOTE: scanning the full [_ulmk_kernel_bss_start, _ulmk_kernel_bss_end)
  *      range is intentionally avoided because the kernel legitimately
  *      modifies its own BSS variables (idle_ctx_g, root_ctx_g, etc.)
- *      before ul_root_thread() is invoked.
- *   2. Execution reaches ul_root_thread() — the BOOT OK sentinel confirms
+ *      before ulmk_root_thread() is invoked.
+ *   2. Execution reaches ulmk_root_thread() — the BOOT OK sentinel confirms
  *      the full startup → arch_init → kernel_main → context-switch chain.
  */
 
 #include <stdint.h>
 #include "../test_support.h"
-#include <ul/microkernel.h>
-#include <kernel/include/ul_printk.h>
+#include <ulmk/microkernel.h>
+#include <kernel/include/ulmk_printk.h>
 
 
 /*
@@ -32,7 +32,7 @@
 static uint32_t bss_canary_a;
 static uint32_t bss_canary_b[16];
 
-void ul_root_thread(const ul_boot_info_t *info)
+void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
 	uint32_t i;
 	int bss_ok = 1;
@@ -47,8 +47,8 @@ void ul_root_thread(const ul_boot_info_t *info)
 			bss_ok = 0;
 	}
 
-	ul_printk("boot_test: bss zero check — %s\n", bss_ok ? "OK" : "FAIL");
-	ul_printk("boot_test: root thread reached — BOOT OK\n");
+	ulmk_printk("boot_test: bss zero check — %s\n", bss_ok ? "OK" : "FAIL");
+	ulmk_printk("boot_test: root thread reached — BOOT OK\n");
 
-	ul_sim_exit(0);
+	ulmk_sim_exit(0);
 }

@@ -3,22 +3,22 @@
  * Copyright (c) 2024-2026 Felipe Neves
  *
  * TriCore TC1.6.1 arch port — arch/tricore/arch.c
- * Implements: arch/tricore/include/ul_arch.h
+ * Implements: arch/tricore/include/ulmk_arch.h
  * Full specification: docs/arch_api_spec.md
  */
 
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include <ul/microkernel.h>
-#include <ul/config.h>
-#include <ul_arch.h>
-#include <kernel/include/ul_printk.h>
+#include <ulmk/microkernel.h>
+#include <ulmk/config.h>
+#include <ulmk_arch.h>
+#include <kernel/include/ulmk_printk.h>
 /* =========================================================================
  * CPU control
  * ========================================================================= */
 
-ul_arch_irq_key_t ul_arch_cpu_irq_save(void)
+ulmk_arch_irq_key_t ulmk_arch_cpu_irq_save(void)
 {
 	uint32_t icr;
 
@@ -27,25 +27,25 @@ ul_arch_irq_key_t ul_arch_cpu_irq_save(void)
 	return icr;
 }
 
-void ul_arch_cpu_irq_restore(ul_arch_irq_key_t key)
+void ulmk_arch_cpu_irq_restore(ulmk_arch_irq_key_t key)
 {
 	__asm__ volatile("mtcr 0xFE2C, %0" :: "d"((uint32_t)key));
 	__asm__ volatile("isync" ::: "memory");
 }
 
-void ul_arch_cpu_irq_enable(void)
+void ulmk_arch_cpu_irq_enable(void)
 {
 	__asm__ volatile("enable" ::: "memory");
 }
 
-void ul_arch_cpu_irq_disable(void)
+void ulmk_arch_cpu_irq_disable(void)
 {
 	__asm__ volatile("disable" ::: "memory");
 }
 
-void ul_arch_cpu_idle(void)
+void ulmk_arch_cpu_idle(void)
 {
-#if UL_ARCH_IDLE_IS_WAIT
+#if ULMK_ARCH_IDLE_IS_WAIT
 	/*
 	 * WAIT suspends the pipeline until the next pending interrupt.
 	 * ICR.IE must be 1 before entering WAIT, which is the case for
@@ -57,13 +57,13 @@ void ul_arch_cpu_idle(void)
 #endif
 }
 
-void ul_arch_cpu_halt(void)
+void ulmk_arch_cpu_halt(void)
 {
 	for (;;)
 		;
 }
 
-uint32_t ul_arch_cpu_clz(uint32_t val)
+uint32_t ulmk_arch_cpu_clz(uint32_t val)
 {
 	uint32_t result;
 
@@ -112,7 +112,7 @@ static uint32_t csa_alloc(void)
 
 	__asm__ volatile("mfcr %0, 0xFE38" : "=d"(fcx));
 	if (fcx == 0u)
-		ul_arch_cpu_halt(); /* CSA pool exhausted — fatal */
+		ulmk_arch_cpu_halt(); /* CSA pool exhausted — fatal */
 
 	frame = csa_link_to_addr(fcx);
 	next  = frame[0]; /* free list: frame[0] = link to next free frame */
@@ -128,18 +128,18 @@ static uint32_t csa_alloc(void)
  * Context management
  * ========================================================================= */
 
-void ul_arch_csa_pool_init(uintptr_t pool_base, size_t pool_size)
+void ulmk_arch_csa_pool_init(uintptr_t pool_base, size_t pool_size)
 {
 	(void)pool_base;
 	(void)pool_size;
 	/*
-	 * The CSA free list is already built by startup.S before ul_arch_init()
+	 * The CSA free list is already built by startup.S before ulmk_arch_init()
 	 * is called — startup.S links all frames and writes FCX/LCX.
 	 * This function exists for platforms that need software-side init.
 	 */
 }
 
-extern void _ul_thread_trampoline(void);
+extern void _ulmk_thread_trampoline(void);
 
 /*
  * Fabricate the initial two-frame CSA chain for a new thread.
@@ -167,9 +167,9 @@ extern void _ul_thread_trampoline(void);
  *
  * ctx->pcxi = lower_link (UL=0).
  */
-void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
+void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,
 		      void (*entry)(void *arg), void *arg,
-		      uintptr_t stack_top, ul_privilege_t priv)
+		      uintptr_t stack_top, ulmk_privilege_t priv)
 {
 	uint32_t upper_link;
 	uint32_t lower_link;
@@ -195,12 +195,12 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 	psw &= ~0x7Fu;					/* clear CDC */
 	psw &= ~0x200u;					/* clear IS (task stack) */
 	psw &= ~0xC00u;					/* clear IO bits */
-	psw |= (uint32_t)(priv == UL_PRIV_USER   ? 0u :
-			  priv == UL_PRIV_DRIVER ? 0x400u : 0x800u);
+	psw |= (uint32_t)(priv == ULMK_PRIV_USER   ? 0u :
+			  priv == ULMK_PRIV_DRIVER ? 0x400u : 0x800u);
 	/* PSW.PRS [13:12]: kernel=0 (PRS 0), driver/user=1 (PRS 1) */
 	psw &= ~0x3000u;
-	if (priv != UL_PRIV_KERNEL)
-		psw |= (uint32_t)UL_ARCH_PRS_USER << 12;
+	if (priv != ULMK_PRIV_KERNEL)
+		psw |= (uint32_t)ULMK_ARCH_PRS_USER << 12;
 
 	upper_link = csa_alloc();
 	upper_csa  = csa_link_to_addr(upper_link);
@@ -208,7 +208,7 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 		upper_csa[i] = 0u;
 	upper_csa[1]  = psw;
 	upper_csa[2]  = (uint32_t)stack_top;
-	upper_csa[3]  = (uint32_t)(uintptr_t)_ul_thread_trampoline;
+	upper_csa[3]  = (uint32_t)(uintptr_t)_ulmk_thread_trampoline;
 	upper_csa[10] = (uint32_t)(uintptr_t)entry;	/* A14: entry fn */
 
 	lower_link = csa_alloc();
@@ -221,7 +221,7 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
 	 * are left disabled in every new thread, blocking timer preemption.
 	 */
 	lower_csa[0] = upper_link | UL_CSA_UL_FLAG | (1u << 21);
-	lower_csa[1] = (uint32_t)(uintptr_t)_ul_thread_trampoline;
+	lower_csa[1] = (uint32_t)(uintptr_t)_ulmk_thread_trampoline;
 	lower_csa[8] = (uint32_t)(uintptr_t)arg;	/* A4: pointer arg */
 
 	ctx->pcxi = lower_link;
@@ -242,7 +242,7 @@ void ul_arch_ctx_init(ul_arch_ctx_t *ctx,
  * csa_alloc in the ISR and this function touch FCX).  On a single-core system
  * this is safe because the timer ISR only touches FCX via hardware.
  */
-void ul_arch_ctx_free(ul_arch_ctx_t *ctx)
+void ulmk_arch_ctx_free(ulmk_arch_ctx_t *ctx)
 {
 	uint32_t link;
 	uint32_t next_link;
@@ -371,14 +371,14 @@ static inline void mpu_mtcr(uint32_t csfr, uint32_t val)
 
 static void mpu_write_dpr(uint8_t slot, uint32_t lower, uint32_t upper)
 {
-	mpu_mtcr(UL_ARCH_CSFR_DPR_L(slot), lower);
-	mpu_mtcr(UL_ARCH_CSFR_DPR_U(slot), upper);
+	mpu_mtcr(ULMK_ARCH_CSFR_DPR_L(slot), lower);
+	mpu_mtcr(ULMK_ARCH_CSFR_DPR_U(slot), upper);
 }
 
 static void mpu_write_cpr(uint8_t slot, uint32_t lower, uint32_t upper)
 {
-	mpu_mtcr(UL_ARCH_CSFR_CPR_L(slot), lower);
-	mpu_mtcr(UL_ARCH_CSFR_CPR_U(slot), upper);
+	mpu_mtcr(ULMK_ARCH_CSFR_CPR_L(slot), lower);
+	mpu_mtcr(ULMK_ARCH_CSFR_CPR_U(slot), upper);
 }
 
 /*
@@ -388,10 +388,10 @@ static void mpu_write_cpr(uint8_t slot, uint32_t lower, uint32_t upper)
 static void mpu_write_enables(uint8_t prs, uint32_t dpre, uint32_t dpwe,
 			      uint32_t cpre, uint32_t cpxe)
 {
-	mpu_mtcr(UL_ARCH_CSFR_DPRE_0 + (uint32_t)prs * 4u, dpre);
-	mpu_mtcr(UL_ARCH_CSFR_DPWE_0 + (uint32_t)prs * 4u, dpwe);
-	mpu_mtcr(UL_ARCH_CSFR_CPRE_0 + (uint32_t)prs * 4u, cpre);
-	mpu_mtcr(UL_ARCH_CSFR_CPXE_0 + (uint32_t)prs * 4u, cpxe);
+	mpu_mtcr(ULMK_ARCH_CSFR_DPRE_0 + (uint32_t)prs * 4u, dpre);
+	mpu_mtcr(ULMK_ARCH_CSFR_DPWE_0 + (uint32_t)prs * 4u, dpwe);
+	mpu_mtcr(ULMK_ARCH_CSFR_CPRE_0 + (uint32_t)prs * 4u, cpre);
+	mpu_mtcr(ULMK_ARCH_CSFR_CPXE_0 + (uint32_t)prs * 4u, cpxe);
 	__asm__ volatile("isync" ::: "memory");
 }
 
@@ -405,7 +405,7 @@ static void mpu_write_enables(uint8_t prs, uint32_t dpre, uint32_t dpwe,
  *   DPR 0: entire 4 GiB address space (kernel PRS 0, R+W)
  *   DPR 1: peripheral region (kernel PRS 0, R+W)
  *   DPR 2: flash region (user PRS 1, R only — needed for const data)
- *   DPR 3: board console device (PRS 0+1, R+W; only when UL_ARCH_QEMU_VIRT_CONSOLE)
+ *   DPR 3: board console device (PRS 0+1, R+W; only when ULMK_ARCH_QEMU_VIRT_CONSOLE)
  *   DPR 4: shared RAM (BSS..user_pool_end, PRS 1 R+W) — temporary, see arch_config.h
  *   DPR 5: reserved (unused, zeroed)
  *   DPR 6–17: per-thread dynamic (configured by mpu_switch())
@@ -413,7 +413,7 @@ static void mpu_write_enables(uint8_t prs, uint32_t dpre, uint32_t dpwe,
  *   CPR 0: entire flash (PRS 0 and PRS 1, execute+read)
  *   CPR 1–9: reserved / per-thread code regions
  */
-void ul_arch_mpu_init(void)
+void ulmk_arch_mpu_init(void)
 {
 	uint32_t syscon;
 	uint8_t  i;
@@ -422,22 +422,22 @@ void ul_arch_mpu_init(void)
 	 * Linker-defined bounds for the SRAM DPR.
 	 * Declared here to avoid polluting the global namespace.
 	 */
-	extern uint8_t _ul_kernel_data_start[];
-	extern uint8_t _ul_user_pool_end[];
+	extern uint8_t _ulmk_kernel_data_start[];
+	extern uint8_t _ulmk_user_pool_end[];
 
 	/* Disable protection during reconfiguration */
 	__asm__ volatile("mfcr %0, 0xFE14" : "=d"(syscon));
-	mpu_mtcr(UL_ARCH_CSFR_SYSCON, syscon & ~UL_ARCH_SYSCON_PROTEN);
+	mpu_mtcr(ULMK_ARCH_CSFR_SYSCON, syscon & ~ULMK_ARCH_SYSCON_PROTEN);
 	__asm__ volatile("isync" ::: "memory");
 
 	/* Zero all DPR and CPR ranges */
-	for (i = 0u; i < UL_ARCH_NUM_DPR; i++)
+	for (i = 0u; i < ULMK_ARCH_NUM_DPR; i++)
 		mpu_write_dpr(i, 0u, 0u);
-	for (i = 0u; i < UL_ARCH_NUM_CPR; i++)
+	for (i = 0u; i < ULMK_ARCH_NUM_CPR; i++)
 		mpu_write_cpr(i, 0u, 0u);
 
 	/* Zero all PRS enable registers */
-	for (i = 0u; i < UL_ARCH_NUM_PRS; i++)
+	for (i = 0u; i < ULMK_ARCH_NUM_PRS; i++)
 		mpu_write_enables(i, 0u, 0u, 0u, 0u);
 
 	/*
@@ -451,7 +451,7 @@ void ul_arch_mpu_init(void)
 	 */
 
 	/* DPR 0: entire 4 GiB — kernel full R+W access via PRS 0 */
-	mpu_write_dpr(UL_ARCH_MPU_KERNEL_DPR,
+	mpu_write_dpr(ULMK_ARCH_MPU_KERNEL_DPR,
 		      0x00000000u, 0xFFFFFFF8u);
 
 	/*
@@ -459,17 +459,17 @@ void ul_arch_mpu_init(void)
 	 * Both PRS 0 and PRS 1 need R+W here: driver threads access globals,
 	 * stacks, and heap blocks; kernel accesses TCBs, IRQ tables, etc.
 	 */
-	mpu_write_dpr(UL_ARCH_MPU_SRAM_DPR,
-		      (uint32_t)(uintptr_t)_ul_kernel_data_start,
-		      (uint32_t)(uintptr_t)_ul_user_pool_end - 8u);
+	mpu_write_dpr(ULMK_ARCH_MPU_SRAM_DPR,
+		      (uint32_t)(uintptr_t)_ulmk_kernel_data_start,
+		      (uint32_t)(uintptr_t)_ulmk_user_pool_end - 8u);
 
 	/*
 	 * DPR 2: flash read-only (0x80000000..flash_end).
 	 * User threads need this to load .rodata (string literals, const arrays).
 	 */
-	mpu_write_dpr(UL_ARCH_MPU_FLASH_DPR,
-		      UL_ARCH_FLASH_BASE,
-		      UL_ARCH_FLASH_BASE + UL_ARCH_FLASH_SIZE - 8u);
+	mpu_write_dpr(ULMK_ARCH_MPU_FLASH_DPR,
+		      ULMK_ARCH_FLASH_BASE,
+		      ULMK_ARCH_FLASH_BASE + ULMK_ARCH_FLASH_SIZE - 8u);
 
 	/*
 	 * DPR 3: console + peripheral range (0xBF000000..0xFFFFFFF8).
@@ -478,13 +478,13 @@ void ul_arch_mpu_init(void)
 	 * available for PRS 1 after SRAM and flash slots are consumed.
 	 * Driver threads need peripheral access for SRC registers, STM, etc.
 	 */
-	mpu_write_dpr(UL_ARCH_MPU_VIRT_DPR,
+	mpu_write_dpr(ULMK_ARCH_MPU_VIRT_DPR,
 		      0xBF000000u, 0xFFFFFFF8u);
 
 	/* CPR 0: entire flash — all threads may execute code from here */
-	mpu_write_cpr(UL_ARCH_MPU_CPR_ALL,
-		      UL_ARCH_FLASH_BASE,
-		      UL_ARCH_FLASH_BASE + UL_ARCH_FLASH_SIZE - 8u);
+	mpu_write_cpr(ULMK_ARCH_MPU_CPR_ALL,
+		      ULMK_ARCH_FLASH_BASE,
+		      ULMK_ARCH_FLASH_BASE + ULMK_ARCH_FLASH_SIZE - 8u);
 
 	__asm__ volatile("isync" ::: "memory");
 
@@ -503,36 +503,36 @@ void ul_arch_mpu_init(void)
 	 * PRS 1 (user/driver threads):
 	 *   DPR 1 — SRAM (R+W) — globals, stacks, heap
 	 *   DPR 2 — flash (R only) — .rodata access
-	 *   DPR 3 — console + peripheral (R+W) — ul_printk, SRC, STM
+	 *   DPR 3 — console + peripheral (R+W) — ulmk_printk, SRC, STM
 	 *
 	 * DPR 0 (full 4 GiB) is intentionally excluded from PRS 1 so that
 	 * kernel-only addresses (CSFRs, etc.) remain inaccessible.
 	 */
 	mpu_write_enables(1u,
-			  (1u << UL_ARCH_MPU_SRAM_DPR)  |
-			  (1u << UL_ARCH_MPU_FLASH_DPR) |
-			  (1u << UL_ARCH_MPU_VIRT_DPR),
-			  (1u << UL_ARCH_MPU_SRAM_DPR)  |
-			  (1u << UL_ARCH_MPU_VIRT_DPR),
-			  (1u << UL_ARCH_MPU_CPR_ALL),
-			  (1u << UL_ARCH_MPU_CPR_ALL));
+			  (1u << ULMK_ARCH_MPU_SRAM_DPR)  |
+			  (1u << ULMK_ARCH_MPU_FLASH_DPR) |
+			  (1u << ULMK_ARCH_MPU_VIRT_DPR),
+			  (1u << ULMK_ARCH_MPU_SRAM_DPR)  |
+			  (1u << ULMK_ARCH_MPU_VIRT_DPR),
+			  (1u << ULMK_ARCH_MPU_CPR_ALL),
+			  (1u << ULMK_ARCH_MPU_CPR_ALL));
 
 	/* PRS 2, 3: remain zeroed (unused) */
-}void ul_arch_mpu_enable(void)
+}void ulmk_arch_mpu_enable(void)
 {
 	uint32_t syscon;
 
 	__asm__ volatile("mfcr %0, 0xFE14" : "=d"(syscon));
-	mpu_mtcr(UL_ARCH_CSFR_SYSCON, syscon | UL_ARCH_SYSCON_PROTEN);
+	mpu_mtcr(ULMK_ARCH_CSFR_SYSCON, syscon | ULMK_ARCH_SYSCON_PROTEN);
 	__asm__ volatile("isync" ::: "memory");
 }
 
-void ul_arch_mpu_disable(void)
+void ulmk_arch_mpu_disable(void)
 {
 	uint32_t syscon;
 
 	__asm__ volatile("mfcr %0, 0xFE14" : "=d"(syscon));
-	mpu_mtcr(UL_ARCH_CSFR_SYSCON, syscon & ~UL_ARCH_SYSCON_PROTEN);
+	mpu_mtcr(ULMK_ARCH_CSFR_SYSCON, syscon & ~ULMK_ARCH_SYSCON_PROTEN);
 	__asm__ volatile("isync" ::: "memory");
 }
 
@@ -540,7 +540,7 @@ void ul_arch_mpu_disable(void)
  * Configure user DPR slots (6–17) for the given PRS from @regions.
  * Also updates the PRS enable bits, preserving the static flash-read bit (DPR 2).
  */
-static void mpu_program_regions(uint8_t prs, const ul_arch_region_t *regions,
+static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 				uint8_t count)
 {
 	uint32_t dpre;
@@ -554,38 +554,38 @@ static void mpu_program_regions(uint8_t prs, const ul_arch_region_t *regions,
 	 * Static bits for PRS 1 (user/driver threads):
 	 *   DPR 1: SRAM R+W — globals, stacks, heap
 	 *   DPR 2: flash R — .rodata access
-	 *   DPR 3: console + peripheral R+W — ul_printk, SRC, STM
+	 *   DPR 3: console + peripheral R+W — ulmk_printk, SRC, STM
 	 *
 	 * DPR 0 (full 4 GiB, kernel-only) is intentionally omitted.
 	 * Slots 6-17 below handle per-thread regions; in the current QEMU
 	 * build those slots are unmapped (writes are no-ops), so all threads
 	 * share the SRAM/flash/periph ranges set above.
 	 */
-	dpre = (1u << UL_ARCH_MPU_SRAM_DPR) |
-	       (1u << UL_ARCH_MPU_FLASH_DPR) |
-	       (1u << UL_ARCH_MPU_VIRT_DPR);
-	dpwe = (1u << UL_ARCH_MPU_SRAM_DPR) |
-	       (1u << UL_ARCH_MPU_VIRT_DPR);
-	cpre = (1u << UL_ARCH_MPU_CPR_ALL);
-	cpxe = (1u << UL_ARCH_MPU_CPR_ALL);
+	dpre = (1u << ULMK_ARCH_MPU_SRAM_DPR) |
+	       (1u << ULMK_ARCH_MPU_FLASH_DPR) |
+	       (1u << ULMK_ARCH_MPU_VIRT_DPR);
+	dpwe = (1u << ULMK_ARCH_MPU_SRAM_DPR) |
+	       (1u << ULMK_ARCH_MPU_VIRT_DPR);
+	cpre = (1u << ULMK_ARCH_MPU_CPR_ALL);
+	cpxe = (1u << ULMK_ARCH_MPU_CPR_ALL);
 
 	/* Clear all user DPR slots before reprogramming */
-	for (i = UL_ARCH_MPU_USER_DPR_BASE; i < UL_ARCH_NUM_DPR; i++)
+	for (i = ULMK_ARCH_MPU_USER_DPR_BASE; i < ULMK_ARCH_NUM_DPR; i++)
 		mpu_write_dpr(i, 0u, 0u);
 
-	d_slot = UL_ARCH_MPU_USER_DPR_BASE;
+	d_slot = ULMK_ARCH_MPU_USER_DPR_BASE;
 
 	if (!regions || count == 0u)
 		goto write_enables;
 
-	for (i = 0u; i < count && d_slot < UL_ARCH_NUM_DPR; i++) {
+	for (i = 0u; i < count && d_slot < ULMK_ARCH_NUM_DPR; i++) {
 		mpu_write_dpr(d_slot,
 			      (uint32_t)regions[i].base,
 			      (uint32_t)(regions[i].base + regions[i].size - 8u));
 
-		if (regions[i].perms & UL_PERM_READ)
+		if (regions[i].perms & ULMK_PERM_READ)
 			dpre |= (1u << d_slot);
-		if (regions[i].perms & UL_PERM_WRITE)
+		if (regions[i].perms & ULMK_PERM_WRITE)
 			dpwe |= (1u << d_slot);
 
 		d_slot++;
@@ -595,19 +595,19 @@ write_enables:
 	mpu_write_enables(prs, dpre, dpwe, cpre, cpxe);
 }
 
-void ul_arch_mpu_configure(uint8_t prs, const ul_arch_region_t *regions,
+void ulmk_arch_mpu_configure(uint8_t prs, const ulmk_arch_region_t *regions,
 			   uint8_t count)
 {
 	mpu_program_regions(prs, regions, count);
 }
 
-void ul_arch_mpu_switch(const ul_arch_region_t *regions, uint8_t count,
+void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 			uint8_t prs)
 {
 	mpu_program_regions(prs, regions, count);
 }
 
-bool ul_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
+bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
 {
 	uint32_t dpre;
 	uint32_t dpwe;
@@ -620,13 +620,13 @@ bool ul_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
 	__asm__ volatile("mfcr %0, 0xE014" : "=d"(dpre));
 	__asm__ volatile("mfcr %0, 0xE024" : "=d"(dpwe));
 
-	for (i = 0u; i < UL_ARCH_NUM_DPR; i++) {
+	for (i = 0u; i < ULMK_ARCH_NUM_DPR; i++) {
 		if (!(dpre & (1u << i)))
 			continue;
 
 		/* Read DPR_L and DPR_U by using the MFCR switch */
 		/* We only check user slots (6-17); static slots are kernel-only */
-		if (i < UL_ARCH_MPU_USER_DPR_BASE && i != UL_ARCH_MPU_FLASH_DPR)
+		if (i < ULMK_ARCH_MPU_USER_DPR_BASE && i != ULMK_ARCH_MPU_FLASH_DPR)
 			continue;
 
 		__asm__ volatile("" ::: "memory");
@@ -682,7 +682,7 @@ static uint32_t g_src_addr[256];
 /* Next available SRC allocation slot (0xC0 = tick, start from 0xC1) */
 static uint8_t g_next_src_slot = 0xC1u;
 
-void ul_arch_irq_vectors_init(uintptr_t btv, uintptr_t biv, uintptr_t isp_top)
+void ulmk_arch_irq_vectors_init(uintptr_t btv, uintptr_t biv, uintptr_t isp_top)
 {
 	uint32_t btv32 = (uint32_t)btv;
 	uint32_t biv32 = (uint32_t)biv;
@@ -695,11 +695,11 @@ void ul_arch_irq_vectors_init(uintptr_t btv, uintptr_t biv, uintptr_t isp_top)
 	__asm__ volatile("isync" ::: "memory");
 }
 
-void ul_arch_irq_src_configure(uint8_t srpn, uint8_t priority, uint8_t cpu_id)
+void ulmk_arch_irq_src_configure(uint8_t srpn, uint8_t priority, uint8_t cpu_id)
 {
 	uint32_t addr;
 
-	if (srpn == UL_ARCH_TICK_SRPN)
+	if (srpn == ULMK_ARCH_TICK_SRPN)
 		return;
 
 	addr = SRC_BASE + (uint32_t)g_next_src_slot * 4u;
@@ -710,7 +710,7 @@ void ul_arch_irq_src_configure(uint8_t srpn, uint8_t priority, uint8_t cpu_id)
 		(uint32_t)priority | ((uint32_t)cpu_id << SRC_TOS_SHIFT);
 }
 
-void ul_arch_irq_src_enable(uint8_t srpn)
+void ulmk_arch_irq_src_enable(uint8_t srpn)
 {
 	uint32_t addr = g_src_addr[srpn];
 
@@ -718,7 +718,7 @@ void ul_arch_irq_src_enable(uint8_t srpn)
 		*(volatile uint32_t *)addr |= SRC_SRE_BIT;
 }
 
-void ul_arch_irq_src_disable(uint8_t srpn)
+void ulmk_arch_irq_src_disable(uint8_t srpn)
 {
 	uint32_t addr = g_src_addr[srpn];
 
@@ -726,7 +726,7 @@ void ul_arch_irq_src_disable(uint8_t srpn)
 		*(volatile uint32_t *)addr &= ~SRC_SRE_BIT;
 }
 
-void ul_arch_irq_src_ack(uint8_t srpn)
+void ulmk_arch_irq_src_ack(uint8_t srpn)
 {
 	uint32_t addr = g_src_addr[srpn];
 
@@ -734,7 +734,7 @@ void ul_arch_irq_src_ack(uint8_t srpn)
 		*(volatile uint32_t *)addr |= SRC_CLRR_BIT;
 }
 
-bool ul_arch_irq_src_is_pending(uint8_t srpn)
+bool ulmk_arch_irq_src_is_pending(uint8_t srpn)
 {
 	uint32_t addr = g_src_addr[srpn];
 
@@ -744,11 +744,11 @@ bool ul_arch_irq_src_is_pending(uint8_t srpn)
 }
 
 /*
- * ul_arch_irq_src_trigger — software-raise an IRQ for testing.
+ * ulmk_arch_irq_src_trigger — software-raise an IRQ for testing.
  * Writes the SETR bit to the SRC register associated with @srpn.
- * The SRC must have been configured via ul_arch_irq_src_configure first.
+ * The SRC must have been configured via ulmk_arch_irq_src_configure first.
  */
-void ul_arch_irq_src_trigger(uint8_t srpn)
+void ulmk_arch_irq_src_trigger(uint8_t srpn)
 {
 	uint32_t addr = g_src_addr[srpn];
 
@@ -781,20 +781,20 @@ void _arch_generic_isr_handler(void)
 			 :: "d"(psw) : "memory");
 
 	__asm__ volatile("mfcr %0, 0xFE2C" : "=d"(icr));
-	ul_kernel_irq_dispatch((uint8_t)(icr & 0xFFu));
+	ulmk_kern_irq_dispatch((uint8_t)(icr & 0xFFu));
 
 	/*
 	 * If the dispatch woke a higher-priority thread, arm the preemption
 	 * handoff so _arch_generic_preempt_isr can switch context on exit.
 	 */
-	ul_kernel_irq_check_preempt();
+	ulmk_kern_irq_check_preempt();
 }
 
 /* =========================================================================
  * Tick timer — STM0 periodic (ticked) implementation
  *
  * Register accessors map directly to the STM0 MMIO addresses defined in
- * arch_config.h (UL_ARCH_STM0_BASE).
+ * arch_config.h (ULMK_ARCH_STM0_BASE).
  *
  * CMP0 is re-armed in the ISR by adding the fixed period to the previous
  * compare value, avoiding drift accumulation over time.
@@ -802,9 +802,9 @@ void _arch_generic_isr_handler(void)
 
 /*
  * Number of STM0 counter ticks per kernel tick period.
- * UL_CONFIG_HW_SYS_CLOCK_HZ is the machine clock fed into STM0 on this arch.
+ * ULMK_CONFIG_HW_SYS_CLOCK_HZ is the machine clock fed into STM0 on this arch.
  */
-#define TICK_PERIOD_TICKS	(UL_CONFIG_HW_SYS_CLOCK_HZ / UL_CONFIG_TICK_HZ)
+#define TICK_PERIOD_TICKS	(ULMK_CONFIG_HW_SYS_CLOCK_HZ / ULMK_CONFIG_TICK_HZ)
 
 static inline uint32_t stm0_read(uint32_t reg_addr)
 {
@@ -816,7 +816,7 @@ static inline void stm0_write(uint32_t reg_addr, uint32_t val)
 	*(volatile uint32_t *)reg_addr = val;
 }
 
-void ul_arch_tick_init(void)
+void ulmk_arch_tick_init(void)
 {
 	uint32_t now;
 
@@ -824,22 +824,22 @@ void ul_arch_tick_init(void)
 	 * CMCON: MSTART0=0, MSIZE0=31 — compare all 32 bits of TIM0 against CMP0.
 	 * Configure SRC and arm the first compare before enabling interrupts.
 	 */
-	stm0_write(UL_ARCH_STM0_CMCON, 0x0000001Fu);
-	*(volatile uint32_t *)UL_ARCH_SRC_STM0_SR0 = UL_ARCH_SRC_CONFIG_VAL;
+	stm0_write(ULMK_ARCH_STM0_CMCON, 0x0000001Fu);
+	*(volatile uint32_t *)ULMK_ARCH_SRC_STM0_SR0 = ULMK_ARCH_SRC_CONFIG_VAL;
 
-	now = stm0_read(UL_ARCH_STM0_TIM0);
-	stm0_write(UL_ARCH_STM0_CMP0, now + TICK_PERIOD_TICKS);
-	stm0_write(UL_ARCH_STM0_ICR, 0x00000001u);
+	now = stm0_read(ULMK_ARCH_STM0_TIM0);
+	stm0_write(ULMK_ARCH_STM0_CMP0, now + TICK_PERIOD_TICKS);
+	stm0_write(ULMK_ARCH_STM0_ICR, 0x00000001u);
 }
 
-uint32_t ul_arch_tick_get(void)
+uint32_t ulmk_arch_tick_get(void)
 {
-	return stm0_read(UL_ARCH_STM0_TIM0) / (UL_CONFIG_HW_SYS_CLOCK_HZ / 1000000u);
+	return stm0_read(ULMK_ARCH_STM0_TIM0) / (ULMK_CONFIG_HW_SYS_CLOCK_HZ / 1000000u);
 }
 
 /*
  * Called from vectors.S tick ISR (after svlcx, before rslcx/rfe).
- * Interrupt priority is already held by hardware (CCPN = UL_ARCH_TICK_SRPN).
+ * Interrupt priority is already held by hardware (CCPN = ULMK_ARCH_TICK_SRPN).
  */
 void _arch_tick_isr_handler(void)
 {
@@ -852,18 +852,18 @@ void _arch_tick_isr_handler(void)
 			 "isync"
 			 :: "d"(psw) : "memory");
 
-	stm0_write(UL_ARCH_STM0_ISCR, 0x00000001u);
+	stm0_write(ULMK_ARCH_STM0_ISCR, 0x00000001u);
 
 	/*
 	 * Re-arm by adding the period to the previous CMP0 value.
 	 * Reading CMP0 (not TIM0) avoids drift: each period starts exactly
 	 * TICK_PERIOD_TICKS after the previous one regardless of ISR latency.
 	 */
-	next_cmp = stm0_read(UL_ARCH_STM0_CMP0) + TICK_PERIOD_TICKS;
-	stm0_write(UL_ARCH_STM0_CMP0, next_cmp);
-	stm0_write(UL_ARCH_STM0_ICR, 0x00000001u);
+	next_cmp = stm0_read(ULMK_ARCH_STM0_CMP0) + TICK_PERIOD_TICKS;
+	stm0_write(ULMK_ARCH_STM0_CMP0, next_cmp);
+	stm0_write(ULMK_ARCH_STM0_ICR, 0x00000001u);
 
-	ul_kernel_tick();
+	ulmk_kern_tick();
 }
 
 
@@ -871,7 +871,7 @@ void _arch_tick_isr_handler(void)
  * Atomic operations
  * ========================================================================= */
 
-uint32_t ul_arch_atomic_cas(volatile uint32_t *ptr,
+uint32_t ulmk_arch_atomic_cas(volatile uint32_t *ptr,
 			    uint32_t expected, uint32_t desired)
 {
 	uint32_t old;
@@ -894,7 +894,7 @@ uint32_t ul_arch_atomic_cas(volatile uint32_t *ptr,
 	return old;
 }
 
-uint32_t ul_arch_atomic_add(volatile uint32_t *ptr, uint32_t val)
+uint32_t ulmk_arch_atomic_add(volatile uint32_t *ptr, uint32_t val)
 {
 	/*
 	 * TriCore has no native atomic-add; implement via CAS-retry loop.
@@ -907,7 +907,7 @@ uint32_t ul_arch_atomic_add(volatile uint32_t *ptr, uint32_t val)
 	do {
 		old     = *ptr;
 		new_val = old + val;
-	} while (ul_arch_atomic_cas(ptr, old, new_val) != old);
+	} while (ulmk_arch_atomic_cas(ptr, old, new_val) != old);
 
 	return old;
 }
@@ -922,11 +922,11 @@ uint32_t ul_arch_atomic_add(volatile uint32_t *ptr, uint32_t val)
  *
  * We read them with volatile inline asm before any compiler write can
  * overwrite them, then forward them to the arch-agnostic kernel callback
- * ul_kernel_trap_syscall().  Finally we write D2 (return register) so the
+ * ulmk_kern_trap_syscall().  Finally we write D2 (return register) so the
  * user sees the return value after RFE in vectors.S.
  * ========================================================================= */
 
-void ul_arch_syscall_entry(void)
+void ulmk_arch_syscall_entry(void)
 {
 	uint32_t tin, args[4];
 	uint32_t psw;
@@ -967,7 +967,7 @@ void ul_arch_syscall_entry(void)
 			 "isync"
 			 :: "d"(psw) : "memory");
 
-	uint32_t ret = ul_kernel_trap_syscall((uint8_t)tin, args);
+	uint32_t ret = ulmk_kern_trap_syscall((uint8_t)tin, args);
 
 	/*
 	 * If the syscall unblocked a higher-priority thread, perform a
@@ -976,7 +976,7 @@ void ul_arch_syscall_entry(void)
 	 * point CCPN has been restored to 0 by the context-switch RFE and
 	 * interrupts are enabled, so the return path is unprotected but brief.
 	 */
-	ul_kernel_syscall_check_preempt();
+	ulmk_kern_syscall_check_preempt();
 
 	__asm__ volatile("mov %%d2, %0" : : "d"(ret));
 }
@@ -984,7 +984,7 @@ void ul_arch_syscall_entry(void)
 /* =========================================================================
  * Fault context dump — arch-specific
  *
- * Outputs via ul_printk_char_out (board primitive, below the kernel print
+ * Outputs via ulmk_printk_char_out (board primitive, below the kernel print
  * layer) to remain safe when called before full kernel initialisation.
  *
  * pcxi_to_csa(): SRAM segment 7 only (0x7xxx_xxxx = all DSPR on TC27x).
@@ -993,7 +993,7 @@ void ul_arch_syscall_entry(void)
 static void dump_puts(const char *s)
 {
 	while (*s)
-		ul_printk_char_out(*s++);
+		ulmk_printk_char_out(*s++);
 }
 
 static void dump_hex32(uint32_t v)
@@ -1007,17 +1007,17 @@ static void dump_hex32(uint32_t v)
 		nibble = (uint8_t)((v >> i) & 0xFu);
 		c = (nibble < 10u) ? (char)('0' + nibble)
 				   : (char)('a' + nibble - 10u);
-		ul_printk_char_out(c);
+		ulmk_printk_char_out(c);
 	}
 }
 
 static void dump_u8(uint8_t v)
 {
 	if (v >= 100u)
-		ul_printk_char_out((char)('0' + v / 100u));
+		ulmk_printk_char_out((char)('0' + v / 100u));
 	if (v >= 10u)
-		ul_printk_char_out((char)('0' + (v / 10u) % 10u));
-	ul_printk_char_out((char)('0' + v % 10u));
+		ulmk_printk_char_out((char)('0' + (v / 10u) % 10u));
+	ulmk_printk_char_out((char)('0' + v % 10u));
 }
 
 static inline uint32_t *pcxi_to_csa(uint32_t pcxi)
@@ -1043,18 +1043,18 @@ static const char * const trap_class_names[] = {
 };
 
 /*
- * ul_arch_trap_entry — arch-level trap dispatcher, called from vectors.S.
+ * ulmk_arch_trap_entry — arch-level trap dispatcher, called from vectors.S.
  *
  * Reads PSW to determine whether the fault came from kernel context (ISR
  * active or supervisor privilege) or from a user/driver thread.  Performs
  * the arch-specific dump, then invokes the appropriate kernel callback:
- *   - ul_kernel_trap_recoverable(): thread killed, scheduler picks next
- *   - ul_kernel_trap_panic():       unrecoverable, system halted
+ *   - ulmk_kern_trap_recoverable(): thread killed, scheduler picks next
+ *   - ulmk_kern_trap_panic():       unrecoverable, system halted
  *
  * Class 1 (Internal Protection) originating from a non-kernel thread is
  * the only recoverable case — all others are fatal.
  */
-void ul_arch_trap_entry(uint8_t trap_class, uint8_t tin)
+void ulmk_arch_trap_entry(uint8_t trap_class, uint8_t tin)
 {
 	uint32_t psw;
 	uint32_t io;
@@ -1067,22 +1067,22 @@ void ul_arch_trap_entry(uint8_t trap_class, uint8_t tin)
 	is          = (psw >>  9) & 1u;	/* PSW.IS[9]: 1 = on ISP (ISR)   */
 	from_kernel = (io == 2u) || (is != 0u);
 
-	ul_printk("TRAP class=%u (%s) tin=%u %s\n",
+	ulmk_printk("TRAP class=%u (%s) tin=%u %s\n",
 		  (unsigned)trap_class,
 		  trap_class < 8u ? trap_class_names[trap_class] : "?",
 		  (unsigned)tin,
 		  from_kernel ? "[kernel/ISR]" : "[thread]");
 
-	ul_arch_trap_dump(trap_class, tin);
+	ulmk_arch_trap_dump(trap_class, tin);
 
 	if (trap_class == 1u && !from_kernel) {
-		ul_kernel_trap_recoverable();
+		ulmk_kern_trap_recoverable();
 	} else {
-		ul_kernel_trap_panic();
+		ulmk_kern_trap_panic();
 	}
 }
 
-void ul_arch_trap_dump(uint8_t trap_class, uint8_t tin)
+void ulmk_arch_trap_dump(uint8_t trap_class, uint8_t tin)
 {
 	uint32_t  pcxi_here;
 	uint32_t  fcx_val;
@@ -1101,7 +1101,7 @@ void ul_arch_trap_dump(uint8_t trap_class, uint8_t tin)
 	dump_puts("\n");
 
 	/*
-	 * UC1: upper context saved by "call ul_kernel_trap_fault" in vectors.S.
+	 * UC1: upper context saved by "call ulmk_kernel_trap_fault" in vectors.S.
 	 * UC0: upper context saved by the trap hardware mechanism.
 	 * UC0[3] = A11 = faulting PC (TC1.6.1 §4.5.2).
 	 */
@@ -1133,15 +1133,15 @@ void ul_arch_trap_dump(uint8_t trap_class, uint8_t tin)
  * These are section-start labels; their ADDRESS is the relevant value.
  */
 extern char _trap_class0[];	/* BTV: base of .trap_table section */
-extern char _ul_int_table[];	/* BIV: base of .int_table section  */
-extern char _ul_isr_stack_top[];	/* ISP: top of ISR stack (separate from kernel stack) */
+extern char _ulmk_int_table[];	/* BIV: base of .int_table section  */
+extern char _ulmk_isr_stack_top[];	/* ISP: top of ISR stack (separate from kernel stack) */
 
-void ul_arch_init(ul_boot_info_t *info)
+void ulmk_arch_init(ulmk_boot_info_t *info)
 {
 	(void)info;
 
-	ul_arch_irq_vectors_init(
+	ulmk_arch_irq_vectors_init(
 		(uintptr_t)_trap_class0,
-		(uintptr_t)_ul_int_table,
-		(uintptr_t)_ul_isr_stack_top);
+		(uintptr_t)_ulmk_int_table,
+		(uintptr_t)_ulmk_isr_stack_top);
 }

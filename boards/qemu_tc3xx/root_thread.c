@@ -9,7 +9,7 @@
  */
 
 #include <stdint.h>
-#include <ul/microkernel.h>
+#include <ulmk/microkernel.h>
 #include "console.h"
 
 static void counter_entry(void *arg)
@@ -18,36 +18,36 @@ static void counter_entry(void *arg)
 
 	(void)arg;
 
-	console_puts("ulipeMicroKernel: counter thread started\n");
+	console_puts("ulmk: counter thread started\n");
 
 	while (1) {
-		console_printf("ulipeMicroKernel: hello from QEMU — tick #%u\n",
+		console_printf("ulmk: hello from QEMU — tick #%u\n",
 			       (unsigned)count++);
-		ul_timer_set_deadline(100000ULL);	/* 100 ms */
-		ul_timer_wait();
+		ulmk_timer_set_deadline(100000ULL);	/* 100 ms */
+		ulmk_timer_wait();
 	}
 }
 
-void ul_root_thread(const ul_boot_info_t *info)
+void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
-	ul_thread_attr_t attr;
-	ul_tid_t         counter_tid;
+	ulmk_thread_attr_t attr;
+	ulmk_tid_t         counter_tid;
 
 	(void)info;
 
 	console_init();
-	console_puts("ulipeMicroKernel: root thread start\n");
+	console_puts("ulmk: root thread start\n");
 
-	attr = (ul_thread_attr_t){
+	attr = (ulmk_thread_attr_t){
 		.name       = "counter",
 		.entry      = counter_entry,
 		.arg        = NULL,
 		.priority   = 5u,
 		.stack_size = 2048u,
-		.privilege  = UL_PRIV_DRIVER,
+		.privilege  = ULMK_PRIV_DRIVER,
 	};
-	counter_tid = ul_thread_create(&attr);
-	ul_cap_grant(counter_tid, UL_CAP_TIMER);
+	counter_tid = ulmk_thread_create(&attr);
+	ulmk_cap_grant(counter_tid, ULMK_CAP_TIMER);
 
-	ul_thread_exit();
+	ulmk_thread_exit();
 }

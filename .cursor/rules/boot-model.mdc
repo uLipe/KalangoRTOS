@@ -13,7 +13,7 @@ creates exactly one privileged userspace thread — the **root thread** — and
 hands it all initial capabilities.  The root thread is responsible for setting
 up the rest of the system.
 
-There is no `main()`.  There is no `ul_kernel_init()` in user code.
+There is no `main()`.  There is no `ulmk_kernel_init()` in user code.
 
 ## Boot Sequence
 
@@ -23,20 +23,20 @@ startup.S (_start)
   │  (arch-level: stack, CSA pool, BTV/BIV setup)
   │
   ▼
-ul_arch_init()          ← internal; initialises MPU, tick timer, phys allocator
+ulmk_arch_init()          ← internal; initialises MPU, tick timer, phys allocator
   │
   ▼
-ul_kernel_main()        ← internal; creates root thread, starts scheduler
+ulmk_kern_main()        ← internal; creates root thread, starts scheduler
   │                        DOES NOT RETURN
   ▼
-root_thread(boot_info)  ← first userspace context; privilege = UL_PRIV_DRIVER
+root_thread(boot_info)  ← first userspace context; privilege = ULMK_PRIV_DRIVER
   │
   ├─ spawn mc_supervisor, timer_server, ...
   ├─ grant capabilities to driver processes
   └─ become MC Supervisor or hand off and block
 ```
 
-`ul_kernel_main()` and `ul_arch_init()` are **never** called from user code.
+`ulmk_kern_main()` and `ulmk_arch_init()` are **never** called from user code.
 They are called by the architecture's `startup.S`.
 
 ## Root Thread Contract
@@ -44,68 +44,68 @@ They are called by the architecture's `startup.S`.
 The user provides exactly one function with this signature:
 
 ```c
-void ul_root_thread(const ul_boot_info_t *info);
+void ulmk_root_thread(const ulmk_boot_info_t *info);
 ```
 
 Rules:
 - It is the **only** thread the kernel creates at boot.
-- It runs at privilege `UL_PRIV_DRIVER` (TriCore PSW.IO = 1).
-- It receives a pointer to `ul_boot_info_t` describing available physical
+- It runs at privilege `ULMK_PRIV_DRIVER` (TriCore PSW.IO = 1).
+- It receives a pointer to `ulmk_boot_info_t` describing available physical
   memory, tick frequency, and initial capability slots.
-- It must never return; call `ul_thread_exit()` when done bootstrapping.
-- It holds the **spawn capability** (the right to call `ul_thread_create()`).
-  It can delegate this right to other threads via `ul_cap_grant()`.
+- It must never return; call `ulmk_thread_exit()` when done bootstrapping.
+- It holds the **spawn capability** (the right to call `ulmk_thread_create()`).
+  It can delegate this right to other threads via `ulmk_cap_grant()`.
 
-## ul_boot_info_t
+## ulmk_boot_info_t
 
 ```c
-#define UL_BOOT_MAX_MEM_REGIONS  4
+#define ULMK_BOOT_MAX_MEM_REGIONS  4
 
 typedef struct {
     struct {
         uintptr_t base;
         size_t    size;
-    } mem[UL_BOOT_MAX_MEM_REGIONS];   /* available physical memory */
+    } mem[ULMK_BOOT_MAX_MEM_REGIONS];   /* available physical memory */
     uint32_t  mem_count;
     uint32_t  tick_hz;                /* scheduler tick rate */
     uintptr_t csa_pool_base;          /* start of the CSA pool in SRAM */
     size_t    csa_pool_size;
-} ul_boot_info_t;
+} ulmk_boot_info_t;
 ```
 
-The struct is valid only during `ul_root_thread()`.  Copy any fields needed
-beyond bootstrap time before calling `ul_thread_create()`.
+The struct is valid only during `ulmk_root_thread()`.  Copy any fields needed
+beyond bootstrap time before calling `ulmk_thread_create()`.
 
 ## What the Root Thread Typically Does
 
 ```c
-void ul_root_thread(const ul_boot_info_t *info)
+void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
-    ul_thread_attr_t attr;
+    ulmk_thread_attr_t attr;
 
     /* 1. Create the MC Supervisor (takes over thread-creation policy) */
-    attr = (ul_thread_attr_t){
+    attr = (ulmk_thread_attr_t){
         .name       = "mc_sup",
         .entry      = mc_supervisor_entry,
         .arg        = (void *)info,
         .priority   = 0,
         .stack_size = 4096,
-        .privilege  = UL_PRIV_DRIVER,
+        .privilege  = ULMK_PRIV_DRIVER,
     };
-    ul_thread_create(&attr);
+    ulmk_thread_create(&attr);
 
     /* 2. The root thread can terminate — MC Supervisor takes over */
-    ul_thread_exit();
+    ulmk_thread_exit();
 }
 ```
 
 ## Constraints for Code Under This Model
 
 - Never define `main()`.
-- Never call `ul_kernel_init()` or `ul_kernel_start()` — these do not exist
+- Never call `ulmk_kernel_init()` or `ulmk_kernel_start()` — these do not exist
   in the public API; they are internal to the arch port.
 - The architecture's `startup.S` is the only place that calls
-  `ul_kernel_main()`.
+  `ulmk_kern_main()`.
 - Thread creation before the scheduler starts is valid only inside
-  `ul_root_thread()`.  All threads created there start simultaneously when
-  the root thread calls `ul_thread_exit()` or blocks.
+  `ulmk_root_thread()`.  All threads created there start simultaneously when
+  the root thread calls `ulmk_thread_exit()` or blocks.

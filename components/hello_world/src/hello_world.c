@@ -13,7 +13,7 @@
  */
 
 #include <stdint.h>
-#include <ul/microkernel.h>
+#include <ulmk/microkernel.h>
 #include <hello_world.h>
 
 /* board_console_putc and board_console_puts are resolved at link time from
@@ -42,25 +42,25 @@ static void hello_entry(void *arg)
 	(void)arg;
 
 	for (;;) {
-		board_console_puts("ulipeMicroKernel: hello from userspace — tick #");
+		board_console_puts("ulmk: hello from userspace — tick #");
 		print_uint32(n++);
 		board_console_putc('\n');
 
-		ul_timer_set_deadline(100000ULL);	/* 100 ms */
-		ul_timer_wait();
+		ulmk_timer_set_deadline(100000ULL);	/* 100 ms */
+		ulmk_timer_wait();
 	}
 }
 
-ul_tid_t hello_world_init(const ul_boot_info_t *info)
+ulmk_tid_t hello_world_init(const ulmk_boot_info_t *info)
 {
-	ul_thread_attr_t attr;
-	ul_tid_t         tid;
+	ulmk_thread_attr_t attr;
+	ulmk_tid_t         tid;
 	static int       done;
 
 	(void)info;
 
 	if (done)
-		return UL_TID_INVALID;
+		return ULMK_TID_INVALID;
 	done = 1;
 
 	attr.name       = "hello";
@@ -68,9 +68,9 @@ ul_tid_t hello_world_init(const ul_boot_info_t *info)
 	attr.arg        = NULL;
 	attr.priority   = 10u;
 	attr.stack_size = 2048u;
-	attr.privilege  = UL_PRIV_USER;
+	attr.privilege  = ULMK_PRIV_USER;
 
-	tid = ul_thread_create(&attr);
-	ul_cap_grant(tid, UL_CAP_TIMER);
+	tid = ulmk_thread_create(&attr);
+	ulmk_cap_grant(tid, ULMK_CAP_TIMER);
 	return tid;
 }

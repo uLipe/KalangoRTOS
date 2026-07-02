@@ -1,4 +1,4 @@
-# ulipeMicroKernel — Status de Implementação e Roadmap
+# ulmk — Status de Implementação e Roadmap
 
 > Documento gerado em 29/06/2026. Descreve o estado atual do kernel,
 > o que foi implementado na última sessão, e os próximos itens do roadmap.
@@ -7,14 +7,14 @@
 
 ## 1. Visão Geral da Arquitetura
 
-O **ulipeMicroKernel** é um microkernel de propósito educacional/experimental
+O **ulmk** é um microkernel de propósito educacional/experimental
 para a arquitetura **TriCore TC2xx (AURIX)**, inspirado no seL4 e no QNX.
 O modelo de isolamento é **MPU estática** — um único ELF, domínios separados
 por faixas DPR/CPR, sem processos separados.
 
 ### Filosofia de design
 - O kernel é **provedor de mecanismo**, não de política.
-- Uma única thread privilegiada (`ul_root_thread`) recebe todas as
+- Uma única thread privilegiada (`ulmk_root_thread`) recebe todas as
   capabilities iniciais e constrói o restante do sistema.
 - Código de kernel mínimo: scheduler, IPC síncrono, timer, MPU, IRQ routing.
 - Otimizado primeiro para **tamanho**, depois para velocidade.
@@ -46,24 +46,24 @@ _start (startup.S)
  │ BIV ← interrupt vector table base (256-byte aligned)
  │ ISP ← interrupt stack top
  │ .bss zero + .data copy
- │ ul_board_init() [weak no-op; override para PLL/flash wait states]
+ │ ulmk_board_init() [weak no-op; override para PLL/flash wait states]
  ▼
-ul_arch_init()
+ulmk_arch_init()
  │ MPU init (PRS 0 = kernel full access)
  │ STM0 timer init (um-shot, rearmado pelo kernel)
  │ IRQ table init
  ▼
-ul_kernel_main()
+ulmk_kern_main()
  │ scheduler init
  │ phys allocator init (pool .user_pool)
  │ thread pool init
- │ cria ul_root_thread (privilege = UL_PRIV_DRIVER, UL_CAP_ALL)
- │ ul_sched_start(idle_ctx, root_thread) → primeiro context switch
+ │ cria ulmk_root_thread (privilege = ULMK_PRIV_DRIVER, ULMK_CAP_ALL)
+ │ ulmk_sched_start(idle_ctx, root_thread) → primeiro context switch
  ▼
-ul_root_thread(boot_info)   ← contexto userspace, IO=1
+ulmk_root_thread(boot_info)   ← contexto userspace, IO=1
 ```
 
-**`ul_boot_info_t`** contém: regiões de memória física disponíveis,
+**`ulmk_boot_info_t`** contém: regiões de memória física disponíveis,
 frequência do tick, base e tamanho do pool CSA.
 
 ### 2.2 Context Switch (`arch/tricore/ctx_switch.S`, `arch/tricore/vectors.S`)
@@ -73,11 +73,11 @@ frequência do tick, base e tamanho do pool CSA.
 ```asm
 ; _trap_class6 (syscall):
 ;   hardware salva Upper Context (UL) → novo CSA
-;   call ul_arch_syscall_entry → salva mais UL
-;   call ul_sched_schedule → ...
-;   call ul_arch_ctx_switch(from, to):
+;   call ulmk_arch_syscall_entry → salva mais UL
+;   call ulmk_sched_schedule → ...
+;   call ulmk_arch_ctx_switch(from, to):
 
-ul_arch_ctx_switch:
+ulmk_arch_ctx_switch:
     disable               ; ← fecha janela de atomicidade
     svlcx                 ; aloca CSA Lower Context, PCXI = LL → UL_call → UL_syscall → ...
     mfcr  d15, 0xFE00     ; lê PCXI atual
@@ -97,7 +97,7 @@ ul_arch_ctx_switch:
 hardware salva UL do thread interrompido
 _arch_tick_preempt_isr:
     svlcx                 ; salva LL do thread interrompido
-    call  _arch_tick_isr_handler   ; ul_kernel_tick() → ul_sched_tick()
+    call  _arch_tick_isr_handler   ; ulmk_kern_tick() → ulmk_sched_tick()
     ; se g_preempt_new_ctx != NULL:
     mfcr  d0, 0xFE00      ; salva PCXI (LL→UL do interrompido) em old_ctx->pcxi
     ld.w  d0, [new_ctx]   ; carrega PCXI da nova thread
@@ -118,16 +118,16 @@ _arch_tick_preempt_isr:
 - `enqueue` O(n): insere na cauda do grupo de mesma prioridade.
 
 **Preempção por quantum:**
-- `UL_CONFIG_SCHED_QUANTUM_TICKS` (padrão: 10 ticks = 10 ms com TICK_HZ=1000).
-- A cada tick o ISR chama `ul_sched_tick()`, que decrementa `ticks_remaining`
+- `ULMK_CONFIG_SCHED_QUANTUM_TICKS` (padrão: 10 ticks = 10 ms com TICK_HZ=1000).
+- A cada tick o ISR chama `ulmk_sched_tick()`, que decrementa `ticks_remaining`
   e seta `g_preempt_old_ctx`/`g_preempt_new_ctx` quando o quantum expira ou
   uma thread de maior prioridade ficou pronta.
 - O stub `_arch_tick_preempt_isr` lê esses ponteiros e troca contexto
-  **sem chamar `ul_sched_schedule`** — evita empilhar CSA extra dentro do ISR.
+  **sem chamar `ulmk_sched_schedule`** — evita empilhar CSA extra dentro do ISR.
 
 **Atomicidade do context switch:**
-- `ul_sched_schedule` desabilita IRQs antes de `sched_current = next` e
-  da chamada a `ul_arch_ctx_switch`.
+- `ulmk_sched_schedule` desabilita IRQs antes de `sched_current = next` e
+  da chamada a `ulmk_arch_ctx_switch`.
 - Ao retornar para a thread re-escalada, IRQs são reativados com `ENABLE`
   (instrução TriCore, acessível em IO≥1, sem `MTCR ICR` que exige IO≥2).
 
@@ -140,14 +140,14 @@ arm_nearest(now):
     deadline = now + TICK_PERIOD_US   // próximo quantum
     if (sleep_head && sleep_head->sleep_until < deadline)
         deadline = sleep_head->sleep_until  // acordar mais cedo se necessário
-    ul_arch_tick_deadline(delta)
+    ulmk_arch_tick_deadline(delta)
 ```
 
-- `ul_timer_sleep_insert` insere na fila ordenada por deadline.
-- `ul_timer_tick()` acorda threads vencidas, rearma o timer. **NÃO** chama
-  `ul_sched_schedule` (para evitar corrupção de CSA dentro do ISR de timer).
-- Idle loop (`ul_arch_cpu_idle`) detecta fila não vazia e chama
-  `ul_sched_schedule` a partir de contexto limpo.
+- `ulmk_timer_sleep_insert` insere na fila ordenada por deadline.
+- `ulmk_timer_tick()` acorda threads vencidas, rearma o timer. **NÃO** chama
+  `ulmk_sched_schedule` (para evitar corrupção de CSA dentro do ISR de timer).
+- Idle loop (`ulmk_arch_cpu_idle`) detecta fila não vazia e chama
+  `ulmk_sched_schedule` a partir de contexto limpo.
 
 ### 2.5 IPC Síncrono (`kernel/ipc/ep.c`)
 
@@ -155,18 +155,18 @@ arm_nearest(now):
 `reply` desbloqueia caller com resultado.
 
 ```
-ul_ep_call(ep, msg)
+ulmk_ep_call(ep, msg)
   → caller: state=BLOCKED, enfileirado em ep->send_queue
   → server:  acordado (se bloqueado em recv), herda prioridade do caller
-  → servidor processa, ul_ep_reply(sender, reply_msg)
+  → servidor processa, ulmk_ep_reply(sender, reply_msg)
   → caller: desbloqueia, lê reply
 
-ul_ep_recv_or_notif(ep, notif, mask, msg, result)
+ulmk_ep_recv_or_notif(ep, notif, mask, msg, result)
   → espera por mensagem IPC *ou* notificação de hardware
 ```
 
-- Payload inline até `UL_MSG_WORDS=6` words (24 bytes).
-- Campos do resultado (`ul_msg_t`, `sender TID`, `notif_bits`) salvos no TCB
+- Payload inline até `ULMK_MSG_WORDS=6` words (24 bytes).
+- Campos do resultado (`ulmk_msg_t`, `sender TID`, `notif_bits`) salvos no TCB
   antes do block para sobreviver ao RSLCX/RFE do context switch.
 
 ### 2.6 Notificações (`kernel/notif/notif.c`)
@@ -187,20 +187,20 @@ Objeto de notificação: bitmask de 32 bits, acordado quando máscara de espera
 
 - DPR: sem restrição de power-of-2, alinhado a 8 bytes.
 - Troca de PRS (`PSW.PRS`) ≈ 3 ciclos (vs. ~50 no ARM Cortex-M).
-- Cada thread tem `ul_arch_region_t regions[UL_ARCH_MAX_REGIONS]` no TCB.
-- `ul_arch_mpu_switch(regions, count, prs)` reconfigura CPR/DPR + PSW.PRS
+- Cada thread tem `ulmk_arch_region_t regions[ULMK_ARCH_MAX_REGIONS]` no TCB.
+- `ulmk_arch_mpu_switch(regions, count, prs)` reconfigura CPR/DPR + PSW.PRS
   a cada context switch.
 
 **Geração do linker script (3 camadas):**
 1. `linker/kernel/*.ld.in` — seções arch-independentes (vectors, kernel_text, stacks).
 2. `arch/tricore/linker/*.ld.in` — CSA pool, small-data ABI, OUTPUT_FORMAT.
-3. `<chip_dir>/memory.ld` — MEMORY block, `UL_MPU_ALIGN`, flags HAVE_CSA/BMHD.
+3. `<chip_dir>/memory.ld` — MEMORY block, `ULMK_MPU_ALIGN`, flags HAVE_CSA/BMHD.
 
 ### 2.8 Layer de Atomics (`arch/tricore/arch.c`)
 
 ```c
 /* CAS por software via DISABLE/ENABLE */
-uint32_t ul_arch_atomic_cas(volatile uint32_t *ptr,
+uint32_t ulmk_arch_atomic_cas(volatile uint32_t *ptr,
                              uint32_t expected, uint32_t desired) {
     uint32_t old;
     __asm__ __volatile__("disable" ::: "memory");
@@ -211,12 +211,12 @@ uint32_t ul_arch_atomic_cas(volatile uint32_t *ptr,
 }
 
 /* atomic_add: CAS-retry loop */
-uint32_t ul_arch_atomic_add(volatile uint32_t *ptr, uint32_t val) {
+uint32_t ulmk_arch_atomic_add(volatile uint32_t *ptr, uint32_t val) {
     uint32_t old, new_val;
     do {
         old     = *ptr;
         new_val = old + val;
-    } while (ul_arch_atomic_cas(ptr, old, new_val) != old);
+    } while (ulmk_arch_atomic_cas(ptr, old, new_val) != old);
     return old;
 }
 ```
@@ -234,32 +234,32 @@ uint32_t ul_arch_atomic_add(volatile uint32_t *ptr, uint32_t val) {
 
 ### 3.1 Bug: Não-atomicidade do context switch
 
-**Problema:** entre `sched_current = next` em `ul_sched_schedule` e o
-`mtcr 0xFE00, d15` (instalação do PCXI) em `ul_arch_ctx_switch`, o timer ISR
+**Problema:** entre `sched_current = next` em `ulmk_sched_schedule` e o
+`mtcr 0xFE00, d15` (instalação do PCXI) em `ulmk_arch_ctx_switch`, o timer ISR
 poderia ser entregue. O ISR via `_arch_tick_preempt_isr` leria `sched_current`
 (já apontando para `next`) e salvaria `PCXI` (ainda da thread anterior) em
 `next->ctx.pcxi`, corrompendo a CSA chain.
 
 **Sintoma observado:** context switch stress test (8 workers × 100 yields)
-causava travamento do timer — o supervisor nunca acordava do `ul_usleep(60s)`.
+causava travamento do timer — o supervisor nunca acordava do `ulmk_usleep(60s)`.
 
 **Correção aplicada:**
 
 *`kernel/sched/sched.c`:*
 ```c
-key = ul_arch_cpu_irq_save();   // disable antes de atualizar sched_current
+key = ulmk_arch_cpu_irq_save();   // disable antes de atualizar sched_current
 if (next) {
     sched_current = next;
     ...
 }
-ul_arch_ctx_switch(from, to);   // IRQs ainda desabilitados ao entrar
+ulmk_arch_ctx_switch(from, to);   // IRQs ainda desabilitados ao entrar
 /* ao retornar (re-scheduling desta thread): */
-ul_arch_cpu_irq_enable();       // enable incondicional (ENABLE, IO >= 1)
+ulmk_arch_cpu_irq_enable();       // enable incondicional (ENABLE, IO >= 1)
 ```
 
 *`arch/tricore/ctx_switch.S`:*
 ```asm
-ul_arch_ctx_switch:
+ulmk_arch_ctx_switch:
     disable           ; ← bloqueia ISR durante troca de PCXI
     svlcx
     mfcr  d15, 0xFE00
@@ -275,7 +275,7 @@ ul_arch_ctx_switch:
 
 ### 3.2 Bug: Implementação do layer de atomics
 
-**Problema:** `ul_arch_atomic_cas` e `ul_arch_atomic_add` eram stubs que
+**Problema:** `ulmk_arch_atomic_cas` e `ulmk_arch_atomic_add` eram stubs que
 retornavam 0. Qualquer uso de contadores compartilhados entre threads
 produzia resultados incorretos.
 
@@ -286,28 +286,28 @@ na seção 2.8 acima).
 
 Cobre os dois bugs acima num único harness:
 
-- **Phase 1 — Correção atômica:** 2 workers × 50 000 `ul_arch_atomic_add`
+- **Phase 1 — Correção atômica:** 2 workers × 50 000 `ulmk_arch_atomic_add`
   sob preempção → `counter` deve ser exatamente 100 000.
-- **Phase 2 — Stress de context switch:** 8 workers × 100 `ul_thread_yield`
+- **Phase 2 — Stress de context switch:** 8 workers × 100 `ulmk_thread_yield`
   concorrentes enquanto o timer dispara a cada quantum → nenhum trap de
   gerenciamento de contexto (classe 3) deve ocorrer; todos os workers
   devem completar.
 
 ### 3.4 Correção de regressão nos unit tests
 
-Os stubs de host (`ul_arch.h`, `ul/microkernel.h`) usados pelos testes
+Os stubs de host (`ulmk_arch.h`, `ul/microkernel.h`) usados pelos testes
 unitários de host (compilados com `cc`) estavam desatualizados em relação
 a adições de sessões anteriores:
 
 | Adição faltante | Motivo |
 |-----------------|--------|
-| `ul_arch_irq_key_t`, `irq_save/restore/enable` | `sched.c` passou a usar após fix de atomicidade |
-| `ul_arch_region_t`, `UL_ARCH_MAX_REGIONS`, `UL_REGION_STACK` | `thread.c` usa desde a adição de MPU domains |
-| `ul_msg_t`, `ul_recv_or_notif_result_t` | `ul_thread_internal.h` inclui desde adição do IPC |
-| `UL_EP_INVALID`, `UL_NOTIF_INVALID`, `UL_CAP_ALL`, `UL_PERM_*` | `thread.c` usa nas inicializações do TCB |
+| `ulmk_arch_irq_key_t`, `irq_save/restore/enable` | `sched.c` passou a usar após fix de atomicidade |
+| `ulmk_arch_region_t`, `ULMK_ARCH_MAX_REGIONS`, `ULMK_REGION_STACK` | `thread.c` usa desde a adição de MPU domains |
+| `ulmk_msg_t`, `ulmk_recv_or_notif_result_t` | `ulmk_thread_internal.h` inclui desde adição do IPC |
+| `ULMK_EP_INVALID`, `ULMK_NOTIF_INVALID`, `ULMK_CAP_ALL`, `UL_PERM_*` | `thread.c` usa nas inicializações do TCB |
 
 Dois testes de comportamento do `sleep_unit` foram atualizados:
-- `idle_triggers_schedule`: `ul_timer_tick` não chama mais `ul_sched_schedule`
+- `idle_triggers_schedule`: `ulmk_timer_tick` não chama mais `ulmk_sched_schedule`
   (evita empilhar CSA extra dentro do ISR); o idle loop faz isso em contexto limpo.
 - `empty_queue_no_rearm`: `arm_nearest` sempre rearma para o próximo quantum,
   mesmo com a fila vazia — necessário para o preemptive scheduler continuar.
@@ -323,7 +323,7 @@ Todos os 18 testes passando:
 | `boot` | integ | boot sequence, BSS zero, root thread |
 | `ctx_switch` | integ | fabricação e troca de contexto manual |
 | `ctx_switch` stress | integ | 56 ciclos de spawn/exit/preempt |
-| `sleep_integ` | integ | `ul_usleep`, wake-up ordering, supervisor |
+| `sleep_integ` | integ | `ulmk_usleep`, wake-up ordering, supervisor |
 | `preempt_integ` | integ | round-robin preemptivo, quantum |
 | `thread_lifecycle_integ` | integ | spawn, kill, suspend/resume |
 | `sched_integ` | integ | prioridade estrita, FIFO intra-prioridade |
@@ -349,15 +349,15 @@ Todos os 18 testes passando:
 **O que falta:**
 - O servidor deve herdar a prioridade do cliente mais urgente em sua fila
   de envio enquanto processa a mensagem.
-- Ao responder (`ul_ep_reply`), reverter a prioridade herdada.
-- Implementar `ul_ep_set_priority_ceiling` para endpoints com ceiling fixo.
+- Ao responder (`ulmk_ep_reply`), reverter a prioridade herdada.
+- Implementar `ulmk_ep_set_priority_ceiling` para endpoints com ceiling fixo.
 
 **Nível de implementação:**
 1. Adicionar `uint8_t base_priority` no TCB (prioridade original).
-2. Em `ul_ep_enqueue_sender`: se `sender->priority < server->priority`,
-   chamar `ul_sched_dequeue(server)`, atualizar `server->priority`,
-   `ul_sched_enqueue(server)`.
-3. Em `ul_ep_reply`: restaurar `server->priority = server->base_priority`,
+2. Em `ulmk_ep_enqueue_sender`: se `sender->priority < server->priority`,
+   chamar `ulmk_sched_dequeue(server)`, atualizar `server->priority`,
+   `ulmk_sched_enqueue(server)`.
+3. Em `ulmk_ep_reply`: restaurar `server->priority = server->base_priority`,
    re-enqueue.
 4. Integração test: um cliente de prioridade alta + servidor de baixa prioridade
    → verificar que o servidor não é preterido por threads de prioridade média
@@ -377,8 +377,8 @@ O kernel atual é completamente single-core. TC275/TC277 têm 3 cores independen
    "reschedule" ao core alvo quando uma thread de alta prioridade é
    desbloqueada em outro core.
 4. **Scheduler per-core:** cada core tem sua run queue; o global scheduler
-   faz load-balancing na hora de `ul_thread_create` e durante steal.
-5. **`ul_arch_atomic_cas` para SMP:** substituir `DISABLE`/`ENABLE` por
+   faz load-balancing na hora de `ulmk_thread_create` e durante steal.
+5. **`ulmk_arch_atomic_cas` para SMP:** substituir `DISABLE`/`ENABLE` por
    `CMPSWAP.W` (instrução TriCore de CAS real, sincronizada via bus locking).
 
 ### 5.3 [MÉDIA PRIORIDADE] Capabilities granulares e revogação
@@ -390,19 +390,19 @@ O kernel atual é completamente single-core. TC275/TC277 têm 3 cores independen
 **Nível de implementação:**
 1. Substituir bitmask por `cap_slot_t` — índice numa tabela global de slots.
 2. Cada slot aponta para um objeto kernel (endpoint, notif, thread) + permissões.
-3. `ul_cap_derive(src_slot, dst_tid, perms)`: cria filho com subset de permissões.
-4. `ul_cap_revoke(slot)`: invalida o slot e todos os filhos recursivamente.
+3. `ulmk_cap_derive(src_slot, dst_tid, perms)`: cria filho com subset de permissões.
+4. `ulmk_cap_revoke(slot)`: invalida o slot e todos os filhos recursivamente.
 5. Necessário para isolamento seguro entre drivers de terceiros.
 
 ### 5.4 [MÉDIA PRIORIDADE] Gerenciamento de memória física dinâmico
 
 **O que falta:**
-- `ul_phys_alloc` atual: first-fit simples, sem retorno da memória ao sistema.
+- `ulmk_phys_alloc` atual: first-fit simples, sem retorno da memória ao sistema.
 - Falta: capability de memória física (`UL_CAP_MEMORY`) — o root thread
   recebe toda a RAM livre e pode delegar regiões a outros componentes.
 
 **Nível de implementação:**
-1. `ul_kmem_grant(tid, base, size)`: concede uma faixa de RAM a uma thread.
+1. `ulmk_kmem_grant(tid, base, size)`: concede uma faixa de RAM a uma thread.
 2. Thread receptora pode usar a faixa para suas stacks, buffers IPC etc.
 3. Integração com o linker/MPU: regiões concedidas entram no `regions[]` do TCB.
 
@@ -414,17 +414,17 @@ O kernel atual é completamente single-core. TC275/TC277 têm 3 cores independen
   trava, o WDT expira e reinicia o sistema de forma controlada.
 
 **Nível de implementação:**
-1. `ul_wdt_init(timeout_ms)` — configura WDT0/WDT1/WDT2 para todos os cores.
-2. Thread dedicada de health monitor, prioridade máxima, faz `ul_wdt_kick()`
+1. `ulmk_wdt_init(timeout_ms)` — configura WDT0/WDT1/WDT2 para todos os cores.
+2. Thread dedicada de health monitor, prioridade máxima, faz `ulmk_wdt_kick()`
    a cada ciclo, verificando que todas as threads críticas reportaram progresso.
-3. Integração com `ul_thread_suspend`/`ul_kern_exit` para detectar travamentos.
+3. Integração com `ulmk_thread_suspend`/`ulmk_kern_exit` para detectar travamentos.
 
 ### 5.6 [BAIXA PRIORIDADE] Boot loader e BMHD
 
 **O que falta:**
 - `boards/tc27x/bmhd.ld.in` e geração do Boot Mode Header para flash real.
 - Suporte a `_start` em non-cached flash (`0x80000000`).
-- Implementar `ul_board_init` para TC277 EVB: PLL a 200 MHz, EMEM externa.
+- Implementar `ulmk_board_init` para TC277 EVB: PLL a 200 MHz, EMEM externa.
 
 ### 5.7 [BAIXA PRIORIDADE] Tracing e profiling
 
@@ -440,8 +440,8 @@ O kernel atual é completamente single-core. TC275/TC277 têm 3 cores independen
 | Item | Detalhe |
 |------|---------|
 | `CMPSWAP.W` | Atomics usam `DISABLE/ENABLE`; em TC27x multi-core real, usar instrução hardware |
-| `ul_arch_cpu_idle` | Implementado como `nop` (busy-wait); usar `WAIT` com wakeup por STM |
-| `ul_ep_reply` sem priority inheritance | Servidor não reverte prioridade herdada ao responder |
-| `ul_arch_phys_alloc` (arch) | Stubs em arch.c; a implementação real está em `phys_alloc.c` diretamente |
+| `ulmk_arch_cpu_idle` | Implementado como `nop` (busy-wait); usar `WAIT` com wakeup por STM |
+| `ulmk_ep_reply` sem priority inheritance | Servidor não reverte prioridade herdada ao responder |
+| `ulmk_arch_phys_alloc` (arch) | Stubs em arch.c; a implementação real está em `phys_alloc.c` diretamente |
 | CDC/CDE workaround | PSW CDC limpo manualmente no tick ISR para contornar NEST trap do QEMU |
 | Timeout do `atomic_integ` | 60 s de sleep necessários; QEMU é ~30× mais lento que HW real |

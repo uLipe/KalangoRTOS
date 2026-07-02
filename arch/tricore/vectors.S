@@ -11,12 +11,12 @@
  *
  * Interrupt table: 256-byte-aligned BIV; each entry is a 4-byte jump.
  * We register a single generic ISR dispatcher at vector 0 here; individual
- * SRPN vectors are programmed at runtime by ul_arch_irq_src_configure().
+ * SRPN vectors are programmed at runtime by ulmk_arch_irq_src_configure().
  */
 
-    .extern ul_arch_trap_entry
-    .extern ul_arch_syscall_entry
-    .extern ul_kernel_irq_dispatch
+    .extern ulmk_arch_trap_entry
+    .extern ulmk_arch_syscall_entry
+    .extern ulmk_kern_irq_dispatch
 
 /* ---------------------------------------------------------------------------
  * Trap vector table
@@ -30,7 +30,7 @@
 _trap_class0:
     mov     %d4, 0
     mov     %d5, %d15
-    call    ul_arch_trap_entry
+    call    ulmk_arch_trap_entry
     j       .
 
 /* Class 1 — Internal Protection Trap */
@@ -39,7 +39,7 @@ _trap_class0:
 _trap_class1:
     mov     %d4, 1
     mov     %d5, %d15
-    call    ul_arch_trap_entry
+    call    ulmk_arch_trap_entry
     j       .
 
 /* Class 2 — Instruction Error Trap */
@@ -48,7 +48,7 @@ _trap_class1:
 _trap_class2:
     mov     %d4, 2
     mov     %d5, %d15
-    call    ul_arch_trap_entry
+    call    ulmk_arch_trap_entry
     j       .
 
 /* Class 3 — Context Management Trap (FCU/CDU) */
@@ -57,7 +57,7 @@ _trap_class2:
 _trap_class3:
     mov     %d4, 3
     mov     %d5, %d15
-    call    ul_arch_trap_entry
+    call    ulmk_arch_trap_entry
     j       .
 
 /* Class 4 — System Bus and Peripheral Errors */
@@ -66,7 +66,7 @@ _trap_class3:
 _trap_class4:
     mov     %d4, 4
     mov     %d5, %d15
-    call    ul_arch_trap_entry
+    call    ulmk_arch_trap_entry
     j       .
 
 /* Class 5 — Assertion Traps */
@@ -75,14 +75,14 @@ _trap_class4:
 _trap_class5:
     mov     %d4, 5
     mov     %d5, %d15
-    call    ul_arch_trap_entry
+    call    ulmk_arch_trap_entry
     j       .
 
 /* Class 6 — SYSCALL */
     .align  5
     .global _trap_class6
 _trap_class6:
-    call    ul_arch_syscall_entry
+    call    ulmk_arch_syscall_entry
     rfe
 
 /* Class 7 — NMI */
@@ -91,7 +91,7 @@ _trap_class6:
 _trap_class7:
     mov     %d4, 7
     mov     %d5, %d15
-    call    ul_arch_trap_entry
+    call    ulmk_arch_trap_entry
     j       .
 
 /* ---------------------------------------------------------------------------
@@ -114,14 +114,14 @@ _trap_class7:
     .section .int_table, "ax"
     .align  8   /* 256-byte aligned BIV base */
 
-    .global _ul_int_table
-_ul_int_table:
+    .global _ulmk_int_table
+_ulmk_int_table:
 
 /* SRPN=0 — priority 0 is disabled; this slot is never dispatched. */
     rfe
     .align  5		/* pad to next 32-byte boundary */
 
-/* SRPN=1 — kernel tick one-shot ISR (BIV + 1*32 = _ul_int_table + 0x20) */
+/* SRPN=1 — kernel tick one-shot ISR (BIV + 1*32 = _ulmk_int_table + 0x20) */
     j       _arch_tick_preempt_isr    /* preemption-aware trampoline */
     .align  5		/* pad to next 32-byte boundary */
 
@@ -230,7 +230,7 @@ _arch_tick_preempt_isr:
  *
  * Jumped to by every SRPN=2..255 vector slot.  The SRPN is read from
  * ICR.CCPN inside _arch_generic_isr_handler, which also calls
- * ul_kernel_irq_check_preempt() to potentially set g_preempt_old/new_ctx.
+ * ulmk_kern_irq_check_preempt() to potentially set g_preempt_old/new_ctx.
  *
  * If g_preempt_new_ctx is set on return from the C handler, perform the
  * preemptive context switch identically to _arch_tick_preempt_isr.

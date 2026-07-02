@@ -3,15 +3,15 @@
  * Physical allocator pool: the remaining KERNEL_RAM after all static
  * sections have been placed.
  *
- * ul_arch_phys_alloc_init() receives these symbols at boot and manages
+ * ulmk_arch_phys_alloc_init() receives these symbols at boot and manages
  * the range as a simple first-fit allocator.  Thread stacks and anonymous
- * ul_mem_map() regions are carved from here.
+ * ulmk_mem_map() regions are carved from here.
  *
  * Always the last section in KERNEL_RAM so it expands to the end.
  */
 
-    .user_pool (NOLOAD) : ALIGN(UL_MPU_ALIGN) {
-        _ul_user_pool_start = .;
+    .user_pool (NOLOAD) : ALIGN(ULMK_MPU_ALIGN) {
+        _ulmk_user_pool_start = .;
         . = ORIGIN(KERNEL_RAM) + LENGTH(KERNEL_RAM);
-        _ul_user_pool_end = .;
+        _ulmk_user_pool_end = .;
     } > KERNEL_RAM

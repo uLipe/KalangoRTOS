@@ -13,11 +13,11 @@
  *   then spawns the server thread.  Because the root thread runs at priority
  *   0 and the server at priority 1, the root thread completes initialisation
  *   before the server executes — g_ep is valid by the time the server calls
- *   ul_ep_recv(), and by the time any client calls board_console_putc().
+ *   ulmk_ep_recv(), and by the time any client calls board_console_putc().
  */
 
 #include <stdint.h>
-#include <ul/microkernel.h>
+#include <ulmk/microkernel.h>
 #include "board_console.h"
 
 #define VIRT_BASE        0xBF000000UL
@@ -26,17 +26,17 @@
 
 #define CONSOLE_MSG_PUTC  1u
 
-static ul_ep_t g_ep;
+static ulmk_ep_t g_ep;
 
 /* ---- client API --------------------------------------------------------- */
 
 void board_console_putc(char c)
 {
-	ul_msg_t msg;
+	ulmk_msg_t msg;
 
 	msg.label    = CONSOLE_MSG_PUTC;
 	msg.words[0] = (uint32_t)(uint8_t)c;
-	ul_ep_call(g_ep, &msg);
+	ulmk_ep_call(g_ep, &msg);
 }
 
 void board_console_puts(const char *s)
@@ -52,45 +52,45 @@ void board_console_puts(const char *s)
 static void console_server(void *arg)
 {
 	volatile uint32_t *virt;
-	ul_msg_t           msg;
-	ul_tid_t           sender;
+	ulmk_msg_t           msg;
+	ulmk_tid_t           sender;
 
 	(void)arg;
 
-	virt = (volatile uint32_t *)ul_mem_map(
+	virt = (volatile uint32_t *)ulmk_mem_map(
 		(void *)VIRT_BASE,
 		VIRT_REGION_SIZE,
-		UL_PERM_READ | UL_PERM_WRITE,
-		UL_MMAP_PERIPH);
+		ULMK_PERM_READ | ULMK_PERM_WRITE,
+		ULMK_MMAP_PERIPH);
 
 	for (;;) {
-		ul_ep_recv(g_ep, &msg, &sender);
+		ulmk_ep_recv(g_ep, &msg, &sender);
 		if (msg.label == CONSOLE_MSG_PUTC)
 			*(virt + (VIRT_PUTCHAR_OFF / sizeof(uint32_t))) =
 				(uint32_t)(uint8_t)msg.words[0];
-		ul_ep_reply(sender, &(ul_msg_t){0});
+		ulmk_ep_reply(sender, &(ulmk_msg_t){0});
 	}
 }
 
 /* ---- init --------------------------------------------------------------- */
 
-ul_tid_t board_console_start(const ul_boot_info_t *info)
+ulmk_tid_t board_console_start(const ulmk_boot_info_t *info)
 {
-	ul_thread_attr_t attr;
-	ul_tid_t         tid;
+	ulmk_thread_attr_t attr;
+	ulmk_tid_t         tid;
 
 	(void)info;
 
-	g_ep = ul_ep_create();
+	g_ep = ulmk_ep_create();
 
 	attr.name       = "bcon";
 	attr.entry      = console_server;
 	attr.arg        = NULL;
 	attr.priority   = 1u;
 	attr.stack_size = 1024u;
-	attr.privilege  = UL_PRIV_DRIVER;
+	attr.privilege  = ULMK_PRIV_DRIVER;
 
-	tid = ul_thread_create(&attr);
-	ul_cap_grant(tid, UL_CAP_MAP_PERIPH);
+	tid = ulmk_thread_create(&attr);
+	ulmk_cap_grant(tid, ULMK_CAP_MAP_PERIPH);
 	return tid;
 }

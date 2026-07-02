@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 # Must set toolchain file BEFORE project() so that CMake detects the cross compiler.
 # cmake -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-tricore-gcc.cmake -S . -B build
 
-project(ulipeMicroKernel
+project(ulmk
     VERSION 0.1.0
     DESCRIPTION "Minimal capability-based microkernel for TriCore TC2xx"
     LANGUAGES C ASM)
@@ -16,17 +16,17 @@ include(cmake/config.cmake)
 
 configure_file(
     cmake/config.h.in
-    "${CMAKE_BINARY_DIR}/generated/ul/config.h"
+    "${CMAKE_BINARY_DIR}/generated/ulmk/config.h"
     @ONLY)
 
 # ---------------------------------------------------------------------------
-# Linker API (ul_add_app, ul_add_domain, ul_set_root_thread)
+# Linker API (ulmk_add_app, ulmk_add_domain, ulmk_set_root_thread)
 # ---------------------------------------------------------------------------
 
 include(cmake/linker_api.cmake)
 
 # ---------------------------------------------------------------------------
-# Component API (ul_component_register, ul_components_finalize)
+# Component API (ulmk_component_register, ulmk_components_finalize)
 # ---------------------------------------------------------------------------
 
 include(cmake/component_api.cmake)
@@ -34,34 +34,34 @@ include(cmake/component_api.cmake)
 # ---------------------------------------------------------------------------
 # Chip / board selection
 # Default to the built-in QEMU platform for CI.
-# Override with: cmake -DUL_CHIP_DIR=<path/to/board> ...
+# Override with: cmake -DULMK_CHIP_DIR=<path/to/board> ...
 # ---------------------------------------------------------------------------
 
-set(UL_CHIP_DIR "${CMAKE_SOURCE_DIR}/boards/qemu_tc3xx"
+set(ULMK_CHIP_DIR "${CMAKE_SOURCE_DIR}/boards/qemu_tc3xx"
     CACHE PATH "Path to the board directory containing memory.ld")
 
 # ---------------------------------------------------------------------------
-# Board descriptor — sets UL_BOARD_CPU, UL_BOARD_CFLAGS, UL_BOARD_SOURCES
+# Board descriptor — sets ULMK_BOARD_CPU, ULMK_BOARD_CFLAGS, ULMK_BOARD_SOURCES
 # ---------------------------------------------------------------------------
 
-if(EXISTS "${UL_CHIP_DIR}/board.cmake")
-    include("${UL_CHIP_DIR}/board.cmake")
+if(EXISTS "${ULMK_CHIP_DIR}/board.cmake")
+    include("${ULMK_CHIP_DIR}/board.cmake")
 endif()
 
 # Prefix board sources with the board directory path.
-set(_UL_BOARD_SRCS "")
-foreach(_src IN LISTS UL_BOARD_SOURCES)
-    list(APPEND _UL_BOARD_SRCS "${UL_CHIP_DIR}/${_src}")
+set(_ULMK_BOARD_SRCS "")
+foreach(_src IN LISTS ULMK_BOARD_SOURCES)
+    list(APPEND _ULMK_BOARD_SRCS "${ULMK_CHIP_DIR}/${_src}")
 endforeach()
 
 # ---------------------------------------------------------------------------
 # Kernel static library
 # ---------------------------------------------------------------------------
 
-add_library(ulipe_kernel STATIC
+add_library(ulmk_kernel STATIC
     kernel/kernel_main.c
     kernel/syscall/syscall_router.c
-    kernel/printk/ul_printk.c
+    kernel/printk/ulmk_printk.c
     kernel/thread/thread.c
     kernel/sched/sched.c
     kernel/sched/fifo_rt.c
@@ -74,19 +74,19 @@ add_library(ulipe_kernel STATIC
     kernel/irq/irq.c
     arch/tricore/arch.c
     arch/tricore/ctx_switch.S
-    ${_UL_BOARD_SRCS})
+    ${_ULMK_BOARD_SRCS})
 
-target_include_directories(ulipe_kernel PUBLIC
+target_include_directories(ulmk_kernel PUBLIC
     "${CMAKE_SOURCE_DIR}/include"
     "${CMAKE_SOURCE_DIR}/arch/tricore/include"
     "${CMAKE_BINARY_DIR}/generated")
 
-target_include_directories(ulipe_kernel PRIVATE
+target_include_directories(ulmk_kernel PRIVATE
     "${CMAKE_SOURCE_DIR}"
-    "${UL_CHIP_DIR}")
+    "${ULMK_CHIP_DIR}")
 
-if(DEFINED UL_BOARD_CFLAGS)
-    target_compile_options(ulipe_kernel PRIVATE ${UL_BOARD_CFLAGS})
+if(DEFINED ULMK_BOARD_CFLAGS)
+    target_compile_options(ulmk_kernel PRIVATE ${ULMK_BOARD_CFLAGS})
 endif()
 
 # ---------------------------------------------------------------------------
@@ -116,28 +116,28 @@ if(IS_DIRECTORY "${_ULMK_APPS_DIR}")
     endforeach()
 endif()
 
-ul_components_finalize()
+ulmk_components_finalize()
 
 # ---------------------------------------------------------------------------
 # Kernel executable (kernel + arch startup + apps)
 # ---------------------------------------------------------------------------
 
-add_executable(ulipe_microkernel
+add_executable(ulmk
     arch/tricore/startup.S
     arch/tricore/vectors.S)
 
-target_link_libraries(ulipe_microkernel PRIVATE ulipe_kernel)
+target_link_libraries(ulmk PRIVATE ulmk_kernel)
 
 # ---------------------------------------------------------------------------
-# Linker script generation — must be called AFTER all ul_add_app/domain calls
+# Linker script generation — must be called AFTER all ulmk_add_app/domain calls
 # ---------------------------------------------------------------------------
 
-_ul_finalize_build(ulipe_microkernel "${UL_CHIP_DIR}")
+_ulmk_finalize_build(ulmk "${ULMK_CHIP_DIR}")
 
 # ---------------------------------------------------------------------------
 # Post-build: print memory usage
 # ---------------------------------------------------------------------------
 
-add_custom_command(TARGET ulipe_microkernel POST_BUILD
-    COMMAND "${CMAKE_SIZE}" "$<TARGET_FILE:ulipe_microkernel>"
+add_custom_command(TARGET ulmk POST_BUILD
+    COMMAND "${CMAKE_SIZE}" "$<TARGET_FILE:ulmk>"
     COMMENT "Memory usage")

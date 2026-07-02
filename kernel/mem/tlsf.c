@@ -5,7 +5,7 @@
  * Minimal TLSF (Two-Level Segregated Fit) heap — kernel/mem/tlsf.c
  *
  * O(1) alloc/free.  Supports pools up to ~1 GB.  Every allocation is
- * aligned to TLSF_HDR (64 bytes = UL_ARCH_REGION_ALIGN) so it can be
+ * aligned to TLSF_HDR (64 bytes = ULMK_ARCH_REGION_ALIGN) so it can be
  * used as an MPU region without re-alignment.
  *
  * Block layout (header = 64 bytes, payload follows immediately):
@@ -29,7 +29,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-#include <kernel/include/ul_mem_internal.h>
+#include <kernel/include/ulmk_mem_internal.h>
 
 /* ─── constants ──────────────────────────────────────────────────────────── */
 
@@ -190,7 +190,7 @@ static blk_t *find_free_block(uint32_t size)
 
 /* ─── public API ─────────────────────────────────────────────────────────── */
 
-void ul_heap_init(uintptr_t base, size_t size)
+void ulmk_heap_init(uintptr_t base, size_t size)
 {
 	uint8_t *aligned;
 	size_t   total;
@@ -227,7 +227,7 @@ void ul_heap_init(uintptr_t base, size_t size)
 	insert_free(first);
 }
 
-void *ul_heap_alloc(size_t size)
+void *ulmk_heap_alloc(size_t size)
 {
 	uint32_t  rounded;
 	blk_t    *blk;
@@ -266,7 +266,7 @@ void *ul_heap_alloc(size_t size)
 	return (uint8_t *)blk + TLSF_HDR;
 }
 
-void ul_heap_free(void *ptr)
+void ulmk_heap_free(void *ptr)
 {
 	blk_t *blk;
 	blk_t *nxt;
@@ -311,7 +311,7 @@ void ul_heap_free(void *ptr)
  * header is placed immediately before the aligned payload; the caller MUST
  * free the pointer returned by this function (NOT the raw allocation).
  */
-void *ul_heap_aligned_alloc(size_t align, size_t size)
+void *ulmk_heap_aligned_alloc(size_t align, size_t size)
 {
 	blk_t    *blk;
 	blk_t    *prefix;
@@ -322,7 +322,7 @@ void *ul_heap_aligned_alloc(size_t align, size_t size)
 	uint32_t  rounded;
 
 	if (align <= TLSF_HDR || align == 0u)
-		return ul_heap_alloc(size);
+		return ulmk_heap_alloc(size);
 
 	/*
 	 * Allocate enough to guarantee an aligned payload: size + align bytes
@@ -370,7 +370,7 @@ void *ul_heap_aligned_alloc(size_t align, size_t size)
 	return (void *)aligned_payload;
 }
 
-size_t ul_heap_free_bytes(void)
+size_t ulmk_heap_free_bytes(void)
 {
 	return ctrl.free_bytes;
 }

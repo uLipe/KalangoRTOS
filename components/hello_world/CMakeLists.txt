@@ -1,4 +1,4 @@
-ul_component_register(
+ulmk_component_register(
     NAME         hello_world
     ENABLED      ON
     SOURCES

@@ -4,26 +4,26 @@
  *   .kernel_data — initialised variables, LMA-backed (flash → RAM copy)
  *   .kernel_bss  — zero-initialised variables, NOLOAD (startup.S zeroes)
  *
- * Both sections are aligned to UL_MPU_ALIGN on both ends so the arch may
+ * Both sections are aligned to ULMK_MPU_ALIGN on both ends so the arch may
  * optionally configure a single supervisor-only DPR range covering the
  * combined kernel data/bss area.
  *
  * startup.S protocol:
- *   1. Copy [__ul_kernel_data_load .. __ul_kernel_data_load + size) → RAM
- *      using _ul_kernel_data_start / _ul_kernel_data_end.
- *   2. Zero [_ul_kernel_bss_start .. _ul_kernel_bss_end).
+ *   1. Copy [__ulmk_kernel_data_load .. __ulmk_kernel_data_load + size) → RAM
+ *      using _ulmk_kernel_data_start / _ulmk_kernel_data_end.
+ *   2. Zero [_ulmk_kernel_bss_start .. _ulmk_kernel_bss_end).
  */
 
-    __ul_kernel_data_load = LOADADDR(.kernel_data);
-    .kernel_data : ALIGN(UL_MPU_ALIGN) {
-        _ul_kernel_data_start = .;
-        *(.data.ul_arch_*)
-        *(.data.ul_kernel_*)
-        *(.data.ul_sched_*)
-        *(.data.ul_ipc_*)
-        *(.data.ul_irq_*)
-        *(.data.ul_mem_*)
-        *(.data.ul_notif_*)
+    __ulmk_kernel_data_load = LOADADDR(.kernel_data);
+    .kernel_data : ALIGN(ULMK_MPU_ALIGN) {
+        _ulmk_kernel_data_start = .;
+        *(.data.ulmk_arch_*)
+        *(.data.ulmk_kernel_*)
+        *(.data.ulmk_sched_*)
+        *(.data.ulmk_ipc_*)
+        *(.data.ulmk_irq_*)
+        *(.data.ulmk_mem_*)
+        *(.data.ulmk_notif_*)
         *(.data .data.*)
         *(.sdata .sdata.*)
         /*
@@ -35,20 +35,20 @@
          */
         *(*)
         . = ALIGN(4);
-        _ul_kernel_data_end = .;
+        _ulmk_kernel_data_end = .;
     } > KERNEL_RAM AT > KERNEL_FLASH
 
     .kernel_bss (NOLOAD) : ALIGN(4) {
-        _ul_kernel_bss_start = .;
-        *(.bss.ul_arch_*)
-        *(.bss.ul_kernel_*)
-        *(.bss.ul_sched_*)
-        *(.bss.ul_ipc_*)
-        *(.bss.ul_irq_*)
-        *(.bss.ul_mem_*)
-        *(.bss.ul_notif_*)
+        _ulmk_kernel_bss_start = .;
+        *(.bss.ulmk_arch_*)
+        *(.bss.ulmk_kernel_*)
+        *(.bss.ulmk_sched_*)
+        *(.bss.ulmk_ipc_*)
+        *(.bss.ulmk_irq_*)
+        *(.bss.ulmk_mem_*)
+        *(.bss.ulmk_notif_*)
         *(.bss .bss.*)
         *(COMMON)
         . = ALIGN(4);
-        _ul_kernel_bss_end = .;
+        _ulmk_kernel_bss_end = .;
     } > KERNEL_RAM

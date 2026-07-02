@@ -19,11 +19,11 @@
     } > KERNEL_FLASH
 
     .trap_table : ALIGN(256) {
-        _ul_trap_table = .;
+        _ulmk_trap_table = .;
         KEEP(*(.trap_table))
     } > KERNEL_FLASH
 
     .int_table : ALIGN(256) {
-        _ul_int_table = .;
+        _ulmk_int_table = .;
         KEEP(*(.int_table))
     } > KERNEL_FLASH
