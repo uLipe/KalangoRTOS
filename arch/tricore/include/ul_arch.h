@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2024-2026 Felipe Neves
  *
- * Architecture abstraction layer — TriCore TC1.6.1 / TC2xx
+ * Architecture abstraction layer — TriCore TC1.6.x / TC2xx-TC3xx
  * Full specification: docs/arch_api_spec.md
  *
  * This header declares the contract between the platform-independent kernel
@@ -191,7 +191,7 @@ void ul_arch_trap_dump(uint8_t trap_class, uint8_t tin);
 
 /*
  * ul_printk_char_out — single-character output primitive.
- * Provided by the board (e.g. boards/qemu_tc27x/qemu_console.c) as a weak
+ * Provided by the board (e.g. boards/qemu_tc3xx/qemu_console.c) as a weak
  * symbol.  Both the kernel print subsystem and arch fault handlers may call
  * this directly; it is declared here so the arch layer can use it without
  * depending on kernel-internal headers.

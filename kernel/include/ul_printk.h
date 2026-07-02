@@ -13,8 +13,19 @@
  * When UL_CONFIG_DEBUG_PRINTK == 0 every call compiles to ((void)0).
  *
  * Output is routed through ul_printk_char_out(char c), a weak symbol
- * that boards override (e.g. boards/qemu_tc27x/qemu_console.c).
+ * that boards override (e.g. boards/qemu_tc3xx/qemu_console.c).
  */
+
+/*
+ * Enforce kernel-only use.  Files that legitimately need this header must
+ * compile with -DUL_KERNEL_BUILD (added by the kernel CMakeLists / Makefiles).
+ * Board console drivers that provide ul_printk_char_out() are the only
+ * non-kernel files permitted to include this header — they are compiled as
+ * part of the kernel image and must also define UL_KERNEL_BUILD.
+ */
+#ifndef UL_KERNEL_BUILD
+#error "ul_printk.h is kernel-internal and must not be included from userspace"
+#endif
 
 #ifndef UL_PRINTK_H
 #define UL_PRINTK_H

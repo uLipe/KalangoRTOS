@@ -2,20 +2,28 @@
  * Layer 2 — arch-owned, TriCore-specific.
  * Included by generate_ld.py when HAVE_SMALL_DATA = 1 in the chip memory.ld.
  *
- * TriCore ABI reserves A0, A1, A8, A9 as global-address-register base
- * pointers for small-data areas.  startup.S must load the four anchor
- * symbols below before any C function runs.
+ * TriCore ABI uses A0/A8 for mutable small data (.sdata/.sbss, window based
+ * on KERNEL_RAM) and A1/A9 for read-only small data (.sdata2/.sbss2, window
+ * based on KERNEL_FLASH).
  *
- * The +0x8000 offset places each anchor at the centre of the 64 KiB window
- * reachable by the signed 16-bit base+offset in LD/ST short encodings.
+ * Anchors use ORIGIN() rather than ADDR() so that empty sections (--gc-sections
+ * discards them when no code uses small-data globals) do not cause "could not
+ * find output section" linker errors.  The +0x8000 offset centres the anchor
+ * in the 64 KiB signed window reachable by LD/ST short encodings.
+ *
+ * .sdata  — small mutable data, placed in KERNEL_RAM with LMA in KERNEL_FLASH
+ *           (startup.S copies .sdata just like .kernel_data).
+ * .sbss   — small zero-init data, NOLOAD in KERNEL_RAM.
+ * .sdata2 — small read-only data, placed directly in KERNEL_FLASH (no copy).
+ * .sbss2  — small zero-init read-only (rare, treated as .sbss).
  */
 
-    .sdata  : { *(.sdata  .sdata.*)  } > KERNEL_RAM
-    .sbss   : { *(.sbss   .sbss.*)   } > KERNEL_RAM
-    .sdata2 : { *(.sdata2 .sdata2.*) } > KERNEL_RAM
-    .sbss2  : { *(.sbss2  .sbss2.*)  } > KERNEL_RAM
+    .sdata  : { *(.sdata  .sdata.*)  } > KERNEL_RAM AT > KERNEL_FLASH
+    .sbss   (NOLOAD) : { *(.sbss   .sbss.*)   } > KERNEL_RAM
+    .sdata2 : { *(.sdata2 .sdata2.*) } > KERNEL_FLASH
+    .sbss2  (NOLOAD) : { *(.sbss2  .sbss2.*)  } > KERNEL_RAM
 
-    _small_data_  = ADDR(.sdata)  + 0x8000;   /* → A0 */
-    _small_data2_ = ADDR(.sdata2) + 0x8000;   /* → A1 */
-    _small_data3_ = ADDR(.sdata)  + 0x8000;   /* → A8 (mirrors A0 range) */
-    _small_data4_ = ADDR(.sdata2) + 0x8000;   /* → A9 (mirrors A1 range) */
+    _small_data_  = ORIGIN(KERNEL_RAM)   + 0x8000;   /* → A0, A8 */
+    _small_data2_ = ORIGIN(KERNEL_FLASH) + 0x8000;   /* → A1, A9 */
+    _small_data3_ = ORIGIN(KERNEL_RAM)   + 0x8000;
+    _small_data4_ = ORIGIN(KERNEL_FLASH) + 0x8000;

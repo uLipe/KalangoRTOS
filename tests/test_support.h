@@ -16,8 +16,8 @@
 /*
  * ul_sim_exit — terminate the simulation and report pass (0) or fail (!=0).
  *
- * QEMU (boards/qemu_tc27x/qemu_console.c): writes to the VIRT exit register.
- * TSIM (boards/tsim_tc27x/tsim_console.c): sets A14=0x900d and calls debug.
+ * QEMU (boards/qemu_tc3xx/qemu_console.c): writes to the VIRT exit register.
+ * TSIM (boards/tsim_tc39x/tsim_console.c): sets A14=0x900d and calls debug.
  */
 extern void ul_sim_exit(int code) __attribute__((noreturn));
 

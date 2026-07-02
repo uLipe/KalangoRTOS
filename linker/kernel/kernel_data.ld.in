@@ -25,6 +25,15 @@
         *(.data.ul_mem_*)
         *(.data.ul_notif_*)
         *(.data .data.*)
+        *(.sdata .sdata.*)
+        /*
+         * -fdata-sections creates one named section per global variable
+         * (e.g. .g_preempt_old_ctx) rather than .data.varname.  These
+         * sections are not matched by any pattern above.  By this point
+         * .text* and .rodata* have been consumed by kernel_text, so the
+         * catch-all below only pulls in writable (and small-const) orphans.
+         */
+        *(*)
         . = ALIGN(4);
         _ul_kernel_data_end = .;
     } > KERNEL_RAM AT > KERNEL_FLASH

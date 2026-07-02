@@ -9,12 +9,13 @@ GEN_INC := /tmp/gen
 CONSOLE_SRC := $(ROOT)/boards/qemu_tc3xx/qemu_console.c
 
 CFLAGS := \
-    -mcpu=tc27xx \
+    -mcpu=tc39xx \
     -ffreestanding \
     -ffunction-sections \
     -fdata-sections \
     -Wall -Wextra \
     -Wno-unused-parameter \
+    -DUL_KERNEL_BUILD \
     -I$(ROOT)/include \
     -I$(ROOT)/arch/tricore/include \
     -I$(ROOT) \
@@ -27,7 +28,7 @@ CFLAGS := \
 
 LDFLAGS := \
     -T ../boot/boot_test.ld \
-    -mcpu=tc27xx \
+    -mcpu=tc39xx \
     -nostartfiles \
     -Wl,--gc-sections \
     -Wl,--no-warn-rwx-segments

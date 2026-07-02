@@ -24,7 +24,7 @@ TARGET_TSIM := hello_tsim.elf
 # ---------------------------------------------------------------------------
 # Compiler / linker flags (shared between both variants)
 # ---------------------------------------------------------------------------
-CFLAGS  := -mcpu=tc27xx \
+CFLAGS  := -mcpu=tc39xx \
            -ffunction-sections \
            -fdata-sections \
            -ffreestanding \
@@ -33,7 +33,7 @@ CFLAGS  := -mcpu=tc27xx \
            -O0 -g
 
 LDFLAGS := -T linker.ld \
-           -mcpu=tc27xx \
+           -mcpu=tc39xx \
            -nostartfiles \
            -Wl,--gc-sections
 
