@@ -376,6 +376,8 @@ def _run_tests(args: argparse.Namespace) -> None:
     kind      = args.kind
     test_name = args.test
 
+    _killall()
+
     if args.list:
         tests = _discover_tests(kind)
         print(f"{kind} tests ({len(tests)}):")
