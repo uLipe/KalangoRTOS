@@ -22,6 +22,7 @@
 #include <kernel/include/ul_thread_internal.h>
 #include <kernel/include/ul_sched.h>
 #include <kernel/include/ul_mem_internal.h>
+#include <ul_arch.h>
 
 #define TICK_PERIOD_US	(1000000u / UL_CONFIG_TICK_HZ)
 
@@ -46,29 +47,34 @@ uint64_t ul_timer_now_us(void)
 
 void ul_timer_sleep_insert(ul_thread_t *th, uint64_t deadline_us)
 {
-	ul_thread_t **pp = &sleep_head;
+	ul_arch_irq_key_t  key;
+	ul_thread_t      **pp;
 
+	key = ul_arch_cpu_irq_save();
+	pp  = &sleep_head;
 	while (*pp && (*pp)->sleep_until <= deadline_us)
 		pp = &(*pp)->sleep_next;
-
 	th->sleep_until = deadline_us;
 	th->sleep_next  = *pp;
 	*pp = th;
+	ul_arch_cpu_irq_restore(key);
 }
 
 void ul_timer_sleep_remove(ul_thread_t *th)
 {
-	ul_thread_t **pp = &sleep_head;
+	ul_arch_irq_key_t  key;
+	ul_thread_t      **pp;
 
+	key = ul_arch_cpu_irq_save();
+	pp  = &sleep_head;
 	while (*pp && *pp != th)
 		pp = &(*pp)->sleep_next;
-
-	if (!*pp)
-		return;
-
-	*pp = th->sleep_next;
-	th->sleep_next  = NULL;
-	th->sleep_until = 0u;
+	if (*pp) {
+		*pp = th->sleep_next;
+		th->sleep_next  = NULL;
+		th->sleep_until = 0u;
+	}
+	ul_arch_cpu_irq_restore(key);
 }
 
 void ul_timer_tick(void)

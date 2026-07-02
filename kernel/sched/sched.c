@@ -183,12 +183,20 @@ void ul_sched_schedule(void)
 
 void ul_sched_enqueue(ul_thread_t *t)
 {
+	ul_arch_irq_key_t key;
+
+	key = ul_arch_cpu_irq_save();
 	sched_class->enqueue(t);
+	ul_arch_cpu_irq_restore(key);
 }
 
 void ul_sched_dequeue(ul_thread_t *t)
 {
+	ul_arch_irq_key_t key;
+
+	key = ul_arch_cpu_irq_save();
 	sched_class->dequeue(t);
+	ul_arch_cpu_irq_restore(key);
 }
 
 ul_thread_t *ul_sched_current(void)
