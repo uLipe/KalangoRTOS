@@ -95,6 +95,8 @@ function(_ulmk_finalize_build kernel_target chip_dir)
 
     target_link_options("${kernel_target}" PRIVATE
         "-T${generated_ld}"
+        "-nostartfiles"
+        "-Wl,--gc-sections"
         "-Wl,-Map=${CMAKE_BINARY_DIR}/ulmk.map")
 
     add_dependencies("${kernel_target}" ulmk_linker_script)

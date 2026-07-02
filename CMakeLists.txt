@@ -85,6 +85,8 @@ target_include_directories(ulmk_kernel PRIVATE
     "${CMAKE_SOURCE_DIR}"
     "${ULMK_CHIP_DIR}")
 
+target_compile_definitions(ulmk_kernel PRIVATE ULMK_KERNEL_BUILD=1)
+
 if(DEFINED ULMK_BOARD_CFLAGS)
     target_compile_options(ulmk_kernel PRIVATE ${ULMK_BOARD_CFLAGS})
 endif()
