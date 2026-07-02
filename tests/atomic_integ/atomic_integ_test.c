@@ -65,15 +65,16 @@ static void supervisor_entry(void *arg)
 		ul_thread_create(&attr);
 
 	/*
-	 * Poll with short sleeps until all workers finish.
-	 * Each ul_msleep(1) suspends the supervisor for one tick, giving
-	 * lower-priority workers CPU time to run their yields.
+	 * Poll with short blocking delays until all workers finish.
+	 * The timer removes the supervisor from the run queue so that
+	 * lower-priority workers get the CPU between checks.
 	 */
 	{
 		uint32_t waited = 0u;
 
 		while (g_ctx_done != CTX_WORKERS && waited < 2000u) {
-			ul_msleep(1u);
+			ul_timer_set_deadline(1000ULL);
+			ul_timer_wait();
 			waited++;
 		}
 	}
@@ -106,5 +107,6 @@ void ul_root_thread(const ul_boot_info_t *info)
 
 	tid = ul_thread_create(&attr);
 	ul_cap_grant(tid, UL_CAP_SPAWN);
+	ul_cap_grant(tid, UL_CAP_TIMER);
 	ul_thread_exit();
 }

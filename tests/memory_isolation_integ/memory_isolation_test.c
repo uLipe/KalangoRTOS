@@ -171,8 +171,13 @@ static void fault_victim_entry(void *arg)
 	ul_printk("mem_iso: victim buffer at 0x%08x\n",
 		  (unsigned)(uintptr_t)base);
 
-	/* Stay alive long enough for supervisor to observe the result. */
-	ul_msleep(2000);
+	/*
+	 * Block (not yield-spin) so lower-priority trigger@7 gets the CPU.
+	 * A yield-loop here would starve trigger because victim@6 would
+	 * immediately reclaim the CPU on every yield.
+	 */
+	ul_timer_set_deadline(2000000ULL);
+	ul_timer_wait();
 	ul_thread_exit();
 }
 
@@ -310,7 +315,7 @@ void ul_root_thread(const ul_boot_info_t *info)
 		.arg = NULL, .priority = 6u,
 		.stack_size = 1024u, .privilege = UL_PRIV_DRIVER,
 	};
-	ul_thread_create(&attr);
+	ul_cap_grant(ul_thread_create(&attr), UL_CAP_TIMER);
 
 	attr = (ul_thread_attr_t){
 		.name = "trigger", .entry = fault_trigger_entry,

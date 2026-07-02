@@ -930,11 +930,36 @@ void ul_arch_syscall_entry(void)
 {
 	uint32_t tin, args[4];
 	uint32_t psw;
+	uint32_t icr;
 
 	/*
-	 * Elevate to kernel PRS 0 before any data access.  SYSCALL saves the
-	 * caller's PSW (PRS=1) in the upper CSA; RFE in vectors.S restores it.
-	 * CSA/CSFR accesses bypass DPR so this inline asm is safe in any PRS.
+	 * Capture syscall arguments from physical registers before any
+	 * compiler-generated code can overwrite them.  D15 = TIN (syscall
+	 * number), D4–D7 = up to four arguments (TriCore calling convention).
+	 */
+	__asm__ volatile("mov %0, %%d15" : "=d"(tin));
+	__asm__ volatile("mov %0, %%d4"  : "=d"(args[0]));
+	__asm__ volatile("mov %0, %%d5"  : "=d"(args[1]));
+	__asm__ volatile("mov %0, %%d6"  : "=d"(args[2]));
+	__asm__ volatile("mov %0, %%d7"  : "=d"(args[3]));
+
+	/*
+	 * Raise CCPN to 255, masking all IRQs for the duration of kernel
+	 * execution.  The TRAP hardware already saved PCXI.PCPN = 0 (the
+	 * caller's CPU priority) before entry; the RFE in _trap_class6
+	 * automatically restores CCPN = 0, so any pending IRQs fire via
+	 * tail-chaining immediately after kernel exit — no manual restore
+	 * needed here.
+	 */
+	__asm__ volatile("mfcr %0, 0xFE2C" : "=d"(icr));
+	icr |= 0xFFu;	/* CCPN = 255 */
+	__asm__ volatile("mtcr 0xFE2C, %0\n\t"
+			 "isync"
+			 :: "d"(icr) : "memory");
+
+	/*
+	 * Switch to kernel protection set. The caller's PSW (with its PRS
+	 * field) is preserved in the saved upper context; RFE restores it.
 	 */
 	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
 	psw &= ~0x3000u;	/* PSW.PRS [13:12] = 0 (kernel PRS) */
@@ -942,19 +967,14 @@ void ul_arch_syscall_entry(void)
 			 "isync"
 			 :: "d"(psw) : "memory");
 
-	__asm__ volatile("mov %0, %%d15" : "=d"(tin));
-	__asm__ volatile("mov %0, %%d4"  : "=d"(args[0]));
-	__asm__ volatile("mov %0, %%d5"  : "=d"(args[1]));
-	__asm__ volatile("mov %0, %%d6"  : "=d"(args[2]));
-	__asm__ volatile("mov %0, %%d7"  : "=d"(args[3]));
-
 	uint32_t ret = ul_kernel_trap_syscall((uint8_t)tin, args);
 
 	/*
-	 * Centralised reschedule point: if the syscall unblocked a
-	 * higher-priority thread, yield here before restoring userspace.
-	 * Mirrors the behaviour of ISR exit preemption but from the syscall
-	 * trap path.  Execution resumes here when this thread is rescheduled.
+	 * If the syscall unblocked a higher-priority thread, perform a
+	 * cooperative switch now rather than waiting for the next tick.
+	 * Execution resumes here when this thread is rescheduled; at that
+	 * point CCPN has been restored to 0 by the context-switch RFE and
+	 * interrupts are enabled, so the return path is unprotected but brief.
 	 */
 	ul_kernel_syscall_check_preempt();
 

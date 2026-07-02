@@ -81,10 +81,15 @@ static void supervisor(void *arg)
 	tid_b = ul_thread_create(&attr);
 	ul_printk("preempt_integ: worker_b tid=%d\n", (int)tid_b);
 
-	/* Sleep 20 ms: workers run while we wait.
-	 * 20 ms / 10 ms quantum = 2 quanta — enough for both to run once. */
+	/*
+	 * Block for 200 ms so workers get the CPU.  A yield-loop cannot work
+	 * here: supervisor (prio 0) would immediately reclaim the CPU on every
+	 * yield, starving the lower-priority workers.  The timer removes the
+	 * supervisor from the run queue for the full duration.
+	 */
 	ul_printk("preempt_integ: sleeping 200ms\n");
-	ul_msleep(20);
+	ul_timer_set_deadline(200000ULL);
+	ul_timer_wait();
 	ul_printk("preempt_integ: awoke\n");
 
 	/* Stop workers */
@@ -121,8 +126,9 @@ void ul_root_thread(const ul_boot_info_t *info)
 	attr.stack_size = 2048;
 	attr.privilege  = UL_PRIV_DRIVER;
 
-	ul_cap_grant(ul_thread_create(&attr),
-		     UL_CAP_SPAWN);
+	ul_tid_t sup_tid = ul_thread_create(&attr);
+	ul_cap_grant(sup_tid, UL_CAP_SPAWN);
+	ul_cap_grant(sup_tid, UL_CAP_TIMER);
 
 	ul_thread_exit();
 }
