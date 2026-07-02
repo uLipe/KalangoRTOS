@@ -4,7 +4,7 @@
  *
  * Memory handlers — kernel/mem/mem.c
  * Implements: kernel/syscall/syscall_router.h ul_kern_mem_* prototypes
- * Reference: docs/api_spec.md §9, docs/microkernel_book_tricore.md §7
+ * Reference: docs/api_spec.md §9
  */
 
 #include <stdint.h>

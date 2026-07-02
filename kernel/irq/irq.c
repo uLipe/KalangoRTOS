@@ -3,12 +3,12 @@
  * Copyright (c) 2024-2026 Felipe Neves
  *
  * IRQ binding table and kernel IRQ handlers — kernel/irq/irq.c
- * Reference: docs/api_spec.md §10, docs/microkernel_book_tricore.md §10
+ * Reference: docs/api_spec.md §10
  *
  * Routing model:
- *   ul_irq_bind()   → records srpn→(notif_obj, bit) in irq_table
- *   ul_irq_enable() → arms the SRC register via arch layer
- *   ul_irq_ack()    → clears SRR in the SRC register (re-arming is driver's job)
+ *   ul_irq_bind()   → records irq_nr→(notif_obj, bit) in irq_table
+ *   ul_irq_enable() → arms the interrupt controller via arch layer
+ *   ul_irq_ack()    → acknowledges the interrupt source (re-arming is driver's job)
  *   ul_kernel_irq_dispatch() → called from generic ISR stub; signals the notif
  */
 
@@ -148,9 +148,9 @@ uint32_t ul_kern_irq_ack(uint32_t srpn)
 }
 
 /* =========================================================================
- * ISR dispatch — called from _arch_generic_isr_handler in arch.c.
+ * ISR dispatch — called from the arch generic ISR handler.
  *
- * Runs in ISR context: ICR.IE=0, running on ISP.
+ * Runs in ISR context: global interrupts disabled, on the dedicated ISR stack.
  * Does not call ul_sched_schedule() directly.  After this returns,
  * _arch_generic_isr_handler calls ul_kernel_irq_check_preempt(), which
  * sets g_preempt_old/new_ctx if a higher-priority thread was woken.

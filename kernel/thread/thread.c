@@ -165,8 +165,8 @@ uint32_t ul_kern_yield(void)
 /*
  * exit — mark thread dead and schedule the next one.
  *
- * CSA chain and stack cannot be freed here: the thread is still executing
- * and its PCXI chain is live.  Register for deferred cleanup in the reaper.
+ * Context chain and stack cannot be freed here: the thread is still
+ * executing and its context chain is live.  Register for deferred cleanup.
  */
 uint32_t ul_kern_exit(void)
 {
@@ -239,7 +239,7 @@ uint32_t ul_kern_thread_kill(uint32_t tid)
 
 	if (th != ul_sched_current()) {
 		/*
-		 * Target is not on the CPU: CSA chain is not live, free now.
+		 * Target is not on the CPU: context chain is not live, free now.
 		 */
 		key = ul_arch_cpu_irq_save();
 		ul_arch_ctx_free(&th->ctx);

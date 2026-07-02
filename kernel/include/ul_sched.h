@@ -35,10 +35,9 @@ extern const ul_sched_class_t ul_fifo_rt_class;
 
 /*
  * Preemption handoff: set by ul_sched_tick() or ul_sched_check_preempt()
- * when a preemptive switch is needed.  Consumed by ISR assembly stubs
- * (_arch_tick_preempt_isr, _arch_generic_preempt_isr) after the C handler
- * returns, at which point PCXI = L_sv -> U_hw and the switch can be
- * performed without an extra svlcx.
+ * when a preemptive switch is needed.  Consumed by the arch ISR stubs
+ * after the C handler returns, before context restore, so the switch can
+ * be performed without an extra save instruction.
  * Both are NULL when no preemption is pending.
  */
 extern ul_arch_ctx_t *g_preempt_old_ctx;
@@ -84,10 +83,10 @@ void		 ul_sched_check_preempt(void);
 /*
  * ul_sched_set_dead_for_cleanup — register a dead thread for deferred
  * resource release.  Called from ul_kern_exit() and ul_kern_thread_kill()
- * when the target is the currently-running thread; in that case the CSA
- * chain is still active in PCXI and must not be freed until after the
- * next context switch.  ul_sched_schedule() performs the actual release
- * at its next invocation, when the dead thread is no longer on the CPU.
+ * when the target is the currently-running thread; in that case the context
+ * chain is still active and must not be freed until after the next context
+ * switch.  ul_sched_schedule() performs the actual release at its next
+ * invocation, when the dead thread is no longer on the CPU.
  */
 void		 ul_sched_set_dead_for_cleanup(ul_thread_t *th);
 

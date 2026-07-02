@@ -24,7 +24,7 @@ extern uint8_t _ul_user_pool_start[];
 extern uint8_t _ul_user_pool_end[];
 
 /* =========================================================================
- * Arch callbacks — invoked from arch/tricore/vectors.S
+ * Arch callbacks — invoked from the arch layer (ISR/trap stubs)
  * ========================================================================= */
 
 void ul_kernel_tick(void)

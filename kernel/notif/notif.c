@@ -3,7 +3,7 @@
  * Copyright (c) 2024-2026 Felipe Neves
  *
  * Notification handlers — kernel/notif/notif.c
- * Reference: docs/api_spec.md §8, docs/microkernel_book_tricore.md §9
+ * Reference: docs/api_spec.md §8
  *
  * Two-layer design:
  *   notif_*_impl() — core logic with native C pointer types; testable on host.

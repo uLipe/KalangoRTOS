@@ -49,8 +49,8 @@ typedef struct ul_thread {
 	ul_tid_t          ipc_sender;     /* sender TID stored by recv for reply */
 	/*
 	 * Output pointers saved in the TCB before a blocking recv.  Written
-	 * back after wakeup so the result survives the RSLCX/RFE context
-	 * switch.
+	 * back after wakeup so the result survives the context restore on
+	 * re-schedule.
 	 */
 	ul_msg_t         *ipc_msg_outptr;
 	ul_tid_t         *ipc_sender_outptr;

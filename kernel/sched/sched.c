@@ -20,13 +20,13 @@ static ul_thread_t            * UL_KERNEL_BSS sched_current;
 /*
  * Dead-thread reaper slot.
  *
- * When a thread calls ul_thread_exit() it is still on the CPU — its CSA
- * chain is live in the hardware PCXI register.  We cannot walk and free
- * that chain until after the context switch hands control to the next
- * thread.  ul_sched_set_dead_for_cleanup() stores the dying thread here;
- * ul_sched_schedule() frees the CSA chain and stack at the start of its
- * next invocation, at which point the dead thread's PCXI is saved in its
- * ctx and is safe to walk.
+ * When a thread calls ul_thread_exit() it is still on the CPU — its
+ * hardware context chain is live in the arch context register.  We cannot
+ * walk and free that chain until after the context switch hands control to
+ * the next thread.  ul_sched_set_dead_for_cleanup() stores the dying thread
+ * here; ul_sched_schedule() frees the context chain and stack at the start
+ * of its next invocation, at which point the dead thread's context pointer
+ * is saved in its ctx and is safe to walk.
  *
  * Only one slot is needed: a thread can exit at most once, and the next
  * call to ul_sched_schedule() always drains the slot before any new exit
@@ -36,10 +36,9 @@ static ul_thread_t * UL_KERNEL_BSS g_sched_dead;
 
 /*
  * Preemption handoff pointers: written by ul_sched_tick() or
- * ul_sched_check_preempt() and consumed by ISR assembly stubs
- * (_arch_tick_preempt_isr, _arch_generic_preempt_isr) in vectors.S.
- * The stub reads them after the C handler returns, at which point
- * PCXI = L_sv -> U_hw (the interrupted thread's ISR context chain).
+ * ul_sched_check_preempt() and consumed by ISR assembly stubs in the arch
+ * layer.  The stub reads them after the C handler returns, before restoring
+ * the interrupted thread's context.
  * Setting g_preempt_new_ctx != NULL signals: "perform a preemptive switch".
  */
 ul_arch_ctx_t * UL_KERNEL_BSS g_preempt_old_ctx;
@@ -52,17 +51,17 @@ ul_arch_ctx_t * UL_KERNEL_BSS g_preempt_new_ctx;
 static ul_arch_ctx_t UL_KERNEL_BSS startup_ctx;
 
 /*
- * Register a dying thread for deferred CSA/stack cleanup.
+ * Register a dying thread for deferred context/stack cleanup.
  *
  * If a thread is already pending (g_sched_dead != NULL), it is reaped
  * immediately before recording the new one.  This handles the case
  * where threads exit in rapid succession without another thread
  * interleaving: the previous dead thread has already been context-
  * switched out (otherwise we would not be executing in the new one),
- * so its CSA chain is fully saved and safe to walk and free.
+ * so its context chain is fully saved and safe to walk and free.
  *
- * Called with interrupts enabled; the FCX modification in
- * ul_arch_ctx_free() is guarded by a local irq_save/restore.
+ * Called with interrupts enabled; ul_arch_ctx_free() is guarded
+ * internally by a local irq_save/restore.
  */
 void ul_sched_set_dead_for_cleanup(ul_thread_t *th)
 {
@@ -128,16 +127,16 @@ void ul_sched_schedule(void)
 	ul_arch_irq_key_t key;
 
 	/*
-	 * Release CSA chain and stack of a previously-dead thread.
+	 * Release context chain and stack of a previously-dead thread.
 	 *
 	 * The guard `g_sched_dead != prev` is critical: when a thread calls
 	 * ul_kern_exit() it sets g_sched_dead = self and then immediately
-	 * calls ul_sched_schedule().  At that point the thread's CSA chain
-	 * is still live — ul_arch_ctx_switch() is about to execute svlcx,
-	 * which saves the current lower context into a free CSA frame and
-	 * then records the resulting PCXI into g_sched_dead->ctx.pcxi.
-	 * Freeing the chain before that svlcx would return those frames to
-	 * FCX, only for svlcx to immediately re-allocate and corrupt them.
+	 * calls ul_sched_schedule().  At that point the thread's context chain
+	 * is still live — ul_arch_ctx_switch() is about to save the current
+	 * lower context into a free frame and record the resulting context
+	 * pointer into g_sched_dead->ctx.  Freeing the chain before that save
+	 * would return those frames to the free list, only for the save
+	 * instruction to immediately re-allocate and corrupt them.
 	 */
 	if (g_sched_dead && g_sched_dead != prev) {
 		key = ul_arch_cpu_irq_save();
@@ -153,11 +152,11 @@ void ul_sched_schedule(void)
 	/*
 	 * Disable interrupts before committing sched_current = next.
 	 *
-	 * Between this assignment and the actual PCXI swap inside
+	 * Between this assignment and the actual context pointer swap inside
 	 * ul_arch_ctx_switch(), ul_sched_tick() could fire and see "next" as
 	 * sched_current (state=RUNNING) while the CPU is still executing on
-	 * "prev"'s stack.  The preemptive ISR would then save the wrong PCXI
-	 * into next->ctx.pcxi, corrupting its context chain.
+	 * "prev"'s stack.  The preemptive ISR would then save the wrong context
+	 * pointer into next->ctx, corrupting its context chain.
 	 */
 	key = ul_arch_cpu_irq_save();
 
@@ -176,9 +175,8 @@ void ul_sched_schedule(void)
 	/*
 	 * We return here when THIS thread (prev) is re-scheduled.
 	 *
-	 * ul_arch_ctx_switch's terminal rfe restores ICR.IE from the saved
-	 * UC PCXI.PIE, which is 0 because irq_save() had disabled IE before
-	 * the call.  Re-enable unconditionally.
+	 * The arch context restore does not re-enable interrupts (IE was
+	 * cleared by irq_save() before the switch).  Re-enable unconditionally.
 	 */
 	ul_arch_cpu_irq_enable();
 }

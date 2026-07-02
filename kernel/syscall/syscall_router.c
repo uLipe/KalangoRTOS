@@ -3,11 +3,11 @@
  * Copyright (c) 2024-2026 Felipe Neves
  *
  * Syscall router — kernel/syscall/syscall_router.c
- * Reference: docs/api_spec.md §12, docs/microkernel_book_tricore.md §15
+ * Reference: docs/api_spec.md §12
  *
- * Called from ul_kernel_syscall_trap() (kernel_main.c) which reads the
- * TriCore registers D15 (nr) and D4–D7 (a0..a3) before the CALL that
- * reaches this function.
+ * Called from ul_arch_syscall_entry() (arch layer) which extracts the
+ * syscall number and up to four arguments from arch registers before
+ * reaching this function.
  *
  * Privilege enforcement: syscalls marked "IO >= 1" are gated here by
  * checking the current thread's privilege.  UL_PRIV_DRIVER = 1.

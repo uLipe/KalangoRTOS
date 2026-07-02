@@ -3,7 +3,7 @@
  * Copyright (c) 2024-2026 Felipe Neves
  *
  * IPC endpoint handlers — kernel/ipc/ep.c
- * Reference: docs/api_spec.md §7, docs/microkernel_book_tricore.md §9
+ * Reference: docs/api_spec.md §7
  *
  * Rendezvous model (seL4-inspired):
  *   - ep_call: caller blocks; if server waiting, wake server immediately.
