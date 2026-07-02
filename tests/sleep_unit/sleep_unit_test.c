@@ -57,10 +57,10 @@ void         ul_sched_enqueue(ul_thread_t *t)
 	g_last_enqueued = t;
 }
 
-void         ul_sched_init(ul_arch_ctx_t *i)                  { (void)i; }
-void         ul_sched_set_class(const ul_sched_class_t *c)    { (void)c; }
-void         ul_sched_start(ul_arch_ctx_t *i, ul_thread_t *f) { (void)i; (void)f; }
-ul_thread_t *ul_sched_pick_next(void)                         { return NULL; }
+void         ul_sched_init(void)                           {}
+void         ul_sched_set_class(const ul_sched_class_t *c) { (void)c; }
+void         ul_sched_start(void)                          {}
+ul_thread_t *ul_sched_peek_next(void)                      { return NULL; }
 void         ul_sched_tick(void)                              {}
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */

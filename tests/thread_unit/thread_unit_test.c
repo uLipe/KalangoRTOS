@@ -152,7 +152,13 @@ static void mock_reset(void)
 	g_schedule_count = 0;
 	g_ctx_init_count = 0;
 	g_sleep_removed  = NULL;
-	s_tcb_idx        = 0;
+	/*
+	 * Do NOT reset s_tcb_idx: thread.c keeps a global registry linked list
+	 * (tcb_list) that still points to previously allocated TCBs.  Reusing
+	 * the same memory slots would create cycles in that list and hang.
+	 * Each test must consume a fresh slot.  s_tcbs[32] is large enough for
+	 * all 22 tests combined.
+	 */
 }
 
 static void dummy_entry(void *arg) { (void)arg; }
@@ -211,20 +217,27 @@ static int g_fail;
 
 static void test_init_valid(void)
 {
-	ul_thread_attr_t attr = { "v", dummy_entry, NULL, 7, 256, UL_PRIV_USER };
-	ul_thread_t      th;
-	uint8_t          stack[256];
-	int              r;
+	ul_thread_attr_t  attr = { "v", dummy_entry, NULL, 7, 256, UL_PRIV_USER };
+	ul_thread_t      *th;
+	uint8_t          *stack;
+	int               r;
 
-	r = ul_thread_init(&th, &attr, stack);
+	if (s_tcb_idx >= 32) {
+		printf("    SKIP test_init_valid: TCB pool exhausted\n");
+		return;
+	}
+	th    = &s_tcbs[s_tcb_idx];
+	stack = s_stacks[s_tcb_idx++];
+
+	r = ul_thread_init(th, &attr, stack);
 
 	EXPECT(r == UL_OK);
 	EXPECT(g_ctx_init_count == 1);
-	EXPECT(th.priority == 7);
-	EXPECT(th.state == UL_THREAD_STATE_READY);
-	EXPECT(th.stack_base == stack);
-	EXPECT(th.sleep_next == NULL);
-	EXPECT(th.sleep_until == 0u);
+	EXPECT(th->priority == 7);
+	EXPECT(th->state == UL_THREAD_STATE_READY);
+	EXPECT(th->stack_base == stack);
+	EXPECT(th->sleep_next == NULL);
+	EXPECT(th->sleep_until == 0u);
 }
 
 static void test_init_null_th(void)

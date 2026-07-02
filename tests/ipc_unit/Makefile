@@ -7,6 +7,7 @@ CFLAGS := \
     -std=c99 \
     -Wall -Wextra \
     -Wno-unused-parameter \
+    -DUL_UNIT_TEST \
     -I$(STUBINC) \
     -I$(ROOT) \
     -g -O0

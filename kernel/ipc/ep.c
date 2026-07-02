@@ -34,6 +34,12 @@
 
 #ifndef UL_UNIT_TEST
 #include <kernel/include/ul_mem_internal.h>
+#else
+#include <ul/config.h>
+#endif
+
+#ifdef UL_UNIT_TEST
+ul_endpoint_t ep_pool[UL_CONFIG_MAX_ENDPOINTS];
 #endif
 
 int ul_ep_init(ul_endpoint_t *ep, ul_ep_t id)
@@ -50,7 +56,7 @@ ul_endpoint_t *ul_ep_by_id(ul_ep_t id)
 #ifdef UL_UNIT_TEST
 	/*
 	 * Unit test mode: integer IDs index into the static pool.
-	 * ep_pool is defined below and accessible to tests via extern.
+	 * ep_pool is accessible to tests via extern.
 	 */
 	if (id == UL_EP_INVALID || (uint32_t)id >= UL_CONFIG_MAX_ENDPOINTS)
 		return NULL;
@@ -65,11 +71,6 @@ ul_endpoint_t *ul_ep_by_id(ul_ep_t id)
 	return ep;
 #endif
 }
-
-#ifdef UL_UNIT_TEST
-#include <ul/config.h>
-ul_endpoint_t ep_pool[UL_CONFIG_MAX_ENDPOINTS];
-#endif
 
 void ul_ep_recv_queue_remove(ul_thread_t *th)
 {

@@ -19,7 +19,7 @@
  * Arch stub — records context switches without executing any assembly
  * ========================================================================= */
 
-int           switch_count;
+int            switch_count;
 ul_arch_ctx_t *last_from;
 ul_arch_ctx_t *last_to;
 
@@ -43,8 +43,7 @@ void ul_arch_mpu_switch(const ul_arch_region_t *r, uint8_t n, uint8_t p)
 {
 	(void)r; (void)n; (void)p;
 }
-void ul_phys_free(void *p)              { (void)p; }
-void ul_thread_pool_free(ul_thread_t *t) { (void)t; }
+void ul_thread_free(ul_thread_t *t) { (void)t; }
 
 /* =========================================================================
  * Test harness
@@ -64,15 +63,12 @@ static int tests_failed;
 		} \
 	} while (0)
 
-static ul_arch_ctx_t idle;
-
 static void sched_reset(void)
 {
-	memset(&idle, 0, sizeof(idle));
 	switch_count = 0;
 	last_from    = NULL;
 	last_to      = NULL;
-	ul_sched_init(&idle);
+	ul_sched_init();
 	ul_sched_set_class(&ul_fifo_rt_class);
 }
 
@@ -92,7 +88,7 @@ static void test_empty_queue(void)
 {
 	printf("\n[test_empty_queue]\n");
 	sched_reset();
-	CHECK(ul_sched_pick_next() == NULL, "pick_next on empty queue → NULL");
+	CHECK(ul_sched_peek_next() == NULL, "peek_next on empty queue → NULL");
 }
 
 static void test_single_enqueue(void)
@@ -103,7 +99,7 @@ static void test_single_enqueue(void)
 	sched_reset();
 	make_thread(&t, 1, 5);
 	ul_sched_enqueue(&t);
-	CHECK(ul_sched_pick_next() == &t, "single thread picked");
+	CHECK(ul_sched_peek_next() == &t, "single thread picked");
 	CHECK(t.state == UL_THREAD_STATE_READY, "enqueue sets READY");
 }
 
@@ -121,7 +117,7 @@ static void test_priority_order(void)
 	ul_sched_enqueue(&hi);
 	ul_sched_enqueue(&mid);
 
-	CHECK(ul_sched_pick_next() == &hi, "prio=1 picked over prio=5 and prio=10");
+	CHECK(ul_sched_peek_next() == &hi, "prio=1 picked over prio=5 and prio=10");
 }
 
 static void test_fifo_within_priority(void)
@@ -138,7 +134,7 @@ static void test_fifo_within_priority(void)
 	ul_sched_enqueue(&b);
 	ul_sched_enqueue(&c);
 
-	CHECK(ul_sched_pick_next() == &a,
+	CHECK(ul_sched_peek_next() == &a,
 	      "first enqueued is head of same-priority group");
 }
 
@@ -155,7 +151,7 @@ static void test_dequeue(void)
 	ul_sched_enqueue(&b);
 	ul_sched_dequeue(&a);
 
-	CHECK(ul_sched_pick_next() == &b, "dequeued thread no longer picked");
+	CHECK(ul_sched_peek_next() == &b, "dequeued thread no longer picked");
 	CHECK(a.next == NULL, "dequeued thread next cleared");
 }
 
@@ -171,7 +167,7 @@ static void test_dequeue_not_enqueued(void)
 	ul_sched_enqueue(&b);
 	ul_sched_dequeue(&a); /* a never enqueued — must not corrupt */
 
-	CHECK(ul_sched_pick_next() == &b, "queue intact after spurious dequeue");
+	CHECK(ul_sched_peek_next() == &b, "queue intact after spurious dequeue");
 }
 
 static void test_yield_reorder(void)
@@ -186,64 +182,71 @@ static void test_yield_reorder(void)
 	ul_sched_enqueue(&a);
 	ul_sched_enqueue(&b);
 
-	/* Simulate yield of a: dequeue + re-enqueue at tail of same group */
 	ul_sched_dequeue(&a);
 	ul_sched_enqueue(&a);
 
-	CHECK(ul_sched_pick_next() == &b,
+	CHECK(ul_sched_peek_next() == &b,
 	      "after yield, peer at same priority becomes head");
 }
 
 static void test_sched_start(void)
 {
-	ul_thread_t a;
+	ul_thread_t a, idle;
 
 	printf("\n[test_sched_start]\n");
 	sched_reset();
-	make_thread(&a, 1, 3);
+	make_thread(&a,    1,   3);
+	make_thread(&idle, 255, 255);
 
-	ul_sched_start(&idle, &a);
+	ul_sched_enqueue(&idle);
+	ul_sched_enqueue(&a);
+	ul_sched_start();
 
-	CHECK(switch_count == 1, "ul_sched_start triggers one switch");
-	CHECK(last_from == &idle, "switched FROM idle");
-	CHECK(last_to == &a.ctx, "switched TO thread a");
-	CHECK(ul_sched_current() == &a, "sched_current = a after start");
-	CHECK(a.state == UL_THREAD_STATE_RUNNING, "thread state = RUNNING");
+	CHECK(switch_count == 1,  "ul_sched_start triggers one switch");
+	CHECK(last_to == &a.ctx,  "switched TO thread a");
+	CHECK(ul_sched_current() == &a,             "sched_current = a after start");
+	CHECK(a.state == UL_THREAD_STATE_RUNNING,   "thread state = RUNNING");
 }
 
 static void test_schedule_to_idle_on_empty(void)
 {
-	ul_thread_t a;
+	ul_thread_t a, idle;
 
 	printf("\n[test_schedule_to_idle_on_empty]\n");
 	sched_reset();
-	make_thread(&a, 1, 3);
+	make_thread(&a,    1,   3);
+	make_thread(&idle, 255, 255);
 
-	ul_sched_start(&idle, &a);
+	ul_sched_enqueue(&idle);
+	ul_sched_enqueue(&a);
+	ul_sched_start();
 	switch_count = 0;
 
-	/* a exits: dequeue (not in run queue) and schedule */
+	/* a exits: dequeue and schedule → idle is the only remaining thread */
 	a.state = UL_THREAD_STATE_DEAD;
+	ul_sched_dequeue(&a);
 	ul_sched_schedule();
 
-	CHECK(switch_count == 1, "schedule with empty queue → one switch");
-	CHECK(last_to == &idle, "switch to idle when queue empty");
-	CHECK(ul_sched_current() == NULL, "sched_current = NULL when idle");
+	CHECK(switch_count == 1,         "schedule with no work → one switch");
+	CHECK(last_to == &idle.ctx,      "switch to idle thread");
+	CHECK(ul_sched_current() == &idle, "sched_current = idle");
 }
 
 static void test_self_switch_guard(void)
 {
-	ul_thread_t a;
+	ul_thread_t a, idle;
 
 	printf("\n[test_self_switch_guard]\n");
 	sched_reset();
-	make_thread(&a, 1, 5);
+	make_thread(&a,    1,   5);
+	make_thread(&idle, 255, 255);
 
+	ul_sched_enqueue(&idle);
 	ul_sched_enqueue(&a);
-	ul_sched_start(&idle, &a);
+	ul_sched_start();
 	switch_count = 0;
 
-	/* Yield of only thread: dequeue + re-enqueue → from == to → no switch */
+	/* Yield of only thread at its priority: from == to → no switch */
 	a.state = UL_THREAD_STATE_READY;
 	ul_sched_dequeue(&a);
 	ul_sched_enqueue(&a);

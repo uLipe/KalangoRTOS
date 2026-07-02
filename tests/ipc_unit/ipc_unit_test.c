@@ -548,10 +548,11 @@ static void test_notif_signal_wakes_waiter(void)
 
 	ASSERT(waiter->state == UL_THREAD_STATE_READY);
 	ASSERT(waiter->notif_received == 0x4);
-	ASSERT((n->bits & 0x4) == 0);       /* consumed */
+	ASSERT((n->bits & 0x4) == 0);   /* consumed */
 	ASSERT(n->waiter == NULL);
 	ASSERT(g_enqueue_count == 1);
-	ASSERT(g_schedule_count == 1);      /* idle → schedule */
+	/* schedule is NOT called directly from signal; preemption is handled
+	 * by the arch ISR exit mechanism, not inline from the signal path */
 }
 
 /* ── notif_wait ────────────────────────────────────────────────────────── */

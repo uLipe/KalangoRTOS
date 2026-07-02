@@ -20,6 +20,12 @@
 
 #ifndef UL_UNIT_TEST
 #include <kernel/include/ul_mem_internal.h>
+#else
+#include <ul/config.h>
+#endif
+
+#ifdef UL_UNIT_TEST
+ul_notif_obj_t notif_pool[UL_CONFIG_MAX_NOTIFS];
 #endif
 
 int ul_notif_obj_init(ul_notif_obj_t *n, ul_notif_t id)
@@ -48,11 +54,6 @@ ul_notif_obj_t *ul_notif_by_id(ul_notif_t id)
 	return n;
 #endif
 }
-
-#ifdef UL_UNIT_TEST
-#include <ul/config.h>
-ul_notif_obj_t notif_pool[UL_CONFIG_MAX_NOTIFS];
-#endif
 
 /* =========================================================================
  * Core implementation (_impl — native pointer types)
