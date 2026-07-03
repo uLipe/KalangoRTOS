@@ -1,7 +1,7 @@
 # ulmk
 
 A small, seL4-inspired microkernel for automotive-grade embedded systems,
-targeting AURIX TriCore TC2xx/TC3xx.  Isolation is enforced by the hardware MPU
+targeting AURIX TriCore TC2xx/TC3xx and other exotic architectures.  Isolation is enforced by the hardware MPU
 at thread granularity; policy lives entirely in userspace.  Single ELF output,
 O(1) bitmap scheduler, synchronous IPC with priority inheritance.
 
@@ -165,8 +165,6 @@ docs/                        specifications and guides
 | `docs/linker_spec.md` | Three-layer linker script model |
 | `docs/application_development_guide.md` | How to build an application for custom hardware |
 | `docs/arch_porting_guide.md` | How to add a new architecture |
-| `docs/microkernel_book_tricore.md` | TriCore microkernel implementation reference |
-| `docs/tricore_guide_pt.md` | TriCore ABI, CSA, context switch deep-dive |
 
 ---
 
