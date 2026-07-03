@@ -4,7 +4,9 @@
 *.hex
 *.map
 *.lst
-build/
+
+# Build directories — matched recursively anywhere in the tree
+**/build/
 
 # Unit test binaries (host-compiled)
 tests/*_unit/*_unit_test
@@ -16,16 +18,22 @@ Sim.traceinstr
 Sim.tracepc
 Sim.tracejmps
 Sim.tracels
+IConfig
+MConfig
+OConfig
+PConfig
+*.tsim
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
 
-# CMake (generated files only — hand-written Makefiles are tracked)
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-build/Makefile
-install_manifest.txt
-CTestTestfile.cmake
+# CMake generated files — recursive so they are caught in any subdirectory
+**/CMakeCache.txt
+**/CMakeFiles/
+**/cmake_install.cmake
+**/install_manifest.txt
+**/CTestTestfile.cmake
+
+.cursor/
