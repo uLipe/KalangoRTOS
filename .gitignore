@@ -36,4 +36,4 @@ __pycache__/
 **/install_manifest.txt
 **/CTestTestfile.cmake
 
-*.cursor/
+.cursor/
