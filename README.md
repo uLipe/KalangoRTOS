@@ -157,14 +157,14 @@ docs/                        specifications and guides
 ## Documentation
 
 | Document | What it covers |
-|----------|---------------|
-| `docs/api_spec.md` | Complete public API reference |
-| `docs/arch_api_spec.md` | Architecture abstraction layer contract |
-| `docs/build_system_spec.md` | CMake build model and component discovery |
-| `docs/component_spec.md` | Component system design |
-| `docs/linker_spec.md` | Three-layer linker script model |
-| `docs/application_development_guide.md` | How to build an application for custom hardware |
-| `docs/arch_porting_guide.md` | How to add a new architecture |
+|----------|----------------|
+| [api\_spec](docs/api_spec.md) | Complete public API reference |
+| [arch\_api\_spec](docs/arch_api_spec.md) | Architecture abstraction layer contract |
+| [build\_system\_spec](docs/build_system_spec.md) | CMake build model and component discovery |
+| [component\_spec](docs/component_spec.md) | Component system design |
+| [linker\_spec](docs/linker_spec.md) | Three-layer linker script model |
+| [application\_development\_guide](docs/application_development_guide.md) | How to build an application for custom hardware |
+| [arch\_porting\_guide](docs/arch_porting_guide.md) | How to add a new architecture |
 
 ---
 
