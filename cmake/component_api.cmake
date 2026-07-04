@@ -10,7 +10,16 @@ set(_ULMK_ROOT_THREAD_COMP "" CACHE INTERNAL "")
 # ulmk_component_register
 #
 # Called from a component's CMakeLists.txt to register itself with the build.
-# Sources and include directories are accumulated into the ulmk_kernel target.
+#
+# Each enabled component is compiled as a separate static library
+# (ulmk_comp_<name>) so that its code and data land in dedicated linker
+# sections, isolated from the kernel archive (libulmk_kernel.a).
+#
+# The component library is compiled with:
+#   -DULMK_MODULE_NAME=<name>  so ULMK_PRIVATE places data in the right domain
+#
+# A data domain (domain_data.ld.in snippet) is automatically registered for
+# every enabled component via ulmk_add_domain().
 # ---------------------------------------------------------------------------
 function(ulmk_component_register)
     cmake_parse_arguments(
@@ -36,7 +45,6 @@ function(ulmk_component_register)
     endif()
 
     # REQUIRES: error if any dependency was explicitly registered as DISABLED.
-    # (Dependencies not yet seen are silently skipped — resolved at link time.)
     foreach(_dep IN LISTS ARG_REQUIRES)
         get_property(_dep_state GLOBAL PROPERTY "ULMK_COMP_${_dep}_ENABLED")
         if(DEFINED _dep_state AND "${_dep_state}" STREQUAL "0")
@@ -49,14 +57,37 @@ function(ulmk_component_register)
     set_property(GLOBAL PROPERTY "ULMK_COMP_${ARG_NAME}_ENABLED" 1)
     set(_ULMK_COMPONENTS "${_ULMK_COMPONENTS};${ARG_NAME}" CACHE INTERNAL "")
 
+    # Create a dedicated static library for this component.
+    set(_tgt "ulmk_comp_${ARG_NAME}")
+    add_library("${_tgt}" STATIC)
+
     foreach(_src IN LISTS ARG_SOURCES)
-        target_sources(ulmk_kernel PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/${_src}")
+        target_sources("${_tgt}" PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/${_src}")
     endforeach()
 
     foreach(_dir IN LISTS ARG_INCLUDE_DIRS)
-        target_include_directories(ulmk_kernel PUBLIC
+        target_include_directories("${_tgt}" PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/${_dir}")
     endforeach()
+
+    # Inherit public include dirs from the kernel (include/, arch/, generated/).
+    # PRIVATE linkage: include dirs propagate to this target's compilation only;
+    # no circular dependency is created at archive level.
+    target_link_libraries("${_tgt}" PRIVATE ulmk_kernel)
+
+    # Compile-time defines: module name (for ULMK_PRIVATE) and app name (for
+    # UL_APP_TEXT / section routing in the linker script).
+    target_compile_definitions("${_tgt}" PRIVATE
+        ULMK_MODULE_NAME=${ARG_NAME}
+        ULMK_APP_NAME=${ARG_NAME})
+
+    # Propagate board-specific compile flags (e.g. -DULMK_ARCH_QEMU_VIRT_CONSOLE).
+    if(DEFINED ULMK_BOARD_CFLAGS)
+        target_compile_options("${_tgt}" PRIVATE ${ULMK_BOARD_CFLAGS})
+    endif()
+
+    # Auto-register a data domain so generate_ld.py emits a domain_data snippet.
+    ulmk_add_domain("${ARG_NAME}" REGION KERNEL_RAM)
 
     if(ARG_ROOT_THREAD)
         if(NOT "${_ULMK_ROOT_THREAD_COMP}" STREQUAL "")
@@ -71,7 +102,6 @@ function(ulmk_component_register)
         message(STATUS
             "  [component] ${ARG_NAME}: linker fragment ${ARG_LINKER_FRAGMENT}")
         # Linker fragment accumulation — future use.
-        # For now, the fragment must be manually included in generate_ld.py.
     endif()
 endfunction()
 
