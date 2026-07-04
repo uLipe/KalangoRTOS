@@ -91,8 +91,7 @@ CMake configure variables of interest:
 ```bash
 -DULMK_CHIP_DIR=boards/qemu_tc3xx           # board selection (default)
 -DULMK_CONFIG_MAX_THREADS=32                # TCB pool size
--DULMK_CONFIG_HW_SYS_CLOCK_HZ=50000000     # system clock (Hz); match your board
--DULMK_CONFIG_TICK_HZ=1000                  # scheduler tick rate
+-DULMK_CONFIG_DEBUG_PRINTK=1                 # kernel debug prints
 ```
 
 ### Run on QEMU (inside the container)
@@ -108,9 +107,7 @@ ulmk: kernel entry
 [DBG] sched init done
 ...
 ulmk: switching to root thread
-ulmk: hello from userspace — tick #0
-ulmk: hello from userspace — tick #1
-...
+ulmk: hello from userspace
 ```
 
 ### Run integration tests (inside the container)

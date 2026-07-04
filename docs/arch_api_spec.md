@@ -67,8 +67,8 @@ Violations:
 
 - `kernel/` must **never** include arch implementation headers directly.
 - `arch/` must **never** include `kernel/` internal headers.
-- Arch code must not encode scheduling policy (it calls `ulmk_kern_tick()` and
-  lets the kernel decide what to do next).
+- Arch code must not encode scheduling policy (it calls `ulmk_kern_irq_dispatch()`
+  and `ulmk_kern_irq_check_preempt()` from generic ISR stubs).
 - Kernel code must not contain ISA-specific instructions or register names.
 
 ---
@@ -344,27 +344,20 @@ synthetic hardware events.
 
 ---
 
-## 8. Tick Timer
+## 8. Hardware IRQ Source Registration
 
-### `ulmk_arch_tick_init`
-
-```c
-void ulmk_arch_tick_init(void);
-```
-
-Configure a periodic hardware timer to fire at `ULMK_CONFIG_TICK_HZ` Hz.  The
-timer ISR must call `ulmk_kern_tick()` then `ulmk_kern_irq_check_preempt()`.
-Called once from `ulmk_arch_init()`.
-
-### `ulmk_arch_tick_get`
+### `ulmk_arch_irq_src_register`
 
 ```c
-uint32_t ulmk_arch_tick_get(void);
+void ulmk_arch_irq_src_register(uint8_t srpn, uint32_t src_reg_addr);
 ```
 
-Return elapsed microseconds since reset as a free-running 32-bit counter.
-Wraps after approximately 4294 seconds.  Used by `ulmk_timer_set_deadline()` to
-compute absolute deadlines.
+Record the absolute address of the SRC register for `srpn`.  Called from the
+kernel when userspace invokes `ulmk_irq_bind_hw()`.  The arch layer uses this
+mapping in `ulmk_arch_irq_enable()` / `ulmk_arch_irq_ack()`.
+
+There is **no** kernel tick timer.  Periodic timing is implemented in board
+services that bind a compare-match IRQ to a notification.
 
 ---
 
@@ -409,10 +402,8 @@ Mandatory sequence:
    windows, or equivalent).
 2. Register trap/interrupt vectors and ISR stack (`ulmk_arch_irq_vectors_init`).
 3. Initialise the MPU (`ulmk_arch_mpu_init`).
-4. Start the tick timer (`ulmk_arch_tick_init`).
-5. Populate `*info`:
+4. Populate `*info`:
    - `mem[]` / `mem_count`: available physical RAM regions.
-   - `tick_hz`: `ULMK_CONFIG_TICK_HZ`.
    - `csa_pool_base` / `csa_pool_size`: saved-context pool (or zeros if the
      arch does not use a hardware pool).
 
@@ -465,15 +456,6 @@ enabled).
 These are implemented in `kernel/` and called by the arch port from ISR handlers
 and the syscall path.  They contain **no arch-specific code**; all hardware
 state must be extracted by the arch before calling.
-
-### `ulmk_kern_tick`
-
-```c
-void ulmk_kern_tick(void);
-```
-
-Advance the scheduler clock by one tick.  Called from the periodic timer ISR
-before returning from the interrupt.
 
 ### `ulmk_kern_irq_dispatch`
 

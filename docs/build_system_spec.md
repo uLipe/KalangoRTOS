@@ -409,13 +409,9 @@ Defined in `cmake/config.cmake`:
 │ ULMK_CONFIG_MAX_ENDPOINTS          │ 64       │ Static IPC endpoint pool           │
 │ ULMK_CONFIG_MAX_NOTIFS             │ 32       │ Static notification pool           │
 │ ULMK_CONFIG_MAX_IRQ_BINDINGS       │ 16       │ SRPN → notif binding table         │
-│ ULMK_CONFIG_TICK_HZ                │ 1000     │ Scheduler tick rate (Hz)           │
-│ ULMK_CONFIG_HW_SYS_CLOCK_HZ       │ 50000000 │ System clock fed to tick timer     │
+│ ULMK_CONFIG_DEBUG_PRINTK           │ 1        │ Kernel printk (0 = no-op)          │
 └──────────────────────────────────┴──────────┴────────────────────────────────────┘
 ```
-
-`ULMK_CONFIG_HW_SYS_CLOCK_HZ` defaults to 50 MHz — the QEMU TC397B STM0 rate.
-**Override per board** on real hardware.
 
 ### 10.2 Override
 
@@ -423,7 +419,7 @@ Defined in `cmake/config.cmake`:
 cmake -B build \
     -DULMK_CHIP_DIR=boards/qemu_tc3xx \
     -DULMK_CONFIG_MAX_THREADS=16 \
-    -DULMK_CONFIG_HW_SYS_CLOCK_HZ=200000000
+    -DULMK_CONFIG_DEBUG_PRINTK=0
 ```
 
 ### 10.3 Generated header
@@ -432,19 +428,8 @@ cmake -B build \
 
 The header is **kernel-internal only**.  User code must not include it.
 
-### 10.4 Scheduler quantum
-
-Two derived symbols are required by the scheduler; they are computed and written
-into `config.h` by `config.cmake`:
-
-```cmake
-# Scheduler quantum
-set(ULMK_CONFIG_SCHED_QUANTUM_US    10000)   # 10 ms
-set(ULMK_CONFIG_SCHED_QUANTUM_TICKS ...)     # = QUANTUM_US / (1000000 / TICK_HZ)
-```
-
-Forgetting `ULMK_CONFIG_SCHED_QUANTUM_TICKS` causes every tick to trigger
-preemption — this is the most common cause of scheduler test failures.
+Board-specific timer clock rates (e.g. STM0 frequency) belong in board source
+(`board_timer.c`), not in `config.cmake`.
 
 ---
 

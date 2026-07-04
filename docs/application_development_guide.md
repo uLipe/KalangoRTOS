@@ -436,9 +436,11 @@ Key CMake options:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `ULMK_CHIP_DIR` | `boards/qemu_tc3xx` | Path to chip input directory |
-| `ULMK_CONFIG_HW_SYS_CLOCK_HZ` | `50000000` | System clock — **must match your hardware** |
-| `ULMK_CONFIG_MAX_THREADS` | `32` | TCB pool size |
-| `ULMK_CONFIG_TICK_HZ` | `1000` | Scheduler tick rate (Hz) |
+| `ULMK_CONFIG_MAX_THREADS` | `16` | TCB pool size |
+| `ULMK_CONFIG_DEBUG_PRINTK` | `1` | Kernel debug prints (0 = no-op) |
+
+Timer clock rates and sleep policy live in board code (`board_timer.c`), not in
+CMake kernel config.
 
 ---
 
@@ -538,7 +540,7 @@ After flashing:
 2. The chip ROM loads the BMHD (if `HAVE_BMHD = 1`) and jumps to `_start`.
 3. `ulmk_board_init()` runs (PLL, flash WS).
 4. `.data` copy and `.bss` zero.
-5. `ulmk_arch_init()` — CSA pool, vectors, MPU, tick timer.
+5. `ulmk_arch_init()` — CSA pool, vectors, MPU.
 6. `ulmk_kern_main()` — scheduler starts.
 7. `ulmk_root_thread()` — your application code.
 
@@ -683,16 +685,16 @@ ulmk_component_register(
 #include <board_services.h>
 #include <gpio_driver.h>
 
+void board_timer_sleep_us(uint32_t us);
+
 static void blink_task(void *arg)
 {
     (void)arg;
     for (;;) {
         gpio_set(0, 1);
-        ulmk_timer_set_deadline(500000);  /* 500 ms */
-        ulmk_timer_wait();
+        board_timer_sleep_us(500000u);  /* 500 ms */
         gpio_set(0, 0);
-        ulmk_timer_set_deadline(500000);
-        ulmk_timer_wait();
+        board_timer_sleep_us(500000u);
     }
 }
 
@@ -712,8 +714,7 @@ void ulmk_root_thread(const ulmk_boot_info_t *info)
         .name = "blink", .entry = blink_task, .arg = NULL,
         .priority = 20, .stack_size = 512, .privilege = ULMK_PRIV_DRIVER,
     };
-    ulmk_tid_t blink_tid = ulmk_thread_create(&attr);
-    ulmk_cap_grant(blink_tid, ULMK_CAP_TIMER);
+    ulmk_thread_create(&attr);
 
     ulmk_thread_exit();
 }

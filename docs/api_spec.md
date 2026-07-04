@@ -23,7 +23,7 @@
 8. [Notification API](#8-notification-api)
 9. [Memory API](#9-memory-api)
 10. [IRQ API](#10-irq-api)
-11. [Timer Primitives](#11-timer-primitives)
+11. [Board Timer Service](#11-board-timer-service)
 12. [Syscall Number Table](#12-syscall-number-table)
 13. [Capability Grant API](#13-capability-grant-api)
 14. [Boot Entry Point](#14-boot-entry-point)
@@ -125,7 +125,6 @@ typedef struct {
         size_t    size;
     } mem[ULMK_BOOT_MAX_MEM_REGIONS];
     uint32_t  mem_count;
-    uint32_t  tick_hz;       /* scheduler tick rate (= ULMK_CONFIG_TICK_HZ) */
     uintptr_t csa_pool_base;
     size_t    csa_pool_size;
 } ulmk_boot_info_t;
@@ -195,7 +194,6 @@ privileged operations.
 | `ULMK_CAP_IRQ` | 2 | `ulmk_irq_bind()`, `ulmk_irq_enable()`, `ulmk_irq_disable()`, `ulmk_irq_ack()` |
 | `ULMK_CAP_MAP_PERIPH` | 3 | `ulmk_mem_map()` with `ULMK_MMAP_PERIPH` |
 | `ULMK_CAP_GRANT_CAP` | 4 | `ulmk_cap_grant()` |
-| `ULMK_CAP_TIMER` | 5 | `ulmk_timer_set_deadline()`, `ulmk_timer_wait()` |
 | `ULMK_CAP_ALL` | 0xFF | All capabilities; initial value of the root thread |
 
 ---
@@ -218,8 +216,9 @@ Returns the TID of the calling thread.  Available at any privilege level.
 int ulmk_thread_yield(void);
 ```
 
-Yields the CPU to the next runnable thread of equal or higher priority.
-Returns `ULMK_OK`.
+Yields the CPU to the next runnable thread at the same priority (FIFO within
+level).  Does **not** time-slice across equal-priority threads — use explicit
+blocking or periodic yields for fairness at the same level.  Returns `ULMK_OK`.
 
 ---
 
@@ -577,37 +576,49 @@ a level-triggered interrupt to prevent immediate re-entry.
 
 ---
 
-## 11. Timer Primitives
-
-Requires `ULMK_CAP_TIMER`.  These are **low-level kernel timer operations** for
-the timer server.  Application-level sleep should be implemented by sending an
-IPC request to a timer server component.
-
-### `ulmk_timer_set_deadline`
+### `ulmk_irq_bind_hw`
 
 ```c
-int ulmk_timer_set_deadline(uint64_t deadline_us);
+int ulmk_irq_bind_hw(uint8_t srpn, ulmk_notif_t notif, uint32_t bit,
+		     uintptr_t src_reg_addr);
 ```
 
-Programs the hardware timer to expire `deadline_us` microseconds from now.
-Only one deadline can be active at a time; a new call overwrites the previous
-one.
+Associate a fixed hardware SRC register (TriCore: absolute address of the
+`SRC_*` register) with `srpn` and deliver `bit` in `notif` when the interrupt
+fires.  Used by board services (timer, UART, etc.) that own a specific SRC.
 
-The 64-bit value is split across two 32-bit register arguments following the
-TriCore ABI (`D4 = low`, `D5 = high`).
+**Requires:** `ULMK_CAP_IRQ` and `ULMK_PRIV_DRIVER`.
 
 ---
 
-### `ulmk_timer_wait`
+## 11. Board Timer Service
+
+The kernel has **no** system timer or sleep syscall.  Timekeeping is board
+policy: a driver thread maps the SoC timer block, binds its compare-match IRQ
+via `ulmk_irq_bind_hw()`, and serves sleep requests over IPC.
+
+QEMU reference: `boards/qemu_tc3xx/board_timer.c` (STM0 + SRPN 1).
+
+### `board_timer_start`
 
 ```c
-int ulmk_timer_wait(void);
+ulmk_tid_t board_timer_start(const ulmk_boot_info_t *info);
 ```
 
-Blocks the calling thread until the programmed deadline expires.  Exactly one
-thread may call this at a time.
+Spawn the timer server thread.  Called once from `board_services_init()`.
+Returns the server TID.
 
----
+### `board_timer_sleep_us`
+
+```c
+void board_timer_sleep_us(uint32_t us);
+```
+
+Block the caller until approximately `us` microseconds have elapsed (IPC to
+the board timer server).  Available after `board_timer_start()`.
+
+Real boards provide their own `board_timer.c` or a weak stub in
+`stub/board_timer_stub.c`.
 
 ## 12. Syscall Number Table
 
@@ -618,12 +629,12 @@ userspace wrappers and the kernel router.
  1–3   Memory (shared) (ULMK_SYS_MMAP, MUNMAP, MEM_GRANT)
  4–6   [reserved]      (former MALLOC/FREE/ALIGNED_ALLOC removed in slabAO model)
  7–8   Per-thread heap (HEAP_EXTEND, GET_THREAD_HEAP)
-10–14  Scheduling      (YIELD, EXIT, [12 reserved], TIMER_SETDEADLINE, TIMER_WAIT)
+10–14  Scheduling      (YIELD, EXIT, [12–14 reserved — former kernel timer syscalls])
 20     Thread query    (THREAD_SELF)
 30–37  IPC endpoints   (EP_CREATE, CALL, RECV, REPLY, REPLY_RECV, GRANT,
                         RECV_OR_NOTIF, DESTROY)
 40–44  Notifications   (NOTIF_CREATE, SIGNAL, WAIT, POLL, DESTROY)
-60–63  IRQ             (IRQ_BIND, IRQ_ENABLE, IRQ_DISABLE, IRQ_ACK)
+60–64  IRQ             (IRQ_BIND, IRQ_ENABLE, IRQ_DISABLE, IRQ_ACK, IRQ_BIND_HW)
 70–75  Thread mgmt     (SPAWN, KILL, SUSPEND, RESUME, SET_PRIO, GET_PRIO)
 80–84  Process mgmt    (PROC_CREATE, DESTROY, ADD_REGION, GRANT_CAP, GRANT_IRQ)
 ```
@@ -649,9 +660,6 @@ Grants the capability bits in `caps` to `target`.  The caller must itself hold
 Typical boot pattern:
 
 ```c
-ulmk_tid_t timer_srv = ulmk_thread_create(&timer_attr);
-ulmk_cap_grant(timer_srv, ULMK_CAP_TIMER);
-
 ulmk_tid_t driver = ulmk_thread_create(&driver_attr);
 ulmk_cap_grant(driver, ULMK_CAP_IRQ | ULMK_CAP_MAP_PERIPH);
 ```

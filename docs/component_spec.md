@@ -432,8 +432,7 @@ static void hello_entry(void *arg)
         board_console_puts("hello ");
         print_uint32(n++);
         board_console_putc('\n');
-        ulmk_timer_set_deadline(1000000ULL);  /* 1 s in microseconds */
-        ulmk_timer_wait();
+        board_timer_sleep_us(1000000u);  /* 1 s */
     }
 }
 
@@ -451,9 +450,7 @@ ulmk_tid_t hello_world_init(const ulmk_boot_info_t *info)
         .stack_size = 1024u,
         .privilege  = ULMK_PRIV_USER,
     };
-    ulmk_tid_t tid = ulmk_thread_create(&attr);
-    ulmk_cap_grant(tid, ULMK_CAP_TIMER);
-    return tid;
+    return ulmk_thread_create(&attr);
 }
 ```
 

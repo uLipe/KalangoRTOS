@@ -70,7 +70,7 @@ The full contract is documented in `docs/arch_api_spec.md`.
 ```
 arch/
 └── <name>/
-    ├── arch.c               CPU control, MPU, IRQ, tick, syscall/trap entry
+    ├── arch.c               CPU control, MPU, IRQ, syscall/trap entry
     ├── ctx_switch.S         ulmk_arch_ctx_switch (usually assembly)
     ├── startup.S            _start
     ├── vectors.S            trap and ISR handlers
@@ -234,9 +234,7 @@ Provide handlers for:
    `ulmk_arch_trap_entry(class, tin)`.
 2. **Syscall entry** — read syscall number and arguments, call
    `ulmk_arch_syscall_entry()` which calls `ulmk_kern_trap_syscall()`.
-3. **Tick timer ISR** — call `ulmk_kern_tick()` then
-   `ulmk_kern_irq_check_preempt()`.
-4. **Generic hardware ISR stub** — read interrupt number (SRPN), call
+3. **Generic hardware ISR stub** — read interrupt number (SRPN), call
    `ulmk_kern_irq_dispatch(srpn)` then `ulmk_kern_irq_check_preempt()`.
 
 Each ISR stub must save the context required by the ABI and restore it before
@@ -285,9 +283,8 @@ void ulmk_arch_irq_src_ack(uint8_t srpn)     { ... }
 bool ulmk_arch_irq_src_is_pending(uint8_t srpn) { ... }
 void ulmk_arch_irq_src_trigger(uint8_t srpn) { ... }
 
-/* ── Tick timer ─────────────────────── */
-void     ulmk_arch_tick_init(void)    { ... }
-uint32_t ulmk_arch_tick_get(void)     { ... }
+/* ── IRQ source map (for ulmk_irq_bind_hw) ── */
+void ulmk_arch_irq_src_register(uint8_t srpn, uint32_t src_reg_addr) { ... }
 
 /* ── Atomics ────────────────────────── */
 uint32_t ulmk_arch_atomic_cas(...)  { ... }
@@ -492,13 +489,16 @@ full kernel with their own source list.  To run them for the new arch:
   (TriCore `PSW.IS`, ARM `MSP`), verify the switch happens correctly on first
   IRQ entry.
 
-### Tick timer
+### Preemption and IRQ dispatch
 
-- The tick ISR must call `ulmk_kern_tick()` then `ulmk_kern_irq_check_preempt()`
-  **before** restoring context.  If `ulmk_kern_irq_check_preempt` is skipped,
-  preemption never happens and all threads run to completion without yielding.
-- `ULMK_CONFIG_HW_SYS_CLOCK_HZ` must match the hardware clock exactly.  A
-  mismatch causes the wrong tick period and breaks all timer-dependent tests.
+- Generic ISR stubs must call `ulmk_kern_irq_dispatch()` then
+  `ulmk_kern_irq_check_preempt()` **before** restoring context when a
+  notification wakeup may have readied a higher-priority thread.
+- There is no kernel tick timer.  Board services bind device IRQs (e.g. STM0
+  compare-match) via `ulmk_irq_bind_hw()` and implement sleep/timekeeping in
+  userspace.
+- Timer clock constants (e.g. STM0 Hz) belong in board source, not kernel
+  `config.cmake`.
 
 ### Linker script
 
