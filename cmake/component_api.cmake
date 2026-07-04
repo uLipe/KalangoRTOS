@@ -55,7 +55,9 @@ function(ulmk_component_register)
 
     message(STATUS "  [component] ${ARG_NAME} ENABLED")
     set_property(GLOBAL PROPERTY "ULMK_COMP_${ARG_NAME}_ENABLED" 1)
-    set(_ULMK_COMPONENTS "${_ULMK_COMPONENTS};${ARG_NAME}" CACHE INTERNAL "")
+    set(tmp "${_ULMK_COMPONENTS}")
+    list(APPEND tmp "${ARG_NAME}")
+    set(_ULMK_COMPONENTS "${tmp}" CACHE INTERNAL "")
 
     # Create a dedicated static library for this component.
     set(_tgt "ulmk_comp_${ARG_NAME}")

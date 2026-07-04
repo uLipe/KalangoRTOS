@@ -29,7 +29,9 @@ function(ulmk_add_app name)
         "${CMAKE_SOURCE_DIR}/include"
         "${CMAKE_BINARY_DIR}/generated")
 
-    set(_UL_APPS "${_UL_APPS};${name}" CACHE INTERNAL "")
+    set(tmp "${_UL_APPS}")
+    list(APPEND tmp "${name}")
+    set(_UL_APPS "${tmp}" CACHE INTERNAL "")
     if(DEFINED ARG_DOMAIN)
         set_target_properties("app_${name}" PROPERTIES UL_APP_DOMAIN "${ARG_DOMAIN}")
     endif()
@@ -43,7 +45,9 @@ function(ulmk_add_domain name)
     if(NOT DEFINED ARG_REGION)
         set(ARG_REGION "KERNEL_RAM")
     endif()
-    set(_UL_DOMAINS "${_UL_DOMAINS};${name}:${ARG_REGION}" CACHE INTERNAL "")
+    set(tmp "${_UL_DOMAINS}")
+    list(APPEND tmp "${name}:${ARG_REGION}")
+    set(_UL_DOMAINS "${tmp}" CACHE INTERNAL "")
 endfunction()
 
 # ---------------------------------------------------------------------------
