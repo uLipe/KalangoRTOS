@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 #include <ulmk/microkernel.h>
+#include <ulmk/linker.h>
 #include <hello_world.h>
 
 /* board_console_putc and board_console_puts are resolved at link time from
@@ -55,7 +56,7 @@ ulmk_tid_t hello_world_init(const ulmk_boot_info_t *info)
 {
 	ulmk_thread_attr_t attr;
 	ulmk_tid_t         tid;
-	static int       done;
+	static ULMK_PRIVATE int done;
 
 	(void)info;
 
