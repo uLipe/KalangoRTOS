@@ -67,6 +67,11 @@ function(_ulmk_finalize_build kernel_target chip_dir)
         list(APPEND app_args "--app" "${app}")
     endforeach()
 
+    set(comp_args "")
+    foreach(comp IN LISTS _ULMK_COMPONENTS)
+        list(APPEND comp_args "--comp" "${comp}")
+    endforeach()
+
     set(domain_args "")
     foreach(entry IN LISTS _UL_DOMAINS)
         string(REPLACE ":" ";" parts "${entry}")
@@ -85,6 +90,7 @@ function(_ulmk_finalize_build kernel_target chip_dir)
                 "--snippets"   "${CMAKE_SOURCE_DIR}/linker/snippets"
                 "--output"     "${generated_ld}"
                 ${app_args}
+                ${comp_args}
                 ${domain_args}
         DEPENDS
             "${chip_dir}/memory.ld"
@@ -100,4 +106,9 @@ function(_ulmk_finalize_build kernel_target chip_dir)
         "-Wl,-Map=${CMAKE_BINARY_DIR}/ulmk.map")
 
     add_dependencies("${kernel_target}" ulmk_linker_script)
+
+    # Link every registered component library into the final executable.
+    foreach(comp IN LISTS _ULMK_COMPONENTS)
+        target_link_libraries("${kernel_target}" PRIVATE "ulmk_comp_${comp}")
+    endforeach()
 endfunction()

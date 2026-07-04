@@ -7,7 +7,7 @@
 #   generate_ld.py --chip-dir <path> --arch-dir <path> \
 #                  --kernel-dir <path> --snippets <path> \
 #                  --output <file> \
-#                  [--app <name>]... [--domain <name:region>]...
+#                  [--app <name>]... [--comp <name>]... [--domain <name:region>]...
 #
 # Assembly order:
 #   1. arch prologue (arch-dir/prologue.ld.in)
@@ -16,7 +16,8 @@
 #   4. SECTIONS {
 #        kernel/vectors.ld.in
 #        kernel/kernel_text.ld.in
-#        [rendered snippets/app_code.ld.in for each --app]
+#        [rendered snippets/comp_text.ld.in  for each --comp]
+#        [rendered snippets/app_code.ld.in   for each --app]
 #        kernel/kernel_data.ld.in
 #        kernel/domain_table.ld.in
 #        [rendered snippets/domain_data.ld.in for each --domain]
@@ -62,6 +63,8 @@ def main():
     ap.add_argument("--output",     required=True)
     ap.add_argument("--app",        action="append", default=[],
                     metavar="NAME")
+    ap.add_argument("--comp",       action="append", default=[],
+                    metavar="NAME")
     ap.add_argument("--domain",     action="append", default=[],
                     metavar="NAME:REGION")
     args = ap.parse_args()
@@ -87,21 +90,27 @@ def main():
     # 4a. Vectors
     out.append(read_fragment(os.path.join(args.kernel_dir, "vectors.ld.in")))
 
-    # 4b. Kernel text
+    # 4b. Kernel text (libulmk_kernel.a only)
     out.append(read_fragment(os.path.join(args.kernel_dir, "kernel_text.ld.in")))
 
-    # 4c. Per-app code snippets
+    # 4c. Per-component text snippets — one MPU-aligned section per component,
+    #     selecting exclusively from libulmk_comp_<name>.a
+    comp_snippet = os.path.join(args.snippets, "comp_text.ld.in")
+    for comp in args.comp:
+        out.append(render_snippet(comp_snippet, {"COMP_NAME": comp}))
+
+    # 4d. Per-app code snippets
     app_snippet = os.path.join(args.snippets, "app_code.ld.in")
     for app in args.app:
         out.append(render_snippet(app_snippet, {"APP_NAME": app}))
 
-    # 4d. Kernel data
+    # 4e. Kernel data (libulmk_kernel.a only)
     out.append(read_fragment(os.path.join(args.kernel_dir, "kernel_data.ld.in")))
 
-    # 4e. Domain table
+    # 4f. Domain table
     out.append(read_fragment(os.path.join(args.kernel_dir, "domain_table.ld.in")))
 
-    # 4f. Per-domain data snippets
+    # 4g. Per-domain data snippets (includes auto-registered component domains)
     domain_snippet = os.path.join(args.snippets, "domain_data.ld.in")
     for entry in args.domain:
         parts = entry.split(":", 1)
@@ -110,18 +119,18 @@ def main():
         out.append(render_snippet(domain_snippet,
                                   {"DOMAIN_NAME": dname, "DOMAIN_REGION": dregion}))
 
-    # 4g. Small-data areas (arch-specific)
+    # 4h. Small-data areas (arch-specific)
     if flags["HAVE_SMALL_DATA"]:
         out.append(read_fragment(os.path.join(args.arch_dir, "small_data.ld.in")))
 
-    # 4h. Kernel stacks
+    # 4i. Kernel stacks
     out.append(read_fragment(os.path.join(args.kernel_dir, "kernel_stacks.ld.in")))
 
-    # 4i. CSA pool (arch-specific)
+    # 4j. CSA pool (arch-specific)
     if flags["HAVE_CSA"]:
         out.append(read_fragment(os.path.join(args.arch_dir, "csa_pool.ld.in")))
 
-    # 4j. User pool (always last in KERNEL_RAM)
+    # 4k. User pool (always last in KERNEL_RAM)
     out.append(read_fragment(os.path.join(args.kernel_dir, "user_pool.ld.in")))
 
     out.append("\n} /* SECTIONS */\n")
