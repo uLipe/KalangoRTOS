@@ -77,15 +77,6 @@ uint32_t ulmk_syscall_router(uint32_t nr,
 	case ULMK_SYS_EXIT:
 		return ulmk_kern_exit();
 
-	/* ── Timer primitives (requires ULMK_CAP_TIMER) ────────────────── */
-	case ULMK_SYS_TIMER_SETDEADLINE:
-		REQUIRE_CAP(ULMK_CAP_TIMER);
-		return ulmk_kern_timer_set_deadline(a0, a1);
-
-	case ULMK_SYS_TIMER_WAIT:
-		REQUIRE_CAP(ULMK_CAP_TIMER);
-		return ulmk_kern_timer_wait();
-
 	/* ── Thread query (any privilege) ────────────────────────────── */
 	case ULMK_SYS_THREAD_SELF:
 		return ulmk_kern_thread_self();
@@ -148,6 +139,11 @@ uint32_t ulmk_syscall_router(uint32_t nr,
 	case ULMK_SYS_IRQ_ACK:
 		REQUIRE_DRIVER(a0);
 		return ulmk_kern_irq_ack(a0);
+
+	case ULMK_SYS_IRQ_BIND_HW:
+		REQUIRE_DRIVER(a0);
+		REQUIRE_CAP(ULMK_CAP_IRQ);
+		return ulmk_kern_irq_bind_hw(a0, a1, a2, a3);
 
 	/* ── Thread management (requires ULMK_PRIV_DRIVER) ─────────────── */
 	case ULMK_SYS_THREAD_SPAWN:

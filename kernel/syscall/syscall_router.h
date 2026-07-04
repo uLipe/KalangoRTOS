@@ -50,10 +50,6 @@ uint32_t ulmk_kern_yield(void);
 uint32_t ulmk_kern_exit(void);         /* does not return; marks thread dead */
 uint32_t ulmk_kern_thread_self(void);
 
-/* Timer primitives (requires ULMK_CAP_TIMER) */
-uint32_t ulmk_kern_timer_set_deadline(uint32_t lo_us, uint32_t hi_us);
-uint32_t ulmk_kern_timer_wait(void);
-
 /* IPC endpoints */
 uint32_t ulmk_kern_ep_create(void);
 uint32_t ulmk_kern_ep_call(uint32_t ep, uint32_t msg_ptr);
@@ -75,6 +71,8 @@ uint32_t ulmk_kern_notif_destroy(uint32_t notif);
 
 /* IRQ (requires ULMK_PRIV_DRIVER) */
 uint32_t ulmk_kern_irq_bind(uint32_t srpn, uint32_t notif, uint32_t bit);
+uint32_t ulmk_kern_irq_bind_hw(uint32_t srpn, uint32_t notif_id,
+			     uint32_t bit, uint32_t src_reg);
 uint32_t ulmk_kern_irq_enable(uint32_t srpn);
 uint32_t ulmk_kern_irq_disable(uint32_t srpn);
 uint32_t ulmk_kern_irq_ack(uint32_t srpn);

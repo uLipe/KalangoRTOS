@@ -679,7 +679,7 @@ bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
 
 /* srpn → SRC register address; 0 = unregistered */
 static uint32_t g_src_addr[256];
-/* Next available SRC allocation slot (0xC0 = tick, start from 0xC1) */
+/* Next available SRC allocation slot for ulmk_irq_bind() dynamic IRQs. */
 static uint8_t g_next_src_slot = 0xC1u;
 
 void ulmk_arch_irq_vectors_init(uintptr_t btv, uintptr_t biv, uintptr_t isp_top)
@@ -699,15 +699,17 @@ void ulmk_arch_irq_src_configure(uint8_t srpn, uint8_t priority, uint8_t cpu_id)
 {
 	uint32_t addr;
 
-	if (srpn == ULMK_ARCH_TICK_SRPN)
-		return;
-
 	addr = SRC_BASE + (uint32_t)g_next_src_slot * 4u;
 	g_src_addr[srpn] = addr;
 	g_next_src_slot++;
 
 	*(volatile uint32_t *)addr =
 		(uint32_t)priority | ((uint32_t)cpu_id << SRC_TOS_SHIFT);
+}
+
+void ulmk_arch_irq_src_register(uint8_t srpn, uint32_t src_reg_addr)
+{
+	g_src_addr[srpn] = src_reg_addr;
 }
 
 void ulmk_arch_irq_src_enable(uint8_t srpn)
@@ -789,83 +791,6 @@ void _arch_generic_isr_handler(void)
 	 */
 	ulmk_kern_irq_check_preempt();
 }
-
-/* =========================================================================
- * Tick timer — STM0 periodic (ticked) implementation
- *
- * Register accessors map directly to the STM0 MMIO addresses defined in
- * arch_config.h (ULMK_ARCH_STM0_BASE).
- *
- * CMP0 is re-armed in the ISR by adding the fixed period to the previous
- * compare value, avoiding drift accumulation over time.
- * ========================================================================= */
-
-/*
- * Number of STM0 counter ticks per kernel tick period.
- * ULMK_CONFIG_HW_SYS_CLOCK_HZ is the machine clock fed into STM0 on this arch.
- */
-#define TICK_PERIOD_TICKS	(ULMK_CONFIG_HW_SYS_CLOCK_HZ / ULMK_CONFIG_TICK_HZ)
-
-static inline uint32_t stm0_read(uint32_t reg_addr)
-{
-	return *(volatile uint32_t *)reg_addr;
-}
-
-static inline void stm0_write(uint32_t reg_addr, uint32_t val)
-{
-	*(volatile uint32_t *)reg_addr = val;
-}
-
-void ulmk_arch_tick_init(void)
-{
-	uint32_t now;
-
-	/*
-	 * CMCON: MSTART0=0, MSIZE0=31 — compare all 32 bits of TIM0 against CMP0.
-	 * Configure SRC and arm the first compare before enabling interrupts.
-	 */
-	stm0_write(ULMK_ARCH_STM0_CMCON, 0x0000001Fu);
-	*(volatile uint32_t *)ULMK_ARCH_SRC_STM0_SR0 = ULMK_ARCH_SRC_CONFIG_VAL;
-
-	now = stm0_read(ULMK_ARCH_STM0_TIM0);
-	stm0_write(ULMK_ARCH_STM0_CMP0, now + TICK_PERIOD_TICKS);
-	stm0_write(ULMK_ARCH_STM0_ICR, 0x00000001u);
-}
-
-uint32_t ulmk_arch_tick_get(void)
-{
-	return stm0_read(ULMK_ARCH_STM0_TIM0) / (ULMK_CONFIG_HW_SYS_CLOCK_HZ / 1000000u);
-}
-
-/*
- * Called from vectors.S tick ISR (after svlcx, before rslcx/rfe).
- * Interrupt priority is already held by hardware (CCPN = ULMK_ARCH_TICK_SRPN).
- */
-void _arch_tick_isr_handler(void)
-{
-	uint32_t psw;
-	uint32_t next_cmp;
-
-	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
-	psw &= ~0x3000u;
-	__asm__ volatile("mtcr 0xFE04, %0\n\t"
-			 "isync"
-			 :: "d"(psw) : "memory");
-
-	stm0_write(ULMK_ARCH_STM0_ISCR, 0x00000001u);
-
-	/*
-	 * Re-arm by adding the period to the previous CMP0 value.
-	 * Reading CMP0 (not TIM0) avoids drift: each period starts exactly
-	 * TICK_PERIOD_TICKS after the previous one regardless of ISR latency.
-	 */
-	next_cmp = stm0_read(ULMK_ARCH_STM0_CMP0) + TICK_PERIOD_TICKS;
-	stm0_write(ULMK_ARCH_STM0_CMP0, next_cmp);
-	stm0_write(ULMK_ARCH_STM0_ICR, 0x00000001u);
-
-	ulmk_kern_tick();
-}
-
 
 /* =========================================================================
  * Atomic operations

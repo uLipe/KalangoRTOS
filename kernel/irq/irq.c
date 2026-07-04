@@ -75,8 +75,6 @@ uint32_t ulmk_kern_irq_bind(uint32_t srpn, uint32_t notif_id, uint32_t bit)
 
 	if (srpn == 0u || srpn >= 256u || bit > 31u)
 		return (uint32_t)(int32_t)ULMK_EINVAL;
-	if (srpn == (uint32_t)ULMK_ARCH_TICK_SRPN)
-		return (uint32_t)(int32_t)ULMK_EINVAL;
 
 	notif = ulmk_notif_by_id((ulmk_notif_t)notif_id);
 	if (!notif)
@@ -87,6 +85,29 @@ uint32_t ulmk_kern_irq_bind(uint32_t srpn, uint32_t notif_id, uint32_t bit)
 		return (uint32_t)(int32_t)ULMK_ENOSPC;
 
 	ulmk_arch_irq_src_configure((uint8_t)srpn, (uint8_t)srpn, 0u);
+	return 0u;
+}
+
+uint32_t ulmk_kern_irq_bind_hw(uint32_t srpn, uint32_t notif_id,
+			     uint32_t bit, uint32_t src_reg)
+{
+	ulmk_notif_obj_t *notif;
+	int             ret;
+
+	if (srpn == 0u || srpn >= 256u || bit > 31u || src_reg == 0u)
+		return (uint32_t)(int32_t)ULMK_EINVAL;
+
+	notif = ulmk_notif_by_id((ulmk_notif_t)notif_id);
+	if (!notif)
+		return (uint32_t)(int32_t)ULMK_EINVAL;
+
+	ret = ulmk_irq_binding_add((uint8_t)srpn, notif, bit);
+	if (ret < 0)
+		return (uint32_t)(int32_t)ULMK_ENOSPC;
+
+	ulmk_arch_irq_src_register((uint8_t)srpn, src_reg);
+	*(volatile uint32_t *)(uintptr_t)src_reg =
+		(uint32_t)srpn;
 	return 0u;
 }
 

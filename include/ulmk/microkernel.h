@@ -101,7 +101,6 @@ typedef struct {
 		size_t    size;
 	} mem[ULMK_BOOT_MAX_MEM_REGIONS];
 	uint32_t  mem_count;
-	uint32_t  tick_hz;
 	uintptr_t csa_pool_base;
 	size_t    csa_pool_size;
 } ulmk_boot_info_t;
@@ -134,7 +133,6 @@ typedef struct {
 #define ULMK_CAP_IRQ		(1u << 2)  /* may bind/enable hardware IRQs */
 #define ULMK_CAP_MAP_PERIPH	(1u << 3)  /* may map peripheral MMIO regions */
 #define ULMK_CAP_GRANT_CAP	(1u << 4)  /* may grant capabilities to others */
-#define ULMK_CAP_TIMER		(1u << 5)  /* may program the hardware timer deadline */
 #define ULMK_CAP_ALL		0xFFu	   /* all capabilities; root thread initial */
 
 /* =========================================================================
@@ -433,6 +431,19 @@ static inline int ulmk_irq_ack(uint8_t srpn)
 	return (int)r;
 }
 
+/*
+ * ulmk_irq_bind_hw — bind a fixed hardware SRC register to a notification.
+ * Used by board services for on-chip peripherals (e.g. STM0) whose SRC address
+ * is fixed by the SoC.  Dynamic test IRQs use ulmk_irq_bind() instead.
+ */
+static inline int ulmk_irq_bind_hw(uint8_t srpn, ulmk_notif_t notif,
+				   uint32_t bit, uintptr_t src_reg)
+{
+	uint32_t r;
+	ULMK_SYSCALL_4(ULMK_SYS_IRQ_BIND_HW, srpn, notif, bit, src_reg, r);
+	return (int)r;
+}
+
 /* =========================================================================
  * Capability API — docs/api_spec.md §13
  * Requires ULMK_CAP_GRANT_CAP.
@@ -442,45 +453,6 @@ static inline int ulmk_cap_grant(ulmk_tid_t target, uint32_t caps)
 {
 	uint32_t r;
 	ULMK_SYSCALL_2(ULMK_SYS_PROC_GRANT_CAP, target, caps, r);
-	return (int)r;
-}
-
-/* =========================================================================
- * Timer primitives — docs/api_spec.md §11
- *
- * These are low-level kernel timer operations gated by ULMK_CAP_TIMER.
- * Only the timer server needs them.  Userspace sleep is implemented by
- * sending an IPC request to the timer server (in libul).
- *
- * ulmk_timer_set_deadline — program the hardware timer to expire at
- *   @deadline_us microseconds from now.  Only one deadline can be active
- *   at a time; a new call overwrites the previous one.
- *
- * ulmk_timer_wait — block the calling thread until the programmed deadline
- *   expires.  Exactly one thread may call this at a time.
- *
- * The 64-bit deadline value is split across two 32-bit registers
- * (D4 = low word, D5 = high word) following the TriCore ABI.
- *
- * These wrappers are excluded from kernel builds to avoid conflicts with
- * the kernel-internal ulmk_timer_set_deadline() implementation.
- * ========================================================================= */
-
-static inline int ulmk_timer_set_deadline(uint64_t deadline_us)
-{
-	uint32_t lo = (uint32_t)deadline_us;
-	uint32_t hi = (uint32_t)(deadline_us >> 32);
-	uint32_t r;
-
-	ULMK_SYSCALL_2(ULMK_SYS_TIMER_SETDEADLINE, lo, hi, r);
-	return (int)r;
-}
-
-static inline int ulmk_timer_wait(void)
-{
-	uint32_t r;
-
-	ULMK_SYSCALL_0(ULMK_SYS_TIMER_WAIT, r);
 	return (int)r;
 }
 

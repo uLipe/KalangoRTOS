@@ -37,6 +37,7 @@ endif()
 set(ULMK_BOARD_SOURCES
     qemu_console.c
     board_console.c
+    board_timer.c
     board_services.c
 )
 

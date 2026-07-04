@@ -114,6 +114,12 @@ void ulmk_arch_irq_vectors_init(uintptr_t btv, uintptr_t biv,
 void ulmk_arch_irq_src_configure(uint8_t srpn, uint8_t priority,
 			       uint8_t cpu_id);
 
+/*
+ * ulmk_arch_irq_src_register — associate a fixed hardware SRC register with
+ * an SRPN.  Used for on-chip peripherals whose SRC address is SoC-defined.
+ */
+void ulmk_arch_irq_src_register(uint8_t srpn, uint32_t src_reg_addr);
+
 void ulmk_arch_irq_src_enable(uint8_t srpn);
 void ulmk_arch_irq_src_disable(uint8_t srpn);
 void ulmk_arch_irq_src_ack(uint8_t srpn);
@@ -124,16 +130,6 @@ bool ulmk_arch_irq_src_is_pending(uint8_t srpn);
  * Sets the SETR bit in the SRC register for @srpn.
  */
 void ulmk_arch_irq_src_trigger(uint8_t srpn);
-
-/* =========================================================================
- * Tick timer — periodic, STM0 CMP0 compare-match (arch_api_spec.md §9)
- *
- * ulmk_arch_tick_init — configure STM0 and arm the first periodic interrupt.
- * ulmk_arch_tick_get  — returns elapsed µs since reset (wraps at ~4294s).
- * ========================================================================= */
-
-void     ulmk_arch_tick_init(void);
-uint32_t ulmk_arch_tick_get(void);
 
 /* =========================================================================
  * Atomic operations (arch_api_spec.md §10)
@@ -205,12 +201,6 @@ void ulmk_printk_char_out(char c);
  * These functions contain NO arch-specific code.  The arch port is
  * responsible for extracting all hardware-dependent state before calling.
  * ========================================================================= */
-
-/*
- * ulmk_kern_tick — advance the scheduler clock by one tick.
- * Called from the tick timer ISR before RSLCX/RFE.
- */
-void ulmk_kern_tick(void);
 
 /*
  * ulmk_kern_irq_dispatch — route a hardware IRQ to its notification object.

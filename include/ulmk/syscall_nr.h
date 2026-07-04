@@ -32,10 +32,7 @@
 #define ULMK_SYS_YIELD               10  /* void  ulmk_thread_yield(void)             */
 #define ULMK_SYS_EXIT                11  /* void  ulmk_thread_exit(void) [noreturn]   */
 /* slot 12 reserved — formerly ULMK_SYS_SLEEP_US */
-
-/* ── Timer primitives (requires ULMK_CAP_TIMER) ────────────────────── */
-#define ULMK_SYS_TIMER_SETDEADLINE   13  /* int   ulmk_timer_set_deadline(us_lo, us_hi) */
-#define ULMK_SYS_TIMER_WAIT          14  /* int   ulmk_timer_wait(void)               */
+/* slots 13-14 reserved — former kernel timer syscalls removed (timer is board policy) */
 
 /* ── Thread query (any privilege) ───────────────────────────────── */
 #define ULMK_SYS_THREAD_SELF         20  /* ulmk_tid_t ulmk_thread_self(void)           */
@@ -62,6 +59,7 @@
 #define ULMK_SYS_IRQ_ENABLE          61  /* int ulmk_irq_enable(srpn)                 */
 #define ULMK_SYS_IRQ_DISABLE         62  /* int ulmk_irq_disable(srpn)                */
 #define ULMK_SYS_IRQ_ACK             63  /* int ulmk_irq_ack(srpn)                    */
+#define ULMK_SYS_IRQ_BIND_HW         64  /* int ulmk_irq_bind_hw(srpn,notif,bit,src)  */
 
 /* ── Thread management (requires IO >= 1 / ULMK_PRIV_DRIVER) ─────── */
 #define ULMK_SYS_THREAD_SPAWN        70  /* ulmk_tid_t ulmk_thread_create(attr*)        */

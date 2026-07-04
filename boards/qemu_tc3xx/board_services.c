@@ -17,6 +17,7 @@
 #include <ulmk/microkernel.h>
 #include "board_services.h"
 #include "board_console.h"
+#include "board_timer.h"
 
 void ulmk_board_init(void)
 {
@@ -26,4 +27,5 @@ void ulmk_board_init(void)
 void board_services_init(const ulmk_boot_info_t *info)
 {
 	board_console_start(info);
+	board_timer_start(info);
 }
