@@ -96,8 +96,23 @@ typedef struct {
     uint8_t        priority;    /* 0 = highest, 255 = lowest */
     size_t         stack_size;  /* bytes; allocated from user_pool */
     ulmk_privilege_t privilege;   /* ULMK_PRIV_USER or ULMK_PRIV_DRIVER */
+    size_t         heap_size;   /* 0 = no per-thread heap; last for compat */
 } ulmk_thread_attr_t;
 ```
+
+Always declare `ulmk_thread_attr_t attr = {0}` before setting individual fields so
+that `heap_size` defaults safely to zero.
+
+### Thread heap descriptor
+
+```c
+typedef struct {
+    uintptr_t base;  /* start of the heap region within the slabAO */
+    size_t    size;  /* bytes; equals attr.heap_size at creation */
+} ulmk_heap_info_t;
+```
+
+Returned by `ulmk_get_thread_heap()`.
 
 ### Boot information
 
@@ -454,25 +469,36 @@ Frees the notification object.  Threads blocked on it are woken with
 
 ## 9. Memory API
 
-### `ulmk_malloc` / `ulmk_free`
+### SlabAO per-thread heap model
+
+Each thread may carry a private heap allocated at creation time by setting
+`attr.heap_size > 0`.  The kernel allocates a contiguous *slabAO*
+(`stack_size + heap_size` bytes) from `user_pool` and covers it with a single
+MPU DPR.  The TCB lives in a separate allocation so userspace cannot reach
+kernel metadata through its DPR.
+
+### `ulmk_get_thread_heap`
 
 ```c
-void *ulmk_malloc(size_t size);
-void  ulmk_free(void *ptr);
+int ulmk_get_thread_heap(ulmk_heap_info_t *info);
 ```
 
-TLSF allocator backed by the `user_pool` linker region.  Thread-safe.
+Populates `*info` with the heap base and size for the calling thread.
+Returns `ULMK_OK` on success, `ULMK_EPERM` if the thread has no heap
+(`attr.heap_size == 0`).
 
 ---
 
-### `ulmk_aligned_alloc`
+### `ulmk_heap_extend`
 
 ```c
-void *ulmk_aligned_alloc(size_t align, size_t size);
+int ulmk_heap_extend(size_t size);
 ```
 
-Like `ulmk_malloc` but guarantees `align`-byte alignment.  `align` must be a
-power of two.
+Allocates `size` bytes from the global `user_pool` and adds the new region as
+an additional MPU DPR for the calling thread.  Requires `ULMK_PRIV_DRIVER`.
+Returns `ULMK_OK`, `ULMK_ENOMEM`, `ULMK_EPERM`, or `ULMK_ENOSPC` (DPR limit
+reached).
 
 ---
 
@@ -589,7 +615,9 @@ Defined in `include/ulmk/syscall_nr.h`.  Single source of truth for both
 userspace wrappers and the kernel router.
 
 ```
- 1–6   Memory          (ULMK_SYS_MMAP, MUNMAP, MEM_GRANT, MALLOC, FREE, ALIGNED_ALLOC)
+ 1–3   Memory (shared) (ULMK_SYS_MMAP, MUNMAP, MEM_GRANT)
+ 4–6   [reserved]      (former MALLOC/FREE/ALIGNED_ALLOC removed in slabAO model)
+ 7–8   Per-thread heap (HEAP_EXTEND, GET_THREAD_HEAP)
 10–14  Scheduling      (YIELD, EXIT, [12 reserved], TIMER_SETDEADLINE, TIMER_WAIT)
 20     Thread query    (THREAD_SELF)
 30–37  IPC endpoints   (EP_CREATE, CALL, RECV, REPLY, REPLY_RECV, GRANT,

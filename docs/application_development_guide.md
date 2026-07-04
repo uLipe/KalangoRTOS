@@ -13,13 +13,14 @@
 2. [Repository Layout for an Application](#2-repository-layout-for-an-application)
 3. [Creating a Component](#3-creating-a-component)
 4. [Creating the Root Thread](#4-creating-the-root-thread)
-5. [Providing Board Services](#5-providing-board-services)
-6. [Creating a Custom Board (chip input)](#6-creating-a-custom-board-chip-input)
-7. [Build](#7-build)
-8. [Output Artefacts](#8-output-artefacts)
-9. [Running on QEMU](#9-running-on-qemu)
-10. [Running on Real Hardware](#10-running-on-real-hardware)
-11. [Worked Example](#11-worked-example)
+5. [Per-Thread Heap (slabAO Model)](#5-per-thread-heap-slabao-model)
+6. [Providing Board Services](#6-providing-board-services)
+7. [Creating a Custom Board (chip input)](#7-creating-a-custom-board-chip-input)
+8. [Build](#8-build)
+9. [Output Artefacts](#9-output-artefacts)
+10. [Running on QEMU](#10-running-on-qemu)
+11. [Running on Real Hardware](#11-running-on-real-hardware)
+12. [Worked Example](#12-worked-example)
 
 ---
 
@@ -265,7 +266,54 @@ void ulmk_root_thread(const ulmk_boot_info_t *info)
 
 ---
 
-## 5. Providing Board Services
+## 5. Per-Thread Heap (slabAO Model)
+
+Each thread may carry a private heap allocated at creation time.  Set
+`attr.heap_size` to the number of bytes the thread needs beyond its stack:
+
+```c
+ulmk_thread_attr_t attr = {0};
+attr.name       = "worker";
+attr.entry      = worker_entry;
+attr.priority   = 5;
+attr.stack_size = 2048;
+attr.privilege  = ULMK_PRIV_DRIVER;
+attr.heap_size  = 8192;   /* 8 KiB private heap */
+ulmk_tid_t tid = ulmk_thread_create(&attr);
+```
+
+The kernel allocates a contiguous *slabAO* (`stack_size + heap_size` bytes)
+from `user_pool` and covers it with a single MPU DPR.  The TCB is kept in
+a separate allocation so userspace cannot reach kernel metadata through the DPR.
+
+Inside the thread, retrieve the heap area:
+
+```c
+ulmk_heap_info_t info;
+ulmk_get_thread_heap(&info);   /* info.base, info.size */
+
+uint8_t *heap = (uint8_t *)(uintptr_t)info.base;
+/* use heap[0 .. info.size-1] directly */
+```
+
+To expand the heap at runtime (requires `ULMK_PRIV_DRIVER`):
+
+```c
+int rc = ulmk_heap_extend(4096);   /* add 4 KiB; new DPR entry added */
+```
+
+**Notes:**
+
+- `attr.heap_size = 0` means no heap; `ulmk_get_thread_heap()` returns
+  `ULMK_EPERM` in that case.
+- Always declare `ulmk_thread_attr_t attr = {0};` before setting fields so that
+  `heap_size` defaults to zero safely.
+- There is no userspace allocator included in the kernel.  The heap is a raw
+  contiguous block; use `ulmk_heap_extend()` when more memory is needed.
+
+---
+
+## 6. Providing Board Services
 
 Create a board directory (can be inside `ulmk_apps/` or anywhere on disk):
 
@@ -337,7 +385,7 @@ void board_services_init(const ulmk_boot_info_t *info);
 
 ---
 
-## 6. Creating a Custom Board (chip input)
+## 7. Creating a Custom Board (chip input)
 
 The chip input provides the MEMORY block and linker flags.  See
 `docs/linker_spec.md §9` for the full contract.  Minimum:
@@ -367,7 +415,7 @@ MEMORY {
 
 ---
 
-## 7. Build
+## 8. Build
 
 ```bash
 # Enter the dev container
@@ -394,7 +442,7 @@ Key CMake options:
 
 ---
 
-## 8. Output Artefacts
+## 9. Output Artefacts
 
 After a successful build:
 
@@ -429,7 +477,7 @@ tricore-elf-objdump -h ulmk | grep -E "text|data|bss|startup"
 
 ---
 
-## 9. Running on QEMU
+## 10. Running on QEMU
 
 ```bash
 # Inside the dev container
@@ -452,7 +500,7 @@ QEMU limitations:
 
 ---
 
-## 10. Running on Real Hardware
+## 11. Running on Real Hardware
 
 ### Flash via Lauterbach Trace32
 
@@ -496,7 +544,7 @@ After flashing:
 
 ---
 
-## 11. Worked Example
+## 12. Worked Example
 
 Create a minimal application that blinks an LED via a driver component.
 
