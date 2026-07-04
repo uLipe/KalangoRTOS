@@ -78,6 +78,9 @@ static void make_thread(ulmk_thread_t *t, ulmk_tid_t tid, uint8_t prio)
 	t->tid      = tid;
 	t->priority = prio;
 	t->state    = UL_THREAD_STATE_READY;
+	sys_dnode_init(&t->sched_node);
+	sys_dnode_init(&t->ipc_node);
+	sys_dnode_init(&t->reg_node);
 }
 
 /* =========================================================================
@@ -152,7 +155,7 @@ static void test_dequeue(void)
 	ulmk_sched_dequeue(&a);
 
 	CHECK(ulmk_sched_peek_next() == &b, "dequeued thread no longer picked");
-	CHECK(a.next == NULL, "dequeued thread next cleared");
+	CHECK(!sys_dnode_is_linked(&a.sched_node), "dequeued thread node cleared");
 }
 
 static void test_dequeue_not_enqueued(void)

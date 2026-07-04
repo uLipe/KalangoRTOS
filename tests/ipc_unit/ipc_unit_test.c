@@ -168,11 +168,26 @@ static ulmk_thread_t *make_thread(ulmk_tid_t tid, uint8_t prio)
 	t->blocked_ep     = ULMK_EP_INVALID;
 	t->blocked_notif  = ULMK_NOTIF_INVALID;
 	t->ipc_sender     = ULMK_TID_INVALID;
+	sys_dnode_init(&t->sched_node);
+	sys_dnode_init(&t->ipc_node);
+	sys_dnode_init(&t->reg_node);
 
 	if (g_reg_count < MAX_REG)
 		g_reg[g_reg_count++] = t;
 
 	return t;
+}
+
+static void ipc_test_enqueue_recv(ulmk_endpoint_t *ep, ulmk_thread_t *th)
+{
+	sys_dnode_init(&th->ipc_node);
+	sys_dlist_append(&ep->recv_queue, &th->ipc_node);
+}
+
+static void ipc_test_enqueue_send(ulmk_endpoint_t *ep, ulmk_thread_t *th)
+{
+	sys_dnode_init(&th->ipc_node);
+	sys_dlist_append(&ep->send_queue, &th->ipc_node);
 }
 
 /* Reset the static pools used by ep.c and notif.c between test groups. */
@@ -253,7 +268,7 @@ static void test_ep_call_fast_path_server_waiting(void)
 	server->state          = UL_THREAD_STATE_BLOCKED;
 	server->blocked_reason = UL_BLOCKED_IPC_RECV;
 	server->blocked_ep     = 0;
-	ep->recv_queue         = server;
+	ipc_test_enqueue_recv(ep, server);
 
 	g_current = caller;
 	ep_call_impl(0, &msg);
@@ -261,7 +276,7 @@ static void test_ep_call_fast_path_server_waiting(void)
 	ASSERT(server->state == UL_THREAD_STATE_READY);
 	ASSERT(server->ipc_msg.label == 0xBEEF);
 	ASSERT(server->ipc_sender == caller->tid);
-	ASSERT(ep->recv_queue == NULL);
+	ASSERT(sys_dlist_is_empty(&ep->recv_queue));
 	ASSERT(server->priority == 5);    /* priority inheritance */
 	ASSERT(caller->state == UL_THREAD_STATE_BLOCKED);
 	ASSERT(caller->blocked_reason == UL_BLOCKED_IPC_CALL);
@@ -285,7 +300,8 @@ static void test_ep_call_slow_path_no_server(void)
 
 	ASSERT(caller->state == UL_THREAD_STATE_BLOCKED);
 	ASSERT(caller->blocked_reason == UL_BLOCKED_IPC_CALL);
-	ASSERT(ep->send_queue == caller);
+	ASSERT(SYS_DLIST_PEEK_HEAD_CONTAINER_OF(&ep->send_queue, ulmk_thread_t,
+						ipc_node) == caller);
 	ASSERT(g_schedule_count == 1);
 }
 
@@ -328,7 +344,7 @@ static void test_ep_recv_fast_path_caller_waiting(void)
 	caller->state          = UL_THREAD_STATE_BLOCKED;
 	caller->blocked_reason = UL_BLOCKED_IPC_CALL;
 	caller->ipc_msg.label  = 0x1234;
-	ep->send_queue         = caller;
+	ipc_test_enqueue_send(ep, caller);
 
 	g_current = server;
 	ep_recv_impl(0, &msg_out, &sender_out);
@@ -336,7 +352,7 @@ static void test_ep_recv_fast_path_caller_waiting(void)
 	ASSERT(msg_out.label == 0x1234);
 	ASSERT(sender_out == caller->tid);
 	ASSERT(server->ipc_sender == caller->tid);
-	ASSERT(ep->send_queue == NULL);
+	ASSERT(sys_dlist_is_empty(&ep->send_queue));
 	ASSERT(caller->blocked_reason == UL_BLOCKED_IPC_CALL);
 	ASSERT(g_schedule_count == 0);
 }
@@ -357,7 +373,8 @@ static void test_ep_recv_slow_path_no_caller(void)
 
 	ASSERT(server->state == UL_THREAD_STATE_BLOCKED);
 	ASSERT(server->blocked_reason == UL_BLOCKED_IPC_RECV);
-	ASSERT(ep->recv_queue == server);
+	ASSERT(SYS_DLIST_PEEK_HEAD_CONTAINER_OF(&ep->recv_queue, ulmk_thread_t,
+						ipc_node) == server);
 	ASSERT(g_schedule_count == 1);
 }
 
@@ -440,7 +457,7 @@ static void test_ep_reply_recv_skip_reply_on_invalid_tid(void)
 	caller->state          = UL_THREAD_STATE_BLOCKED;
 	caller->blocked_reason = UL_BLOCKED_IPC_CALL;
 	caller->ipc_msg.label  = 0x5678;
-	ep->send_queue         = caller;
+	ipc_test_enqueue_send(ep, caller);
 
 	g_current = server;
 	ASSERT(ep_reply_recv_impl(0, ULMK_TID_INVALID, NULL,
@@ -668,7 +685,7 @@ static void test_prio_inherit_boost(void)
 	server->state          = UL_THREAD_STATE_BLOCKED;
 	server->blocked_reason = UL_BLOCKED_IPC_RECV;
 	server->blocked_ep     = 0;
-	ep->recv_queue         = server;
+	ipc_test_enqueue_recv(ep, server);
 
 	g_current = caller;
 	ep_call_impl(0, &msg);
@@ -713,12 +730,12 @@ static void test_kill_removes_from_recv_queue(void)
 	srv->state          = UL_THREAD_STATE_BLOCKED;
 	srv->blocked_reason = UL_BLOCKED_IPC_RECV;
 	srv->blocked_ep     = 0;
-	ep->recv_queue      = srv;
+	ipc_test_enqueue_recv(ep, srv);
 
 	ulmk_ep_recv_queue_remove(srv);
 
-	ASSERT(ep->recv_queue == NULL);
-	ASSERT(srv->ipc_next == NULL);
+	ASSERT(sys_dlist_is_empty(&ep->recv_queue));
+	ASSERT(!sys_dnode_is_linked(&srv->ipc_node));
 	ASSERT(srv->blocked_ep == ULMK_EP_INVALID);
 }
 
