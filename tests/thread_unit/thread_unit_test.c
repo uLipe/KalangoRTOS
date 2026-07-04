@@ -119,17 +119,19 @@ void ulmk_ep_recv_queue_remove(ulmk_thread_t *t) { (void)t; }
 
 /* ── Timer stubs ───────────────────────────────────────────────────────────── */
 
-uint64_t ulmk_timer_now_us(void) { return 0; }
+uint64_t ulmk_timer_now_us(void) { return 0u; }
 
-void ulmk_timer_sleep_insert(ulmk_thread_t *th, uint64_t d)
+void ulmk_timer_deadline_arm(uint64_t deadline_us) { (void)deadline_us; }
+
+void ulmk_timer_wait_thread(ulmk_thread_t *th)
 {
-	th->sleep_until = d;
+	th->state          = UL_THREAD_STATE_BLOCKED;
+	th->blocked_reason = UL_BLOCKED_TIMER_WAIT;
 }
 
-void ulmk_timer_sleep_remove(ulmk_thread_t *th)
+void ulmk_timer_waiter_cancel(ulmk_thread_t *th)
 {
 	g_sleep_removed = th;
-	th->sleep_until = 0u;
 }
 
 /* ── Mock reset & helpers ───────────────────────────────────────────────────── */
@@ -236,8 +238,7 @@ static void test_init_valid(void)
 	EXPECT(th->priority == 7);
 	EXPECT(th->state == UL_THREAD_STATE_READY);
 	EXPECT(th->stack_base == stack);
-	EXPECT(th->sleep_next == NULL);
-	EXPECT(th->sleep_until == 0u);
+	EXPECT(th->blocked_reason == UL_BLOCKED_NONE);
 }
 
 static void test_init_null_th(void)
@@ -327,14 +328,13 @@ static void test_kill_sleeping(void)
 
 	EXPECT(th != NULL);
 
-	th->sleep_until = 9999u;
-	th->state       = UL_THREAD_STATE_BLOCKED;
+	th->blocked_reason = UL_BLOCKED_TIMER_WAIT;
+	th->state          = UL_THREAD_STATE_BLOCKED;
 
 	uint32_t r = ulmk_kern_thread_kill((uint32_t)th->tid);
 
 	EXPECT((int32_t)r == 0);
 	EXPECT(g_sleep_removed == th);
-	EXPECT(th->sleep_until == 0u);
 	EXPECT(th->state == UL_THREAD_STATE_DEAD);
 }
 
@@ -394,11 +394,10 @@ static void test_resume_sleeping(void)
 
 	EXPECT(th != NULL);
 
-	th->state       = UL_THREAD_STATE_BLOCKED;
-	th->sleep_until = 5000u;
+	th->state          = UL_THREAD_STATE_BLOCKED;
+	th->blocked_reason = UL_BLOCKED_TIMER_WAIT;
 
 	EXPECT((int32_t)ulmk_kern_thread_resume((uint32_t)th->tid) == ULMK_EINVAL);
-	EXPECT(th->sleep_until == 5000u);
 }
 
 static void test_set_prio(void)

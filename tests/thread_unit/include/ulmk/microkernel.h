@@ -60,6 +60,12 @@ typedef struct {
 	uint8_t		 priority;
 	size_t		 stack_size;
 	ulmk_privilege_t	 privilege;
+	size_t		 heap_size;
 } ulmk_thread_attr_t;
+
+typedef struct {
+	uintptr_t base;
+	size_t    size;
+} ulmk_heap_info_t;
 
 #endif /* ULMK_MICROKERNEL_H */

@@ -5,7 +5,7 @@
  * sleep_unit_test.c — host unit tests for kernel/timer/timer.c
  *
  * Tests the two-primitive timer model:
- *   ulmk_timer_set_deadline(us) — programs a relative deadline in µs.
+ *   ulmk_timer_deadline_arm(us) — programs a relative deadline in µs.
  *   ulmk_timer_wait_thread(cur) — blocks a thread; ulmk_timer_tick() wakes it.
  *   ulmk_timer_waiter_cancel(th) — cancels the wait before the deadline.
  *
@@ -136,7 +136,7 @@ static void test_waiter_woken_on_deadline(void)
 	ta = make_thread(0);
 	g_current = &ta;
 
-	ulmk_timer_set_deadline(TICK_PERIOD_US);		/* 1 tick from now */
+	ulmk_timer_deadline_arm(TICK_PERIOD_US);		/* 1 tick from now */
 	ulmk_timer_waiter_cancel(NULL);			/* no-op; dummy call */
 
 	/*
@@ -173,7 +173,7 @@ static void test_no_early_wake(void)
 
 	ta = make_thread(0);
 	ta.blocked_reason = UL_BLOCKED_TIMER_WAIT;
-	ulmk_timer_set_deadline(3u * TICK_PERIOD_US);
+	ulmk_timer_deadline_arm(3u * TICK_PERIOD_US);
 	ulmk_timer_wait_thread(&ta);
 
 	/* Two ticks — deadline is at 3 ticks; waiter must not wake yet. */
@@ -210,7 +210,7 @@ static void test_cancel_prevents_wake(void)
 
 	ta = make_thread(0);
 	ta.blocked_reason = UL_BLOCKED_TIMER_WAIT;
-	ulmk_timer_set_deadline(TICK_PERIOD_US);
+	ulmk_timer_deadline_arm(TICK_PERIOD_US);
 	ulmk_timer_wait_thread(&ta);
 
 	ulmk_timer_waiter_cancel(&ta);
@@ -224,7 +224,7 @@ static void test_cancel_prevents_wake(void)
 }
 
 /*
- * A second ulmk_timer_set_deadline() call must overwrite the first;
+ * A second ulmk_timer_deadline_arm() call must overwrite the first;
  * the waiter must fire at the new deadline.
  */
 static void test_overwrite_deadline(void)
@@ -238,8 +238,8 @@ static void test_overwrite_deadline(void)
 	ta = make_thread(0);
 	ta.blocked_reason = UL_BLOCKED_TIMER_WAIT;
 
-	ulmk_timer_set_deadline(TICK_PERIOD_US);		/* first: 1 tick */
-	ulmk_timer_set_deadline(3u * TICK_PERIOD_US);	/* override: 3 ticks */
+	ulmk_timer_deadline_arm(TICK_PERIOD_US);		/* first: 1 tick */
+	ulmk_timer_deadline_arm(3u * TICK_PERIOD_US);	/* override: 3 ticks */
 	ulmk_timer_wait_thread(&ta);
 
 	ulmk_timer_tick();	/* tick 1 — old deadline; must NOT fire */
