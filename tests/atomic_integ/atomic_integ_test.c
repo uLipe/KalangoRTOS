@@ -73,8 +73,7 @@ static void supervisor_entry(void *arg)
 		uint32_t waited = 0u;
 
 		while (g_ctx_done != CTX_WORKERS && waited < 2000u) {
-			ulmk_timer_set_deadline(1000ULL);
-			ulmk_timer_wait();
+			board_timer_sleep_us(1000u);
 			waited++;
 		}
 	}
@@ -107,6 +106,6 @@ void ulmk_root_thread(const ulmk_boot_info_t *info)
 
 	tid = ulmk_thread_create(&attr);
 	ulmk_cap_grant(tid, ULMK_CAP_SPAWN);
-	ulmk_cap_grant(tid, ULMK_CAP_TIMER);
+	board_timer_start(info);
 	ulmk_thread_exit();
 }

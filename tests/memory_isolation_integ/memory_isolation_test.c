@@ -176,8 +176,7 @@ static void fault_victim_entry(void *arg)
 	 * A yield-loop here would starve trigger because victim@6 would
 	 * immediately reclaim the CPU on every yield.
 	 */
-	ulmk_timer_set_deadline(2000000ULL);
-	ulmk_timer_wait();
+	board_timer_sleep_us(2000000u);
 	ulmk_thread_exit();
 }
 
@@ -274,6 +273,8 @@ void ulmk_root_thread(const ulmk_boot_info_t *info)
 
 	ulmk_printk("mem_iso: start\n");
 
+	board_timer_start(info);
+
 	g_grant_ready = ulmk_notif_create();
 	g_grant_done  = ulmk_notif_create();
 
@@ -315,7 +316,7 @@ void ulmk_root_thread(const ulmk_boot_info_t *info)
 		.arg = NULL, .priority = 6u,
 		.stack_size = 1024u, .privilege = ULMK_PRIV_DRIVER,
 	};
-	ulmk_cap_grant(ulmk_thread_create(&attr), ULMK_CAP_TIMER);
+	ulmk_thread_create(&attr);
 
 	attr = (ulmk_thread_attr_t){
 		.name = "trigger", .entry = fault_trigger_entry,

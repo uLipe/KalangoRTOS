@@ -52,13 +52,13 @@ KERNEL_SRCS := \
     $(ROOT)/kernel/ipc/ep.c \
     $(ROOT)/kernel/notif/notif.c \
     $(ROOT)/kernel/syscall/syscall_router.c \
-    $(ROOT)/kernel/timer/timer.c \
     $(ROOT)/stub/board_init_stub.c
 
 TEST_SRCS := \
     atomic_integ_test.c \
     atomic_hook.c \
-    $(CONSOLE_SRC)
+    $(CONSOLE_SRC) \
+    $(ROOT)/boards/qemu_tc3xx/board_timer.c
 
 SRCS := $(KERNEL_SRCS) $(TEST_SRCS)
 
@@ -77,11 +77,7 @@ gen_config:
 	@mkdir -p $(GEN_INC)/ulmk
 	@printf '#ifndef ULMK_CONFIG_H\n#define ULMK_CONFIG_H\n' > $(GEN_INC)/ulmk/config.h
 	@printf '#define ULMK_CONFIG_MAX_IRQ_BINDINGS 16\n'  >> $(GEN_INC)/ulmk/config.h
-	@printf '#define ULMK_CONFIG_TICK_HZ          1000\n' >> $(GEN_INC)/ulmk/config.h
 	@printf '#define ULMK_CONFIG_DEBUG_PRINTK     1\n'   >> $(GEN_INC)/ulmk/config.h
-	@printf '#define ULMK_CONFIG_SCHED_QUANTUM_US    10000\n' >> $(GEN_INC)/ulmk/config.h
-	@printf '#define ULMK_CONFIG_HW_SYS_CLOCK_HZ    50000000\n' >> $(GEN_INC)/ulmk/config.h
-	@printf '#define ULMK_CONFIG_SCHED_QUANTUM_TICKS 10\n'   >> $(GEN_INC)/ulmk/config.h
 	@printf '#endif\n' >> $(GEN_INC)/ulmk/config.h
 
 all: gen_config $(TARGET)

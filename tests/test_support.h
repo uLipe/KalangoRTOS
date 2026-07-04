@@ -12,6 +12,7 @@
 #define UL_TEST_SUPPORT_H
 
 #include <stdint.h>
+#include <ulmk/microkernel.h>
 
 /*
  * ulmk_sim_exit — terminate the simulation and report pass (0) or fail (!=0).
@@ -20,6 +21,9 @@
  * TSIM (boards/tsim_tc39x/tsim_console.c): sets A14=0x900d and calls debug.
  */
 extern void ulmk_sim_exit(int code) __attribute__((noreturn));
+
+void board_timer_start(const ulmk_boot_info_t *info);
+void board_timer_sleep_us(uint32_t us);
 
 /*
  * ulmk_msleep — test-only delay helper.
@@ -34,7 +38,6 @@ extern void ulmk_sim_exit(int code) __attribute__((noreturn));
  * longer sleeps give more opportunities.  Tests that require wall-clock
  * accuracy should use the timer server directly.
  */
-#include <ulmk/microkernel.h>
 static inline void ulmk_msleep(uint32_t ms)
 {
 	uint32_t i;

@@ -1,17 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * Copyright (c) 2024-2026 Felipe Neves
+ * preempt_integ — priority preemption integration test
  *
- * preempt_integ — preemptive round-robin integration test
- *
- * Two worker threads at equal priority run tight busy-loops.  Without
- * preemption the first worker monopolises the CPU and the second never
- * accumulates any count.  With round-robin preemption both counters grow
- * because the scheduler rotates them at every quantum boundary.
- *
- * A supervisor thread sleeps for 200 ms (20 quanta at 10 ms each), then
- * wakes up (its higher priority preempts the workers) and checks that both
- * counters are non-zero.
+ * Low-priority workers spin-yield without blocking.  A higher-priority
+ * waiter blocks on a notification until the supervisor signals it; the
+ * kernel must preempt the workers and run the waiter before returning
+ * to userspace.
  */
 
 #include <stdint.h>
@@ -20,115 +14,98 @@
 #include <ulmk/microkernel.h>
 #include <kernel/include/ulmk_printk.h>
 
+static volatile int g_preempt_seen;
+static volatile int g_stop;
 
-/* -------------------------------------------------------------------------
- * Shared state (volatile: modified by worker threads, read by supervisor)
- * ---------------------------------------------------------------------- */
-static volatile uint32_t g_count_a;
-static volatile uint32_t g_count_b;
-static volatile int      g_stop;
+static ulmk_notif_t g_wake_notif;
+static ulmk_notif_t g_done_notif;
 
-/* -------------------------------------------------------------------------
- * Worker threads — busy-loop until supervisor sets g_stop
- * ---------------------------------------------------------------------- */
-static void worker_a(void *arg)
+#define BIT_WAKE	(1u << 0)
+#define BIT_DONE	(1u << 1)
+
+#define PRIO_WORKER	20u
+#define PRIO_WAITER	5u
+#define PRIO_SUP	15u
+
+static void worker(void *arg)
 {
 	(void)arg;
-	while (!g_stop) {
-		g_count_a++;
-	}
+
+	while (!g_stop)
+		ulmk_thread_yield();
 	ulmk_thread_exit();
 }
 
-static void worker_b(void *arg)
+static void high_prio_waiter(void *arg)
 {
+	uint32_t bits;
+
 	(void)arg;
-	while (!g_stop) {
-		g_count_b++;
-	}
+
+	ulmk_notif_wait(g_wake_notif, BIT_WAKE, &bits);
+	g_preempt_seen = 1;
+	ulmk_notif_signal(g_done_notif, BIT_DONE);
 	ulmk_thread_exit();
 }
 
-/* -------------------------------------------------------------------------
- * Supervisor — sleeps, then validates round-robin progress
- * ---------------------------------------------------------------------- */
 static void supervisor(void *arg)
 {
 	ulmk_thread_attr_t attr = {0};
-	ulmk_tid_t         tid_a;
-	ulmk_tid_t         tid_b;
-	uint32_t         a;
-	uint32_t         b;
+	uint32_t           bits;
 
 	(void)arg;
 
 	ulmk_printk("preempt_integ: start\n");
 
-	/* Spawn both workers at equal, lower priority than supervisor (prio 0).
-	 * Workers run while supervisor is blocked in sleep. */
-	attr.name       = "worker_a";
-	attr.entry      = worker_a;
-	attr.arg        = NULL;
-	attr.priority   = 5;
-	attr.stack_size = 1024;
+	g_wake_notif = ulmk_notif_create();
+	g_done_notif = ulmk_notif_create();
+
+	attr.stack_size = 1024u;
 	attr.privilege  = ULMK_PRIV_USER;
-	tid_a = ulmk_thread_create(&attr);
-	ulmk_printk("preempt_integ: worker_a tid=%d\n", (int)tid_a);
+	attr.priority   = PRIO_WORKER;
 
-	attr.name       = "worker_b";
-	attr.entry      = worker_b;
-	attr.priority   = 5;   /* same priority — round-robin expected */
-	tid_b = ulmk_thread_create(&attr);
-	ulmk_printk("preempt_integ: worker_b tid=%d\n", (int)tid_b);
+	attr.name  = "worker_a";
+	attr.entry = worker;
+	ulmk_thread_create(&attr);
 
-	/*
-	 * Block for 200 ms so workers get the CPU.  A yield-loop cannot work
-	 * here: supervisor (prio 0) would immediately reclaim the CPU on every
-	 * yield, starving the lower-priority workers.  The timer removes the
-	 * supervisor from the run queue for the full duration.
-	 */
-	ulmk_printk("preempt_integ: sleeping 200ms\n");
-	ulmk_timer_set_deadline(200000ULL);
-	ulmk_timer_wait();
-	ulmk_printk("preempt_integ: awoke\n");
+	attr.name = "worker_b";
+	ulmk_thread_create(&attr);
 
-	/* Stop workers */
+	attr.name     = "waiter";
+	attr.entry    = high_prio_waiter;
+	attr.priority = PRIO_WAITER;
+	ulmk_thread_create(&attr);
+
+	ulmk_printk("preempt_integ: signalling waiter\n");
+	ulmk_notif_signal(g_wake_notif, BIT_WAKE);
+
+	bits = 0u;
+	ulmk_notif_wait(g_done_notif, BIT_DONE, &bits);
+
 	g_stop = 1;
 
-	a = g_count_a;
-	b = g_count_b;
-
-	ulmk_printk("preempt_integ: a=%u b=%u\n", (unsigned)a, (unsigned)b);
-
-	if (a > 0 && b > 0) {
+	if (g_preempt_seen)
 		ulmk_printk("preempt_integ: PASS\n");
-	} else {
-		ulmk_printk("preempt_integ: FAIL (a=%u b=%u)\n",
-			  (unsigned)a, (unsigned)b);
-	}
+	else
+		ulmk_printk("preempt_integ: FAIL seen=%d\n", g_preempt_seen);
 
-	ulmk_sim_exit(0);
+	ulmk_sim_exit(g_preempt_seen ? 0 : 1);
 }
 
-/* -------------------------------------------------------------------------
- * Root thread
- * ---------------------------------------------------------------------- */
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
 	ulmk_thread_attr_t attr = {0};
+	ulmk_tid_t         tid;
 
 	(void)info;
 
 	attr.name       = "supervisor";
 	attr.entry      = supervisor;
-	attr.arg        = NULL;
-	attr.priority   = 0;   /* highest: wakes from sleep and preempts workers */
-	attr.stack_size = 2048;
+	attr.priority   = PRIO_SUP;
+	attr.stack_size = 2048u;
 	attr.privilege  = ULMK_PRIV_DRIVER;
 
-	ulmk_tid_t sup_tid = ulmk_thread_create(&attr);
-	ulmk_cap_grant(sup_tid, ULMK_CAP_SPAWN);
-	ulmk_cap_grant(sup_tid, ULMK_CAP_TIMER);
-
+	tid = ulmk_thread_create(&attr);
+	ulmk_cap_grant(tid, ULMK_CAP_SPAWN);
 	ulmk_thread_exit();
 }

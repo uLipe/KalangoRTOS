@@ -2,7 +2,7 @@
 /*
  * thread_unit_test.c — host unit tests for kernel/thread/thread.c
  *
- * Compiles thread.c directly with stubs for arch, scheduler, timer, and
+ * Compiles thread.c directly with stubs for arch, scheduler, and
  * the phys allocator.  No QEMU or hardware required.
  *
  * ulmk_kern_thread_spawn takes uint32_t attr_ptr (TriCore 32-bit ABI).
@@ -25,7 +25,7 @@
  *   8.  kill: valid TID — thread becomes DEAD.
  *   9.  kill: invalid TID — returns ULMK_ESRCH.
  *   10. kill: already dead — returns ULMK_ESRCH.
- *   11. kill: sleeping thread — sleep queue entry removed, thread DEAD.
+ *   11. kill: blocked on IPC recv — recv queue entry removed, thread DEAD.
  *   12. suspend: valid running thread — state SUSPENDED, schedule called.
  *   13. suspend: dead thread — returns ULMK_EINVAL.
  *   14. resume: suspended thread — enqueued, state READY.
@@ -52,7 +52,6 @@
 #include "include/ulmk/config.h"
 #include "../../kernel/include/ulmk_thread_internal.h"
 #include "../../kernel/include/ulmk_sched.h"
-#include "../../kernel/include/ulmk_timer_internal.h"
 #include "../../kernel/include/ulmk_mem_internal.h"
 #include "../../kernel/syscall/syscall_router.h"
 
@@ -63,7 +62,7 @@ static int		 g_enqueue_count;
 static int		 g_dequeue_count;
 static int		 g_schedule_count;
 static int		 g_ctx_init_count;
-static ulmk_thread_t	*g_sleep_removed;
+static ulmk_thread_t	*g_recv_removed;
 
 /* ── Arch stubs ────────────────────────────────────────────────────────────── */
 
@@ -80,8 +79,6 @@ void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,
 	g_ctx_init_count++;
 }
 
-uint32_t ulmk_arch_tick_get(void)          { return 0; }
-void     ulmk_arch_tick_deadline(uint32_t d) { (void)d; }
 
 /* ── Heap stubs (kernel heap not needed for unit tests) ──────────────────── */
 
@@ -115,24 +112,7 @@ void ulmk_sched_set_dead_for_cleanup(ulmk_thread_t *t) { (void)t; }
 
 /* ── IPC stubs ─────────────────────────────────────────────────────────────── */
 
-void ulmk_ep_recv_queue_remove(ulmk_thread_t *t) { (void)t; }
-
-/* ── Timer stubs ───────────────────────────────────────────────────────────── */
-
-uint64_t ulmk_timer_now_us(void) { return 0u; }
-
-void ulmk_timer_deadline_arm(uint64_t deadline_us) { (void)deadline_us; }
-
-void ulmk_timer_wait_thread(ulmk_thread_t *th)
-{
-	th->state          = UL_THREAD_STATE_BLOCKED;
-	th->blocked_reason = UL_BLOCKED_TIMER_WAIT;
-}
-
-void ulmk_timer_waiter_cancel(ulmk_thread_t *th)
-{
-	g_sleep_removed = th;
-}
+void ulmk_ep_recv_queue_remove(ulmk_thread_t *t) { g_recv_removed = t; }
 
 /* ── Mock reset & helpers ───────────────────────────────────────────────────── */
 
@@ -153,7 +133,7 @@ static void mock_reset(void)
 	g_dequeue_count  = 0;
 	g_schedule_count = 0;
 	g_ctx_init_count = 0;
-	g_sleep_removed  = NULL;
+	g_recv_removed  = NULL;
 	/*
 	 * Do NOT reset s_tcb_idx: thread.c keeps a global registry linked list
 	 * (tcb_list) that still points to previously allocated TCBs.  Reusing
@@ -322,19 +302,19 @@ static void test_kill_already_dead(void)
 	EXPECT((int32_t)ulmk_kern_thread_kill((uint32_t)th->tid) == ULMK_ESRCH);
 }
 
-static void test_kill_sleeping(void)
+static void test_kill_blocked_ipc_recv(void)
 {
 	ulmk_thread_t *th = make_thread(3);
 
 	EXPECT(th != NULL);
 
-	th->blocked_reason = UL_BLOCKED_TIMER_WAIT;
+	th->blocked_reason = UL_BLOCKED_IPC_RECV;
 	th->state          = UL_THREAD_STATE_BLOCKED;
 
 	uint32_t r = ulmk_kern_thread_kill((uint32_t)th->tid);
 
 	EXPECT((int32_t)r == 0);
-	EXPECT(g_sleep_removed == th);
+	EXPECT(g_recv_removed == th);
 	EXPECT(th->state == UL_THREAD_STATE_DEAD);
 }
 
@@ -395,7 +375,7 @@ static void test_resume_sleeping(void)
 	EXPECT(th != NULL);
 
 	th->state          = UL_THREAD_STATE_BLOCKED;
-	th->blocked_reason = UL_BLOCKED_TIMER_WAIT;
+	th->blocked_reason = UL_BLOCKED_NOTIF;
 
 	EXPECT((int32_t)ulmk_kern_thread_resume((uint32_t)th->tid) == ULMK_EINVAL);
 }
@@ -497,7 +477,7 @@ int main(void)
 	RUN(test_kill_valid);
 	RUN(test_kill_invalid_tid);
 	RUN(test_kill_already_dead);
-	RUN(test_kill_sleeping);
+	RUN(test_kill_blocked_ipc_recv);
 	RUN(test_suspend_valid);
 	RUN(test_suspend_dead);
 	RUN(test_resume_suspended);

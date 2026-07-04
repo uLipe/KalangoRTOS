@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <ulmk/microkernel.h>
 #include "console.h"
+#include "board_timer.h"
 
 static void counter_entry(void *arg)
 {
@@ -23,20 +24,18 @@ static void counter_entry(void *arg)
 	while (1) {
 		console_printf("ulmk: hello from QEMU — tick #%u\n",
 			       (unsigned)count++);
-		ulmk_timer_set_deadline(100000ULL);	/* 100 ms */
-		ulmk_timer_wait();
+		board_timer_sleep_us(100000u);
 	}
 }
 
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
 	ulmk_thread_attr_t attr = {0};
-	ulmk_tid_t         counter_tid;
-
-	(void)info;
 
 	console_init();
 	console_puts("ulmk: root thread start\n");
+
+	board_timer_start(info);
 
 	attr = (ulmk_thread_attr_t){
 		.name       = "counter",
@@ -46,8 +45,7 @@ void ulmk_root_thread(const ulmk_boot_info_t *info)
 		.stack_size = 2048u,
 		.privilege  = ULMK_PRIV_DRIVER,
 	};
-	counter_tid = ulmk_thread_create(&attr);
-	ulmk_cap_grant(counter_tid, ULMK_CAP_TIMER);
+	ulmk_thread_create(&attr);
 
 	ulmk_thread_exit();
 }
