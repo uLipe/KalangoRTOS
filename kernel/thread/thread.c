@@ -40,6 +40,10 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 
 	th->stack_base  = (uint8_t *)stack;
 	th->stack_size  = attr->stack_size;
+	th->slab_base   = NULL;
+	th->slab_size   = 0u;
+	th->heap_base   = 0u;
+	th->heap_size   = 0u;
 	th->priority    = attr->priority;
 	th->saved_prio  = attr->priority;
 	th->state       = UL_THREAD_STATE_READY;
@@ -132,8 +136,11 @@ void ulmk_thread_free(ulmk_thread_t *th)
 
 	ulmk_arch_cpu_irq_restore(key);
 
-	if (th->stack_base)
+	if (th->slab_base) {
+		ulmk_heap_free(th->slab_base);
+	} else if (th->stack_base) {
 		ulmk_heap_free(th->stack_base);
+	}
 	ulmk_heap_free(th);
 }
 
@@ -182,38 +189,79 @@ uint32_t ulmk_kern_exit(void)
 }
 
 /*
- * spawn — allocate a TCB and stack from the heap, initialise, and enqueue.
- * Returns the new TID or a negative error code cast to uint32_t.
+ * spawn — allocate TCB and slabAO (stack + optional heap) from user_pool,
+ * initialise, and enqueue.  Returns new TID or a negative error code.
+ *
+ * The slabAO is a single contiguous block: [stack | heap].
+ * A single DPR covers the entire slab so the thread's heap is accessible
+ * via the same MPU region as its stack, with no extra DPR entries.
+ * The TCB is a separate allocation to prevent userspace from reaching it.
  */
 uint32_t ulmk_kern_thread_spawn(uint32_t attr_ptr)
 {
-	const ulmk_thread_attr_t	*attr = (const ulmk_thread_attr_t *)(uintptr_t)attr_ptr;
-	ulmk_thread_t		*th;
-	void			*stack;
-	int			 ret;
+	const ulmk_thread_attr_t *attr =
+		(const ulmk_thread_attr_t *)(uintptr_t)attr_ptr;
+	ulmk_thread_t *th;
+	void          *slab;
+	size_t         slab_size;
+	size_t         heap_size;
+	int            ret;
 
 	if (!attr || !attr->entry || attr->stack_size == 0)
 		return (uint32_t)(int32_t)ULMK_EINVAL;
+
+	heap_size = attr->heap_size;
+	slab_size = attr->stack_size + heap_size;
 
 	th = (ulmk_thread_t *)ulmk_heap_alloc(sizeof(ulmk_thread_t));
 	if (!th)
 		return (uint32_t)(int32_t)ULMK_ENOMEM;
 
-	stack = ulmk_heap_alloc(attr->stack_size);
-	if (!stack) {
+	slab = ulmk_heap_alloc(slab_size);
+	if (!slab) {
 		ulmk_heap_free(th);
 		return (uint32_t)(int32_t)ULMK_ENOMEM;
 	}
 
-	ret = ulmk_thread_init(th, attr, stack);
+	ret = ulmk_thread_init(th, attr, slab);
 	if (ret != ULMK_OK) {
-		ulmk_heap_free(stack);
+		ulmk_heap_free(slab);
 		ulmk_heap_free(th);
 		return (uint32_t)(int32_t)ret;
 	}
 
+	th->slab_base = slab;
+	th->slab_size = slab_size;
+	th->heap_base = (uintptr_t)slab + attr->stack_size;
+	th->heap_size = heap_size;
+
+	/*
+	 * Extend the single DPR to cover the full slabAO (stack + heap)
+	 * when the thread has a heap.  ulmk_thread_init already set
+	 * regions[0] to cover just the stack.
+	 */
+	if (heap_size > 0u && attr->privilege != ULMK_PRIV_KERNEL) {
+		th->regions[0].base = (uintptr_t)slab;
+		th->regions[0].size = slab_size;
+	}
+
 	ulmk_sched_enqueue(th);
 	return (uint32_t)th->tid;
+}
+
+uint32_t ulmk_kern_get_thread_heap(uint32_t info_ptr)
+{
+	ulmk_thread_t    *cur  = ulmk_sched_current();
+	ulmk_heap_info_t *info = (ulmk_heap_info_t *)(uintptr_t)info_ptr;
+
+	if (!cur || !info)
+		return (uint32_t)(int32_t)ULMK_EINVAL;
+	if (cur->heap_size == 0u)
+		return (uint32_t)(int32_t)ULMK_EPERM;
+
+	info->base = cur->heap_base;
+	info->size = cur->heap_size;
+	return (uint32_t)ULMK_OK;
 }
 
 uint32_t ulmk_kern_thread_kill(uint32_t tid)

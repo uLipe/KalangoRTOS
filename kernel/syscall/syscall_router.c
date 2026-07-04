@@ -62,14 +62,13 @@ uint32_t ulmk_syscall_router(uint32_t nr,
 	case ULMK_SYS_MEM_GRANT:
 		return ulmk_kern_mem_grant(a0, a1, a2, a3);
 
-	case ULMK_SYS_MALLOC:
-		return ulmk_kern_heap_alloc(a0);
+	/* Per-thread heap (slabAO model) */
+	case ULMK_SYS_GET_THREAD_HEAP:
+		return ulmk_kern_get_thread_heap(a0);
 
-	case ULMK_SYS_FREE:
-		return ulmk_kern_heap_free(a0);
-
-	case ULMK_SYS_ALIGNED_ALLOC:
-		return ulmk_kern_heap_aligned_alloc(a0, a1);
+	case ULMK_SYS_HEAP_EXTEND:
+		REQUIRE_DRIVER(a0);
+		return ulmk_kern_heap_extend(a0);
 
 	/* ── Scheduling (any privilege) ──────────────────────────────── */
 	case ULMK_SYS_YIELD:

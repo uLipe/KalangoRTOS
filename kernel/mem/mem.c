@@ -192,3 +192,36 @@ uint32_t ulmk_kern_mem_grant(uint32_t addr, uint32_t size,
 			       granted_perms, ULMK_REGION_SHARED);
 	return (rc == ULMK_OK) ? (uint32_t)ULMK_OK : (uint32_t)(int32_t)rc;
 }
+
+/*
+ * ulmk_kern_heap_extend — allocate an additional slab from user_pool and
+ * add it as a new MPU DPR for the calling thread.
+ * Requires the thread to already have a heap (attr.heap_size > 0).
+ * Requires ULMK_PRIV_DRIVER (enforced by the syscall router).
+ */
+uint32_t ulmk_kern_heap_extend(uint32_t size)
+{
+	ulmk_thread_t *cur = ulmk_sched_current();
+	void          *mem;
+	int            rc;
+
+	if (!cur || size == 0u)
+		return (uint32_t)(int32_t)ULMK_EINVAL;
+	if (cur->heap_size == 0u)
+		return (uint32_t)(int32_t)ULMK_EPERM;
+
+	mem = ulmk_heap_alloc((size_t)size);
+	if (!mem)
+		return (uint32_t)(int32_t)ULMK_ENOMEM;
+
+	rc = thread_add_region(cur, (uintptr_t)mem, (size_t)size,
+			       ULMK_PERM_READ | ULMK_PERM_WRITE,
+			       ULMK_REGION_HEAP);
+	if (rc != ULMK_OK) {
+		ulmk_heap_free(mem);
+		return (uint32_t)(int32_t)rc;
+	}
+
+	ulmk_arch_mpu_switch(cur->regions, cur->region_count, 1u);
+	return (uint32_t)ULMK_OK;
+}

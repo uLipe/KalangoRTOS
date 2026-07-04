@@ -32,6 +32,15 @@ typedef struct ulmk_thread {
 	ulmk_arch_ctx_t    ctx;
 	uint8_t         *stack_base;
 	size_t           stack_size;
+	/*
+	 * slabAO — contiguous allocation (stack + heap) from user_pool.
+	 * NULL for static threads (idle, root).  TCB is always a separate
+	 * allocation so userspace DPR cannot reach kernel metadata.
+	 */
+	void            *slab_base;	/* base of slabAO allocation */
+	size_t           slab_size;	/* stack_size + heap_size */
+	uintptr_t        heap_base;	/* slab_base + stack_size */
+	size_t           heap_size;	/* bytes reserved for thread heap */
 	uint8_t          priority;
 	uint8_t          saved_prio;      /* priority before inheritance boost */
 	uint8_t          state;

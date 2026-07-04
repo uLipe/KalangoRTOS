@@ -24,9 +24,9 @@
 #define ULMK_SYS_MMAP                 1  /* void *ulmk_mem_map(hint, sz, perms, flags) */
 #define ULMK_SYS_MUNMAP               2  /* int   ulmk_mem_unmap(addr, sz)            */
 #define ULMK_SYS_MEM_GRANT            3  /* int   ulmk_mem_grant(addr, sz, tid, perms)*/
-#define ULMK_SYS_MALLOC               4  /* void *ulmk_malloc(size)                   */
-#define ULMK_SYS_FREE                 5  /* void  ulmk_free(ptr)                      */
-#define ULMK_SYS_ALIGNED_ALLOC        6  /* void *ulmk_aligned_alloc(align, size)     */
+/* slots 4-6 reserved (ulmk_malloc/free/aligned_alloc removed in slabAO model) */
+#define ULMK_SYS_HEAP_EXTEND          7  /* int ulmk_heap_extend(size)                */
+#define ULMK_SYS_GET_THREAD_HEAP      8  /* int ulmk_get_thread_heap(info*)           */
 
 /* ── Scheduling / exit ───────────────────────────────────────────── */
 #define ULMK_SYS_YIELD               10  /* void  ulmk_thread_yield(void)             */

@@ -77,7 +77,17 @@ typedef struct {
 	uint8_t		 priority;	/* 0 = highest, 255 = lowest */
 	size_t		 stack_size;
 	ulmk_privilege_t	 privilege;
+	size_t		 heap_size;	/* 0 = no per-thread heap; last for compat */
 } ulmk_thread_attr_t;
+
+/*
+ * Per-thread heap descriptor — returned by ulmk_get_thread_heap().
+ * Describes the heap area within the thread's slabAO allocation.
+ */
+typedef struct {
+	uintptr_t base;	/* start of the heap region */
+	size_t    size;	/* size of the heap region in bytes */
+} ulmk_heap_info_t;
 
 /* =========================================================================
  * Boot information — passed to ulmk_root_thread()
@@ -342,27 +352,30 @@ static inline int ulmk_notif_destroy(ulmk_notif_t notif)
 
 /* =========================================================================
  * Memory API — docs/api_spec.md §9
+ *
+ * Per-thread heap model (slabAO):
+ *   Each thread may carry a private heap allocated at creation time by
+ *   setting attr.heap_size > 0.  The kernel allocates a contiguous slabAO
+ *   (stack_size + heap_size bytes) from user_pool and covers it with a
+ *   single MPU DPR.  The TCB lives in a separate allocation.
+ *
+ *   ulmk_get_thread_heap() — query heap base and size for the calling thread.
+ *   ulmk_heap_extend()     — grow heap by allocating an additional slab from
+ *                            the kernel pool; requires ULMK_PRIV_DRIVER.
  * ========================================================================= */
 
-static inline void *ulmk_malloc(size_t size)
+static inline int ulmk_get_thread_heap(ulmk_heap_info_t *info)
 {
 	uint32_t r;
-	ULMK_SYSCALL_1(ULMK_SYS_MALLOC, size, r);
-	return (void *)(uintptr_t)r;
+	ULMK_SYSCALL_1(ULMK_SYS_GET_THREAD_HEAP, info, r);
+	return (int)r;
 }
 
-static inline void ulmk_free(void *ptr)
+static inline int ulmk_heap_extend(size_t size)
 {
 	uint32_t r;
-	ULMK_SYSCALL_1(ULMK_SYS_FREE, ptr, r);
-	(void)r;
-}
-
-static inline void *ulmk_aligned_alloc(size_t align, size_t size)
-{
-	uint32_t r;
-	ULMK_SYSCALL_2(ULMK_SYS_ALIGNED_ALLOC, align, size, r);
-	return (void *)(uintptr_t)r;
+	ULMK_SYSCALL_1(ULMK_SYS_HEAP_EXTEND, size, r);
+	return (int)r;
 }
 
 static inline void *ulmk_mem_map(void *hint, size_t size,
