@@ -12,7 +12,6 @@
 #include <ulmk/config.h>
 #include <kernel/include/ulmk_thread_internal.h>
 #include <kernel/include/ulmk_sched.h>
-#include <kernel/include/ulmk_timer_internal.h>
 #include <kernel/include/ulmk_mem_internal.h>
 #include <kernel/include/ulmk_ep_internal.h>
 #include <kernel/syscall/syscall_router.h>
@@ -63,7 +62,6 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 	th->notif_bits_outptr  = NULL;
 	th->rn_result_outptr   = NULL;
 	th->region_count      = 0u;
-	th->ticks_remaining   = ULMK_CONFIG_SCHED_QUANTUM_TICKS;
 	th->reg_next          = NULL;
 
 	th->cap_flags = (attr->privilege == ULMK_PRIV_KERNEL) ? ULMK_CAP_ALL : 0u;
@@ -272,10 +270,6 @@ uint32_t ulmk_kern_thread_kill(uint32_t tid)
 	if (!th || th->state == UL_THREAD_STATE_DEAD)
 		return (uint32_t)(int32_t)ULMK_ESRCH;
 
-	/* Cancel timer wait if this thread is the current timer waiter. */
-	if (th->blocked_reason == UL_BLOCKED_TIMER_WAIT)
-		ulmk_timer_waiter_cancel(th);
-
 	/* Remove from IPC recv_queue if the thread was waiting for a message. */
 	if (th->blocked_reason == UL_BLOCKED_IPC_RECV ||
 	    th->blocked_reason == UL_BLOCKED_IPC_OR_NOTIF)
@@ -370,27 +364,5 @@ uint32_t ulmk_kern_cap_grant(uint32_t target_tid, uint32_t caps)
 		return (uint32_t)(int32_t)ULMK_EPERM;
 
 	target->cap_flags |= (uint8_t)caps;
-	return (uint32_t)ULMK_OK;
-}
-
-uint32_t ulmk_kern_timer_set_deadline(uint32_t lo_us, uint32_t hi_us)
-{
-	uint64_t deadline_us = ((uint64_t)hi_us << 32) | (uint64_t)lo_us;
-
-	if (deadline_us == 0u)
-		return (uint32_t)(int32_t)ULMK_EINVAL;
-
-	ulmk_timer_deadline_arm(deadline_us);
-	return (uint32_t)ULMK_OK;
-}
-
-uint32_t ulmk_kern_timer_wait(void)
-{
-	ulmk_thread_t *cur = ulmk_sched_current();
-
-	if (!cur)
-		return (uint32_t)(int32_t)ULMK_EINVAL;
-
-	ulmk_timer_wait_thread(cur);
 	return (uint32_t)ULMK_OK;
 }

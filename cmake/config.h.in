@@ -6,23 +6,10 @@
 #ifndef ULMK_CONFIG_H
 #define ULMK_CONFIG_H
 
+#define ULMK_CONFIG_MAX_THREADS      @ULMK_CONFIG_MAX_THREADS@
+#define ULMK_CONFIG_MAX_ENDPOINTS    @ULMK_CONFIG_MAX_ENDPOINTS@
+#define ULMK_CONFIG_MAX_NOTIFS       @ULMK_CONFIG_MAX_NOTIFS@
 #define ULMK_CONFIG_MAX_IRQ_BINDINGS @ULMK_CONFIG_MAX_IRQ_BINDINGS@
-#define ULMK_CONFIG_TICK_HZ          @ULMK_CONFIG_TICK_HZ@
 #define ULMK_CONFIG_DEBUG_PRINTK     @ULMK_CONFIG_DEBUG_PRINTK@
-
-/*
- * Scheduler time-slice quantum in microseconds.
- * TICKS = ceiling(QUANTUM_US * TICK_HZ / 1_000_000) — minimum 1 tick.
- */
-#define ULMK_CONFIG_SCHED_QUANTUM_US    @ULMK_CONFIG_SCHED_QUANTUM_US@
-#define ULMK_CONFIG_SCHED_QUANTUM_TICKS \
-	((ULMK_CONFIG_SCHED_QUANTUM_US * ULMK_CONFIG_TICK_HZ + 999999u) / 1000000u)
-
-/*
- * Machine clock frequency in Hz fed to the arch tick timer.
- * The specific peripheral used is arch-defined; this value must match
- * the board PLL/clock configuration.  Always set per-board.
- */
-#define ULMK_CONFIG_HW_SYS_CLOCK_HZ    @ULMK_CONFIG_HW_SYS_CLOCK_HZ@
 
 #endif /* ULMK_CONFIG_H */

@@ -22,7 +22,6 @@
 
 /* Reason a thread is in UL_THREAD_STATE_BLOCKED. */
 #define UL_BLOCKED_NONE          0
-#define UL_BLOCKED_TIMER_WAIT    1  /* waiting for hardware timer deadline */
 #define UL_BLOCKED_IPC_CALL      2  /* waiting for server reply */
 #define UL_BLOCKED_IPC_RECV      3  /* waiting for a caller */
 #define UL_BLOCKED_NOTIF         4  /* waiting for notification bits */
@@ -69,8 +68,6 @@ typedef struct ulmk_thread {
 	/* MPU regions owned by this thread (configured by mpu_switch on dispatch) */
 	ulmk_arch_region_t  regions[ULMK_ARCH_MAX_REGIONS];
 	uint8_t           region_count;
-	/* Preemption time-slice countdown (scheduler ticks). Reset on dispatch. */
-	uint32_t          ticks_remaining;
 	/*
 	 * Capability bitmask — which privileged operations this thread may invoke.
 	 */

@@ -37,8 +37,8 @@ extern const ulmk_sched_class_t ulmk_fifo_rt_class;
 extern const ulmk_sched_class_t ulmk_bitmap_rt_class;
 
 /*
- * Preemption handoff: set by ulmk_sched_tick() or ulmk_sched_check_preempt()
- * when a preemptive switch is needed.  Consumed by the arch ISR stubs
+ * Preemption handoff: set by ulmk_sched_check_preempt() when a strictly
+ * higher-priority thread becomes ready.  Consumed by the arch ISR stubs
  * after the C handler returns, before context restore, so the switch can
  * be performed without an extra save instruction.
  * Both are NULL when no preemption is pending.
@@ -71,16 +71,11 @@ ulmk_thread_t	*ulmk_sched_current(void);
 ulmk_thread_t	*ulmk_sched_peek_next(void);
 
 /*
- * ulmk_sched_tick — called from the tick ISR.  Decrements the running thread's
- * quantum and arms the ISR preemption handoff if a switch is needed.
- *
  * ulmk_sched_check_preempt — called from a generic ISR after a notification is
  * delivered.  If a strictly higher-priority thread became ready, arms the
  * g_preempt_old/new_ctx handoff so the ISR stub performs a context switch on
- * exit (same mechanism as ulmk_sched_tick).
- * Must be called with interrupts disabled (already the case inside an ISR).
+ * exit.
  */
-void		 ulmk_sched_tick(void);
 void		 ulmk_sched_check_preempt(void);
 
 /*

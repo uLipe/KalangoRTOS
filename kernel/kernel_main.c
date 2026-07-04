@@ -14,7 +14,6 @@
 #include <kernel/include/ulmk_sched.h>
 #include <kernel/include/ulmk_thread_internal.h>
 #include <kernel/include/ulmk_irq_internal.h>
-#include <kernel/include/ulmk_timer_internal.h>
 #include <kernel/include/ulmk_mem_internal.h>
 #include <kernel/include/ulmk_printk.h>
 #include <kernel/syscall/syscall_router.h>
@@ -26,12 +25,6 @@ extern uint8_t _ulmk_user_pool_end[];
 /* =========================================================================
  * Arch callbacks — invoked from the arch layer (ISR/trap stubs)
  * ========================================================================= */
-
-void ulmk_kern_tick(void)
-{
-	ulmk_timer_tick();
-	ulmk_sched_tick();
-}
 
 void ulmk_kern_irq_check_preempt(void)
 {
@@ -137,10 +130,7 @@ void ulmk_kern_main(const ulmk_boot_info_t *info)
 	UL_LOG_DBG("irq table init done");
 
 	ulmk_arch_mpu_init();
-	ulmk_arch_tick_init();
-	ulmk_timer_init();
 	ulmk_arch_cpu_irq_enable();
-	UL_LOG_DBG("timer init done");
 
 	ulmk_heap_init((uintptr_t)_ulmk_user_pool_start,
 		     (uintptr_t)_ulmk_user_pool_end - (uintptr_t)_ulmk_user_pool_start);

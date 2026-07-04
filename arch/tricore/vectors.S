@@ -108,7 +108,6 @@ _trap_class7:
  * during the critical restore sequence.
  * ------------------------------------------------------------------------ */
 
-    .extern _arch_tick_isr_handler
     .extern _arch_generic_isr_handler
 
     .section .int_table, "ax"
@@ -121,109 +120,15 @@ _ulmk_int_table:
     rfe
     .align  5		/* pad to next 32-byte boundary */
 
-/* SRPN=1 — kernel tick one-shot ISR (BIV + 1*32 = _ulmk_int_table + 0x20) */
-    j       _arch_tick_preempt_isr    /* preemption-aware trampoline */
-    .align  5		/* pad to next 32-byte boundary */
-
 /*
- * SRPN=2..255 — generic userspace IRQ dispatcher with preemption support.
- *
- * Each slot jumps to _arch_generic_preempt_isr (defined below), which
- * performs svlcx, dispatches the IRQ, checks for preemption, and either
- * context-switches or restores the interrupted thread (same mechanism as
- * _arch_tick_preempt_isr).  SRPN is read from ICR.CCPN inside the C handler.
- *
- * CSA/CSFR accesses bypass DPR, so the jump is safe in any PRS.
+ * SRPN=1..255 — generic userspace IRQ dispatcher with preemption support.
+ * Board services bind hardware IRQs (e.g. STM0) to notifications via
+ * ulmk_irq_bind_hw(); the kernel dispatches by SRPN read from ICR.CCPN.
  */
-    .rept   254
+    .rept   255
     j       _arch_generic_preempt_isr
     .align  5
     .endr
-
-/* ---------------------------------------------------------------------------
- * _arch_tick_preempt_isr — tick ISR with preemptive context switch support
- *
- * The SRPN=1 vector slot jumps here (no CALL, so no extra CSA frame).
- * On entry the hardware has already:
- *   - saved the Upper Context of the interrupted thread -> U_hw
- *   - set ICR.IE=0, ICR.CCPN=1
- *   - switched A10 to ISP (if PSW.IS was 0)
- *
- * Flow:
- *   svlcx                  -> saves Lower Context -> L_sv; PCXI = L_sv->U_hw
- *   call _arch_tick_isr_handler  -> executes timer + sched_tick C logic
- *                                   may set g_preempt_old/new_ctx
- *   ret from call           -> PCXI = L_sv->U_hw  (CALL frame freed by ret)
- *
- *   if g_preempt_new_ctx != NULL:
- *     save PCXI -> g_preempt_old_ctx->pcxi  (records L_sv->U_hw for later resume)
- *     PCXI <- g_preempt_new_ctx->pcxi        (switch to next thread's CSA chain)
- *     clear g_preempt_new_ctx
- *     clear CDC (prevents NEST trap on RFE from CALL chain, see ctx_switch.S)
- *     rslcx + rfe  -> restore next thread context
- *   else:
- *     rslcx + rfe  -> restore interrupted thread
- * ------------------------------------------------------------------------ */
-
-    .section .text, "ax"
-    .extern _arch_tick_isr_handler
-    .extern g_preempt_old_ctx
-    .extern g_preempt_new_ctx
-
-    .global _arch_tick_preempt_isr
-    .type   _arch_tick_preempt_isr, @function
-
-_arch_tick_preempt_isr:
-    svlcx
-    call    _arch_tick_isr_handler
-    /* PCXI = L_sv -> U_hw at this point */
-
-    /* Load g_preempt_new_ctx into a14 */
-    movh.a  %a14, hi:g_preempt_new_ctx
-    lea     %a14, [%a14] lo:g_preempt_new_ctx
-    ld.a    %a14, [%a14]          /* a14 = g_preempt_new_ctx (ctx* or NULL) */
-    jz.a    %a14, .Ltick_no_preempt
-
-    /* Preemptive switch requested */
-
-    /* a14 = new_ctx->pcxi source */
-    movh.a  %a15, hi:g_preempt_old_ctx
-    lea     %a15, [%a15] lo:g_preempt_old_ctx
-    ld.a    %a15, [%a15]          /* a15 = g_preempt_old_ctx (ctx* of outgoing) */
-
-    /* Consume the flag: clear g_preempt_new_ctx */
-    mov.a   %a12, 0
-    movh.a  %a13, hi:g_preempt_new_ctx
-    lea     %a13, [%a13] lo:g_preempt_new_ctx
-    st.a    [%a13], %a12
-
-    /* Save current PCXI chain (L_sv->U_hw) to outgoing thread's ctx */
-    mfcr    %d0, 0xFE00
-    st.w    [%a15] 0, %d0
-
-    /* Install incoming thread's PCXI */
-    ld.w    %d0, [%a14] 0
-    dsync
-    mtcr    0xFE00, %d0
-    isync
-
-    /* Clear CDC before RFE to prevent NEST trap (see ctx_switch.S) */
-    mfcr    %d1, 0xFE04
-    mov     %d2, 0x7f
-    andn    %d1, %d1, %d2
-    mtcr    0xFE04, %d1
-    isync
-
-    disable
-    rslcx
-    rfe
-
-.Ltick_no_preempt:
-    disable
-    rslcx
-    rfe
-
-    .size _arch_tick_preempt_isr, . - _arch_tick_preempt_isr
 
 /* ---------------------------------------------------------------------------
  * _arch_generic_preempt_isr — generic IRQ handler with preemption support.

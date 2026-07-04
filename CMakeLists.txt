@@ -66,7 +66,6 @@ add_library(ulmk_kernel STATIC
     kernel/sched/sched.c
     kernel/sched/fifo_rt.c
     kernel/sched/bitmap_rt.c
-    kernel/timer/timer.c
     kernel/ipc/ep.c
     kernel/notif/notif.c
     kernel/mem/mem.c
