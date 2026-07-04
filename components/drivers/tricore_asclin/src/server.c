@@ -225,7 +225,7 @@ static void asclin_server_entry(void *arg)
 ulmk_tid_t tricore_asclin_init(uint8_t n, uint8_t tx_pin, uint8_t rx_pin,
 				uint32_t baud, uint32_t fa_hz)
 {
-	ulmk_thread_attr_t attr;
+	ulmk_thread_attr_t attr = {0};
 	ulmk_ep_t ep;
 	ulmk_tid_t tid;
 

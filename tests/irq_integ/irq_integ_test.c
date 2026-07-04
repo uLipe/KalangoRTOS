@@ -218,7 +218,7 @@ static void supervisor_entry(void *arg)
 
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
-	ulmk_thread_attr_t attr;
+	ulmk_thread_attr_t attr = {0};
 	ulmk_tid_t         srv_tid;
 	ulmk_tid_t         trig_tid;
 

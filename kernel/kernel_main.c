@@ -125,7 +125,7 @@ static uint8_t     root_stack_g[4096]
 
 void ulmk_kern_main(const ulmk_boot_info_t *info)
 {
-	ulmk_thread_attr_t attr;
+	ulmk_thread_attr_t attr = {0};
 
 	ulmk_printk("ulmk: kernel entry\n");
 

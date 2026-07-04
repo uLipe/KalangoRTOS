@@ -260,7 +260,7 @@ static void rn_notif_signaller_entry(void *arg)
 
 static void supervisor_entry(void *arg)
 {
-	ulmk_thread_attr_t attr;
+	ulmk_thread_attr_t attr = {0};
 
 	(void)arg;
 	ulmk_printk("ipc_integ: start\n");

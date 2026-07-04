@@ -76,7 +76,7 @@ static void console_server(void *arg)
 
 ulmk_tid_t board_console_start(const ulmk_boot_info_t *info)
 {
-	ulmk_thread_attr_t attr;
+	ulmk_thread_attr_t attr = {0};
 	ulmk_tid_t         tid;
 
 	(void)info;

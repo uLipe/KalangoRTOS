@@ -54,7 +54,7 @@ static void worker_b(void *arg)
  * ---------------------------------------------------------------------- */
 static void supervisor(void *arg)
 {
-	ulmk_thread_attr_t attr;
+	ulmk_thread_attr_t attr = {0};
 	ulmk_tid_t         tid_a;
 	ulmk_tid_t         tid_b;
 	uint32_t         a;
@@ -115,7 +115,7 @@ static void supervisor(void *arg)
  * ---------------------------------------------------------------------- */
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
-	ulmk_thread_attr_t attr;
+	ulmk_thread_attr_t attr = {0};
 
 	(void)info;
 

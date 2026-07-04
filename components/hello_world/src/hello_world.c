@@ -54,7 +54,7 @@ static void hello_entry(void *arg)
 
 ulmk_tid_t hello_world_init(const ulmk_boot_info_t *info)
 {
-	ulmk_thread_attr_t attr;
+	ulmk_thread_attr_t attr = {0};
 	ulmk_tid_t         tid;
 	static ULMK_PRIVATE int done;
 

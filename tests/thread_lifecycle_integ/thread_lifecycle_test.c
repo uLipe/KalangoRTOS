@@ -115,7 +115,7 @@ static void worker_kill_entry(void *arg)
 static void supervisor_entry(void *arg)
 {
 	ulmk_tid_t	     tid_a, tid_b, tid_c, tid_kill;
-	ulmk_thread_attr_t attr;
+	ulmk_thread_attr_t attr = {0};
 	int		     prio;
 
 	(void)arg;
@@ -194,7 +194,7 @@ static void supervisor_entry(void *arg)
 
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
-	ulmk_thread_attr_t attr;
+	ulmk_thread_attr_t attr = {0};
 	ulmk_tid_t	 sup_tid;
 
 	(void)info;
