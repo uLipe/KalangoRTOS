@@ -60,7 +60,9 @@ TEST_SRCS := \
 
 SRCS := $(KERNEL_SRCS) $(TEST_SRCS)
 
-SENTINEL := "MEM INTEG TEST: PASS"
+SENTINELS := \
+    "mem_integ: start" \
+    "mem_integ: PASS"
 
 QEMU_TIMEOUT := 60
 TIMEOUT_CMD  := timeout --kill-after=5 $(QEMU_TIMEOUT)
@@ -85,13 +87,22 @@ $(TARGET): $(SRCS) ../boot/boot_test.ld
 	tricore-elf-size $@
 
 run: $(TARGET)
-	@echo "--- running memory integration test (timeout=$(QEMU_TIMEOUT)s) ---"
+	@echo "--- running mem integration test (timeout=$(QEMU_TIMEOUT)s) ---"
 	@$(TIMEOUT_CMD) $(QEMU) \
 	    -machine $(MACHINE) \
 	    -kernel $(TARGET) \
 	    -nographic \
 	    </dev/null 2>&1 | tee /tmp/mem_integ_test.log ; \
-	if grep -q $(SENTINEL) /tmp/mem_integ_test.log ; then \
+	FAIL=0 ; \
+	for S in $(SENTINELS) ; do \
+	    if grep -q "$$S" /tmp/mem_integ_test.log ; then \
+	        echo "  [PASS] found: $$S" ; \
+	    else \
+	        echo "  [FAIL] missing: $$S" ; \
+	        FAIL=1 ; \
+	    fi ; \
+	done ; \
+	if [ $$FAIL -eq 0 ]; then \
 	    echo "MEM INTEG TEST: PASS" ; \
 	else \
 	    echo "MEM INTEG TEST: FAIL" ; \

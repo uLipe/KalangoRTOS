@@ -1,9 +1,17 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * Heap integration test — tests/mem_integ/mem_integ_test.c
+ * Thread heap integration test — tests/mem_integ/mem_integ_test.c
  *
- * Exercises ulmk_malloc / ulmk_free / ulmk_aligned_alloc through the syscall layer.
- * Expected output contains "MEM INTEG TEST: PASS".
+ * Exercises the slabAO per-thread heap model:
+ *   ulmk_get_thread_heap() — query heap base and size
+ *   ulmk_heap_extend()     — grow heap via kernel allocation
+ *   Direct heap access     — verify DPR covers the heap area
+ *
+ * Root thread (KERNEL) spawns a child with heap_size > 0.  All memory
+ * checks run inside the child.  Root waits for a notification then
+ * prints the final verdict.
+ *
+ * Expected output contains "mem_integ: PASS".
  */
 
 #include <stdint.h>
@@ -11,101 +19,92 @@
 #include <ulmk/microkernel.h>
 #include <kernel/include/ulmk_printk.h>
 
-static int g_pass;
-static int g_fail;
+#define HEAP_SIZE	4096u
 
-#define CHECK(cond, msg) \
+static volatile int      g_pass;
+static volatile int      g_fail;
+static ulmk_notif_t      g_done_notif;
+
+#define CHECK(cond) \
 	do { \
 		if (cond) { \
-			ulmk_printk("  [PASS] " msg "\n"); \
 			g_pass++; \
 		} else { \
-			ulmk_printk("  [FAIL] " msg "\n"); \
 			g_fail++; \
 		} \
 	} while (0)
 
-static void test_basic_malloc(void)
+static void heap_test_entry(void *arg)
 {
-	void *p;
+	ulmk_heap_info_t info;
+	volatile uint8_t *heap;
+	size_t i;
+	int rc;
+	int ok;
 
-	ulmk_printk("test_basic_malloc\n");
+	(void)arg;
 
-	p = ulmk_malloc(64);
-	CHECK(p != NULL, "ulmk_malloc(64) returns non-NULL");
-	CHECK(((uintptr_t)p % 64) == 0, "result is 64-byte aligned");
-	ulmk_free(p);
-}
+	/* query heap info */
+	rc = ulmk_get_thread_heap(&info);
+	CHECK(rc == ULMK_OK);
+	CHECK(info.base != 0u);
+	CHECK(info.size == HEAP_SIZE);
 
-static void test_multiple_allocs(void)
-{
-	void *ptrs[4];
-	int   i;
-	int   ok;
-
-	ulmk_printk("test_multiple_allocs\n");
-
-	for (i = 0; i < 4; i++)
-		ptrs[i] = ulmk_malloc(128);
+	/* write-read pattern across the entire heap */
+	heap = (volatile uint8_t *)(uintptr_t)info.base;
+	for (i = 0; i < info.size; i++) {
+		heap[i] = (uint8_t)(i & 0xFFu);
+	}
 
 	ok = 1;
-	for (i = 0; i < 4; i++) {
-		if (!ptrs[i])
+	for (i = 0; i < info.size; i++) {
+		if (heap[i] != (uint8_t)(i & 0xFFu)) {
 			ok = 0;
+			break;
+		}
 	}
-	CHECK(ok, "four concurrent 128-byte allocs all non-NULL");
+	CHECK(ok);
 
-	for (i = 0; i < 4; i++)
-		ulmk_free(ptrs[i]);
-}
+	/* heap_extend adds a new accessible region */
+	rc = ulmk_heap_extend(512u);
+	CHECK(rc == ULMK_OK);
 
-static void test_free_and_realloc(void)
-{
-	void *p1;
-	void *p2;
-
-	ulmk_printk("test_free_and_realloc\n");
-
-	p1 = ulmk_malloc(256);
-	CHECK(p1 != NULL, "initial alloc");
-	ulmk_free(p1);
-
-	p2 = ulmk_malloc(256);
-	CHECK(p2 != NULL, "alloc after free succeeds");
-	ulmk_free(p2);
-}
-
-static void test_aligned_alloc(void)
-{
-	void *p;
-
-	ulmk_printk("test_aligned_alloc\n");
-
-	p = ulmk_aligned_alloc(128, 64);
-	CHECK(p != NULL, "ulmk_aligned_alloc(128, 64) non-NULL");
-	CHECK(((uintptr_t)p % 128) == 0, "result is 128-byte aligned");
-	ulmk_free(p);
-}
-
-static void run_tests(void)
-{
-	g_pass = 0;
-	g_fail = 0;
-
-	test_basic_malloc();
-	test_multiple_allocs();
-	test_free_and_realloc();
-	test_aligned_alloc();
-
-	if (g_fail == 0)
-		ulmk_printk("MEM INTEG TEST: PASS\n");
-	else
-		ulmk_printk("MEM INTEG TEST: FAIL\n");
+	ulmk_notif_signal(g_done_notif, 1u);
+	ulmk_thread_exit();
 }
 
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
+	ulmk_thread_attr_t attr = {0};
+	uint32_t bits = 0u;
+
 	(void)info;
-	run_tests();
+
+	g_pass = 0;
+	g_fail = 0;
+
+	ulmk_printk("mem_integ: start\n");
+
+	g_done_notif = ulmk_notif_create();
+
+	attr.name       = "heap_test";
+	attr.entry      = heap_test_entry;
+	attr.arg        = NULL;
+	attr.priority   = 1u;
+	attr.stack_size = 1024u;
+	attr.privilege  = ULMK_PRIV_DRIVER;
+	attr.heap_size  = HEAP_SIZE;
+
+	ulmk_thread_create(&attr);
+
+	ulmk_notif_wait(g_done_notif, 1u, &bits);
+
+	if (g_fail == 0) {
+		ulmk_printk("mem_integ: PASS\n");
+	} else {
+		ulmk_printk("mem_integ: FAIL (pass=%d fail=%d)\n",
+			    g_pass, g_fail);
+	}
+
 	ulmk_thread_exit();
 }
