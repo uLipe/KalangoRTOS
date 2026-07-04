@@ -16,6 +16,7 @@
 #include <kernel/include/ulmk_ep_internal.h>
 #include <kernel/syscall/syscall_router.h>
 #include <ulmk_arch.h>
+#include <kernel/include/list.h>
 
 /*
  * Thread registry: singly-linked list of ALL allocated TCBs (including
@@ -25,17 +26,28 @@
  * Static threads (idle, root) are registered at boot via ulmk_thread_init().
  * Dynamic threads append themselves at creation and remove themselves on exit.
  */
-static ulmk_thread_t * UL_KERNEL_BSS tcb_list;
-static ulmk_tid_t      UL_KERNEL_BSS tid_counter;
+static sys_dlist_t UL_KERNEL_BSS tcb_registry;
+static bool        UL_KERNEL_BSS tcb_registry_inited;
+static ulmk_tid_t  UL_KERNEL_BSS tid_counter;
+
+static void tcb_registry_ensure_init(void)
+{
+	if (!tcb_registry_inited) {
+		sys_dlist_init(&tcb_registry);
+		tcb_registry_inited = true;
+	}
+}
 
 int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *stack)
 {
-	ulmk_thread_t *p;
-
 	if (!th || !attr || !stack || !attr->entry)
 		return ULMK_EINVAL;
 	if (attr->stack_size == 0)
 		return ULMK_EINVAL;
+
+	sys_dnode_init(&th->sched_node);
+	sys_dnode_init(&th->ipc_node);
+	sys_dnode_init(&th->reg_node);
 
 	th->stack_base  = (uint8_t *)stack;
 	th->stack_size  = attr->stack_size;
@@ -51,9 +63,6 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 	th->tid         = tid_counter++;
 	th->blocked_ep  = ULMK_EP_INVALID;
 	th->blocked_notif = ULMK_NOTIF_INVALID;
-	th->next        = NULL;
-	th->sched_prev  = NULL;
-	th->ipc_next    = NULL;
 	th->ipc_sender  = ULMK_TID_INVALID;
 	th->notif_received = 0u;
 	th->notif_wait_mask = 0u;
@@ -62,7 +71,6 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 	th->notif_bits_outptr  = NULL;
 	th->rn_result_outptr   = NULL;
 	th->region_count      = 0u;
-	th->reg_next          = NULL;
 
 	th->cap_flags = (attr->privilege == ULMK_PRIV_KERNEL) ? ULMK_CAP_ALL : 0u;
 
@@ -83,15 +91,9 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 			 (uintptr_t)stack + attr->stack_size,
 			 attr->privilege);
 
-	/* Register in the TCB list (append at tail to preserve insertion order). */
-	if (!tcb_list) {
-		tcb_list = th;
-	} else {
-		p = tcb_list;
-		while (p->reg_next)
-			p = p->reg_next;
-		p->reg_next = th;
-	}
+	/* Register in the TCB registry (append at tail). */
+	tcb_registry_ensure_init();
+	sys_dlist_append(&tcb_registry, &th->reg_node);
 
 	return ULMK_OK;
 }
@@ -100,7 +102,7 @@ ulmk_thread_t *ulmk_thread_by_tid(ulmk_tid_t tid)
 {
 	ulmk_thread_t *th;
 
-	for (th = tcb_list; th; th = th->reg_next) {
+	SYS_DLIST_FOR_EACH_CONTAINER(&tcb_registry, th, reg_node) {
 		if (th->tid == tid)
 			return th;
 	}
@@ -120,17 +122,14 @@ void ulmk_thread_set_state(ulmk_thread_t *th, uint8_t state)
  */
 void ulmk_thread_free(ulmk_thread_t *th)
 {
-	ulmk_thread_t **pp;
 	ulmk_arch_irq_key_t key;
 
 	key = ulmk_arch_cpu_irq_save();
 
-	/* Remove from registry list. */
-	pp = &tcb_list;
-	while (*pp && *pp != th)
-		pp = &(*pp)->reg_next;
-	if (*pp)
-		*pp = th->reg_next;
+	if (sys_dnode_is_linked(&th->reg_node)) {
+		sys_dlist_remove(&th->reg_node);
+		sys_dnode_init(&th->reg_node);
+	}
 
 	ulmk_arch_cpu_irq_restore(key);
 

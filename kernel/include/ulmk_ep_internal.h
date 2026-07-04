@@ -10,13 +10,14 @@
 
 #include <stdbool.h>
 #include <ulmk/microkernel.h>
+#include <kernel/include/list.h>
 #include <kernel/include/ulmk_thread_internal.h>
 
 typedef struct ulmk_endpoint {
 	ulmk_ep_t      id;
 	bool         active;
-	ulmk_thread_t *send_queue;	/* callers blocked (BLOCKED_IPC_CALL) */
-	ulmk_thread_t *recv_queue;	/* servers blocked (BLOCKED_IPC_RECV) */
+	sys_dlist_t  send_queue;	/* callers blocked (BLOCKED_IPC_CALL) */
+	sys_dlist_t  recv_queue;	/* servers blocked (BLOCKED_IPC_RECV) */
 } ulmk_endpoint_t;
 
 int           ulmk_ep_init(ulmk_endpoint_t *ep, ulmk_ep_t id);

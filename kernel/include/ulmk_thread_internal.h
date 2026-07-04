@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <ulmk/microkernel.h>
 #include <ulmk_arch.h>
+#include <kernel/include/list.h>
 
 #define UL_THREAD_STATE_DEAD      0
 #define UL_THREAD_STATE_READY     1
@@ -48,10 +49,9 @@ typedef struct ulmk_thread {
 	ulmk_tid_t         tid;
 	ulmk_ep_t          blocked_ep;      /* ep blocked on; for cleanup on kill */
 	ulmk_notif_t       blocked_notif;   /* notif blocked on; recv_or_notif */
-	struct ulmk_thread *next;           /* run-queue forward linkage */
-	struct ulmk_thread *sched_prev;     /* run-queue backward linkage (O(1) dequeue) */
-	struct ulmk_thread *ipc_next;       /* IPC send/recv queue linkage */
-	struct ulmk_thread *reg_next;       /* global TCB registry linkage */
+	sys_dnode_t        sched_node;      /* run-queue linkage */
+	sys_dnode_t        ipc_node;        /* IPC send or recv queue linkage */
+	sys_dnode_t        reg_node;        /* global TCB registry linkage */
 	ulmk_msg_t          ipc_msg;        /* in-flight message buffer */
 	ulmk_tid_t          ipc_sender;     /* sender TID stored by recv for reply */
 	/*

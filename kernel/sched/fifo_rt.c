@@ -7,63 +7,53 @@
  * Policy: strict priority (lower value = higher priority).
  * Within the same priority level, threads are served FIFO.
  *
- * Data structure: single singly-linked list sorted by ascending priority.
- * Head = highest-priority ready thread → pick_next() is O(1).
- * enqueue() inserts at the tail of the same-priority group → O(n).
- * dequeue() removes by pointer scan → O(n).
- * Both are acceptable for ULMK_CONFIG_MAX_THREADS ≤ 32.
+ * Not used in production builds (bitmap_rt is the default).  Kept for
+ * sched_unit tests and as a reference policy implementation.
  */
 
 #include <stddef.h>
 #include <kernel/include/ulmk_thread_internal.h>
 #include <kernel/include/ulmk_sched.h>
+#include <kernel/include/list.h>
 
-static ulmk_thread_t *rq_head;
+static sys_dlist_t rq;
+
+static int fifo_prio_cond(sys_dnode_t *node, void *data)
+{
+	ulmk_thread_t *t = (ulmk_thread_t *)data;
+	ulmk_thread_t *n = SYS_DLIST_CONTAINER_OF(node, ulmk_thread_t, sched_node);
+
+	return n->priority > t->priority;
+}
 
 static void fifo_rt_init(void)
 {
-	rq_head = NULL;
+	sys_dlist_init(&rq);
 }
 
-/*
- * Insert t at the tail of its priority group.
- * Threads with strictly lower priority number (higher urgency) stay ahead.
- * Threads with equal or higher priority number (same or lower urgency)
- * stay behind.
- */
 static void fifo_rt_enqueue(ulmk_thread_t *t)
 {
-	ulmk_thread_t **pp = &rq_head;
-
-	while (*pp && (*pp)->priority <= t->priority)
-		pp = &(*pp)->next;
-
-	t->next = *pp;
-	*pp = t;
+	sys_dlist_insert_at(&rq, &t->sched_node, fifo_prio_cond, t);
 	t->state = UL_THREAD_STATE_READY;
 }
 
 static void fifo_rt_dequeue(ulmk_thread_t *t)
 {
-	ulmk_thread_t **pp = &rq_head;
+	if (!sys_dnode_is_linked(&t->sched_node))
+		return;
 
-	while (*pp && *pp != t)
-		pp = &(*pp)->next;
-
-	if (*pp == t)
-		*pp = t->next;
-
-	t->next = NULL;
+	sys_dlist_remove(&t->sched_node);
+	sys_dnode_init(&t->sched_node);
 }
 
 static ulmk_thread_t *fifo_rt_pick_next(void)
 {
-	return rq_head;
+	return SYS_DLIST_PEEK_HEAD_CONTAINER_OF(&rq, ulmk_thread_t, sched_node);
 }
 
 static ulmk_thread_t *fifo_rt_peek_next(void)
 {
-	return rq_head;
+	return SYS_DLIST_PEEK_HEAD_CONTAINER_OF(&rq, ulmk_thread_t, sched_node);
 }
 
 const ulmk_sched_class_t ulmk_fifo_rt_class = {

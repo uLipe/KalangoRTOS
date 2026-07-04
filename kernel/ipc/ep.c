@@ -44,10 +44,10 @@ ulmk_endpoint_t ep_pool[ULMK_CONFIG_MAX_ENDPOINTS];
 
 int ulmk_ep_init(ulmk_endpoint_t *ep, ulmk_ep_t id)
 {
-	ep->id         = id;
-	ep->active     = true;
-	ep->send_queue = NULL;
-	ep->recv_queue = NULL;
+	ep->id     = id;
+	ep->active = true;
+	sys_dlist_init(&ep->send_queue);
+	sys_dlist_init(&ep->recv_queue);
 	return 0;
 }
 
@@ -74,38 +74,37 @@ ulmk_endpoint_t *ulmk_ep_by_id(ulmk_ep_t id)
 
 void ulmk_ep_recv_queue_remove(ulmk_thread_t *th)
 {
-	ulmk_endpoint_t  *ep;
-	ulmk_thread_t   **pp;
-
 	if (th->blocked_ep == ULMK_EP_INVALID)
 		return;
 
-	ep = ulmk_ep_by_id(th->blocked_ep);
-	if (!ep)
-		return;
-
-	pp = &ep->recv_queue;
-	while (*pp && *pp != th)
-		pp = &(*pp)->ipc_next;
-	if (*pp) {
-		*pp = th->ipc_next;
-		th->ipc_next   = NULL;
-		th->blocked_ep = ULMK_EP_INVALID;
+	if (sys_dnode_is_linked(&th->ipc_node)) {
+		sys_dlist_remove(&th->ipc_node);
+		sys_dnode_init(&th->ipc_node);
 	}
+	th->blocked_ep = ULMK_EP_INVALID;
 }
 
 /* =========================================================================
  * Helpers
  * ========================================================================= */
 
-static void ipc_enqueue_tail(ulmk_thread_t **head, ulmk_thread_t *th)
+static ulmk_thread_t *ipc_pop_head(sys_dlist_t *queue)
 {
-	ulmk_thread_t **pp = head;
+	sys_dnode_t     *dn;
+	ulmk_thread_t   *th;
 
-	while (*pp)
-		pp = &(*pp)->ipc_next;
-	th->ipc_next = NULL;
-	*pp = th;
+	dn = sys_dlist_get(queue);
+	if (!dn)
+		return NULL;
+
+	th = SYS_DLIST_CONTAINER_OF(dn, ulmk_thread_t, ipc_node);
+	sys_dnode_init(&th->ipc_node);
+	return th;
+}
+
+static void ipc_enqueue_tail(sys_dlist_t *queue, ulmk_thread_t *th)
+{
+	sys_dlist_append(queue, &th->ipc_node);
 }
 
 static void deliver_to_server(ulmk_thread_t *server, ulmk_thread_t *caller,
@@ -159,10 +158,9 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 	cur->blocked_ep        = ep_id;
 	cur->ipc_msg_outptr    = msg;
 
-	if (ep->recv_queue) {
-		ulmk_thread_t *srv = ep->recv_queue;
+	if (!sys_dlist_is_empty(&ep->recv_queue)) {
+		ulmk_thread_t *srv = ipc_pop_head(&ep->recv_queue);
 
-		ep->recv_queue = srv->ipc_next;
 		deliver_to_server(srv, cur, &cur->ipc_msg);
 	} else {
 		ipc_enqueue_tail(&ep->send_queue, cur);
@@ -197,11 +195,8 @@ int ep_recv_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, ulmk_tid_t *sender)
 	if (!cur)
 		return -ULMK_EINVAL;
 
-	if (ep->send_queue) {
-		ulmk_thread_t *caller = ep->send_queue;
-
-		ep->send_queue   = caller->ipc_next;
-		caller->ipc_next = NULL;
+	if (!sys_dlist_is_empty(&ep->send_queue)) {
+		ulmk_thread_t *caller = ipc_pop_head(&ep->send_queue);
 
 		*msg = caller->ipc_msg;
 		cur->ipc_sender = caller->tid;
@@ -315,11 +310,8 @@ int ep_recv_or_notif_impl(ulmk_ep_t ep_id, ulmk_notif_t notif_id,
 		return 1;
 	}
 
-	if (ep->send_queue) {
-		ulmk_thread_t *caller = ep->send_queue;
-
-		ep->send_queue   = caller->ipc_next;
-		caller->ipc_next = NULL;
+	if (!sys_dlist_is_empty(&ep->send_queue)) {
+		ulmk_thread_t *caller = ipc_pop_head(&ep->send_queue);
 
 		cur->ipc_sender = caller->tid;
 		cur->ipc_msg    = caller->ipc_msg;
