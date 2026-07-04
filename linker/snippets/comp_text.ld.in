@@ -1,0 +1,20 @@
+/* linker/snippets/comp_text.ld.in
+ * Template rendered by generate_ld.py for each registered component.
+ * @COMP_NAME@ is substituted with the component name string.
+ *
+ * Each component's code is isolated in a separate MPU-aligned section in
+ * flash.  _ulmk_comp_@COMP_NAME@_text_start/end export the CPR range the
+ * kernel programs for threads belonging to this component.
+ *
+ * Input sections are selected exclusively from the component's static
+ * library (libulmk_comp_@COMP_NAME@.a) so only code belonging to this
+ * component lands here.  Component sources are compiled with
+ * -DULMK_MODULE_NAME=@COMP_NAME@ by the build system.
+ */
+
+    .comp_@COMP_NAME@_text : ALIGN(ULMK_MPU_ALIGN) {
+        _ulmk_comp_@COMP_NAME@_text_start = .;
+        *libulmk_comp_@COMP_NAME@.a:(.text.* .rodata.* .rodata)
+        . = ALIGN(ULMK_MPU_ALIGN);
+        _ulmk_comp_@COMP_NAME@_text_end = .;
+    } > KERNEL_FLASH
