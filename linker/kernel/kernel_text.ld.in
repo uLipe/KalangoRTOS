@@ -6,20 +6,14 @@
  * a protection range for its own code.  ALIGN(32) satisfies TriCore's
  * 32-byte instruction fetch granularity.
  *
- * Input section patterns match the naming conventions for kernel and arch
- * internal functions (all prefixed ulmk_arch_*, ulmk_kernel_*, etc.).
+ * Input sections are selected exclusively from the kernel static library
+ * (libulmk_kernel.a) so that component code is never mixed in here.
+ * Startup and vector object files are handled earlier in vectors.ld.in via
+ * KEEP() rules and do not appear in .kernel_text.
  */
 
     .kernel_text : ALIGN(32) {
         _ulmk_kernel_text_start = .;
-        *(.text.ulmk_arch_*)
-        *(.text.ulmk_kernel_*)
-        *(.text.ulmk_sched_*)
-        *(.text.ulmk_ipc_*)
-        *(.text.ulmk_irq_*)
-        *(.text.ulmk_mem_*)
-        *(.text.ulmk_notif_*)
-        *(.text .text.*)
-        *(.rodata .rodata.*)
+        *libulmk_kernel.a:(.text.* .rodata.* .rodata)
         _ulmk_kernel_text_end = .;
     } > KERNEL_FLASH

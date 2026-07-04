@@ -8,6 +8,10 @@
  * optionally configure a single supervisor-only DPR range covering the
  * combined kernel data/bss area.
  *
+ * Input sections are selected exclusively from the kernel static library
+ * (libulmk_kernel.a).  Component data must use ULMK_PRIVATE / ULMK_DOMAIN_BSS
+ * and will be collected into per-component domain sections further below.
+ *
  * startup.S protocol:
  *   1. Copy [__ulmk_kernel_data_load .. __ulmk_kernel_data_load + size) → RAM
  *      using _ulmk_kernel_data_start / _ulmk_kernel_data_end.
@@ -17,38 +21,17 @@
     __ulmk_kernel_data_load = LOADADDR(.kernel_data);
     .kernel_data : ALIGN(ULMK_MPU_ALIGN) {
         _ulmk_kernel_data_start = .;
-        *(.data.ulmk_arch_*)
-        *(.data.ulmk_kernel_*)
-        *(.data.ulmk_sched_*)
-        *(.data.ulmk_ipc_*)
-        *(.data.ulmk_irq_*)
-        *(.data.ulmk_mem_*)
-        *(.data.ulmk_notif_*)
-        *(.data .data.*)
-        *(.sdata .sdata.*)
-        /*
-         * -fdata-sections creates one named section per global variable
-         * (e.g. .g_preempt_old_ctx) rather than .data.varname.  These
-         * sections are not matched by any pattern above.  By this point
-         * .text* and .rodata* have been consumed by kernel_text, so the
-         * catch-all below only pulls in writable (and small-const) orphans.
-         */
-        *(*)
+        *libulmk_kernel.a:(.data.* .data)
+        *libulmk_kernel.a:(.sdata .sdata.*)
         . = ALIGN(4);
         _ulmk_kernel_data_end = .;
     } > KERNEL_RAM AT > KERNEL_FLASH
 
     .kernel_bss (NOLOAD) : ALIGN(4) {
         _ulmk_kernel_bss_start = .;
-        *(.bss.ulmk_arch_*)
-        *(.bss.ulmk_kernel_*)
-        *(.bss.ulmk_sched_*)
-        *(.bss.ulmk_ipc_*)
-        *(.bss.ulmk_irq_*)
-        *(.bss.ulmk_mem_*)
-        *(.bss.ulmk_notif_*)
-        *(.bss .bss.*)
-        *(COMMON)
+        *libulmk_kernel.a:(.bss.* .bss)
+        *libulmk_kernel.a:(.sbss .sbss.*)
+        *libulmk_kernel.a:(COMMON)
         . = ALIGN(4);
         _ulmk_kernel_bss_end = .;
     } > KERNEL_RAM
