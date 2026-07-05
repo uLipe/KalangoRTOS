@@ -26,7 +26,7 @@
 
 #define CONSOLE_MSG_PUTC  1u
 
-static ulmk_ep_t g_ep;
+static ulmk_ep_t g_ep __attribute__((section(".user_bss")));
 
 /* ---- client API --------------------------------------------------------- */
 
