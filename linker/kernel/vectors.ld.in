@@ -16,6 +16,7 @@
 
     .startup : {
         KEEP(*(.text._start))
+        _ulmk_kernel_exec_start = .;
     } > KERNEL_FLASH
 
     .trap_table : ALIGN(256) {

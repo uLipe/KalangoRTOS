@@ -16,4 +16,5 @@
         _ulmk_kernel_text_start = .;
         *libulmk_kernel.a:(.text.* .rodata.* .rodata)
         _ulmk_kernel_text_end = .;
+        _ulmk_kernel_exec_end = .;
     } > KERNEL_FLASH

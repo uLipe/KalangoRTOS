@@ -1,0 +1,10 @@
+/* linker/kernel/isr_stack.ld.in
+ * ISR / ISP stack — placed in userspace MPU RAM so interrupt entry
+ * (before PRS elevation) can use ISP legally under PRS 1.
+ */
+
+    .isr_stack (NOLOAD) : ALIGN(8) {
+        _ulmk_isr_stack_bottom = .;
+        . += ULMK_ISR_STACK_SIZE;
+        _ulmk_isr_stack_top = .;
+    } > KERNEL_RAM

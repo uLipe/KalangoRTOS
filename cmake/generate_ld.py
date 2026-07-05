@@ -17,13 +17,16 @@
 #        kernel/vectors.ld.in
 #        kernel/kernel_text.ld.in
 #        [rendered snippets/comp_text.ld.in  for each --comp]
+#        kernel/user_runtime.ld.in
 #        [rendered snippets/app_code.ld.in   for each --app]
 #        kernel/kernel_data.ld.in
 #        kernel/domain_table.ld.in
-#        [rendered snippets/domain_data.ld.in for each --domain]
-#        [arch/tricore/linker/small_data.ld.in  if HAVE_SMALL_DATA=1]
 #        kernel/kernel_stacks.ld.in
 #        [arch/tricore/linker/csa_pool.ld.in    if HAVE_CSA=1]
+#        [arch/tricore/linker/small_data.ld.in  if HAVE_SMALL_DATA=1]
+#        kernel/kernel_ram_end.ld.in
+#        [rendered snippets/domain_data.ld.in for each --domain]
+#        kernel/user_ram_start.ld.in
 #        kernel/user_pool.ld.in
 #      }
 
@@ -93,35 +96,28 @@ def main():
     # 4b. Kernel text (libulmk_kernel.a only)
     out.append(read_fragment(os.path.join(args.kernel_dir, "kernel_text.ld.in")))
 
-    # 4c. Per-component text snippets — one MPU-aligned section per component,
+    # 4c. Userspace text lower bound (per-component sections follow)
+    out.append("    _ulmk_user_text_start = .;\n")
+
+    # 4d. Per-component text snippets — one MPU-aligned section per component,
     #     selecting exclusively from libulmk_comp_<name>.a
     comp_snippet = os.path.join(args.snippets, "comp_text.ld.in")
     for comp in args.comp:
         out.append(render_snippet(comp_snippet, {"COMP_NAME": comp}))
 
-    # 4d. Per-app code snippets
+    # 4e. Per-app code snippets (legacy ulmk_add_app path)
     app_snippet = os.path.join(args.snippets, "app_code.ld.in")
     for app in args.app:
         out.append(render_snippet(app_snippet, {"APP_NAME": app}))
 
-    # 4e. Kernel data (libulmk_kernel.a only)
-    out.append(read_fragment(os.path.join(args.kernel_dir, "kernel_data.ld.in")))
+    # 4f. Userspace runtime / orphan flash (libgcc, etc.)
+    out.append(read_fragment(os.path.join(args.kernel_dir, "user_runtime.ld.in")))
 
-    # 4f. Domain table
+    # 4g. Domain descriptor table (flash)
     out.append(read_fragment(os.path.join(args.kernel_dir, "domain_table.ld.in")))
 
-    # 4g. Per-domain data snippets (includes auto-registered component domains)
-    domain_snippet = os.path.join(args.snippets, "domain_data.ld.in")
-    for entry in args.domain:
-        parts = entry.split(":", 1)
-        dname = parts[0]
-        dregion = parts[1] if len(parts) > 1 else "KERNEL_RAM"
-        out.append(render_snippet(domain_snippet,
-                                  {"DOMAIN_NAME": dname, "DOMAIN_REGION": dregion}))
-
-    # 4h. Small-data areas (arch-specific)
-    if flags["HAVE_SMALL_DATA"]:
-        out.append(read_fragment(os.path.join(args.arch_dir, "small_data.ld.in")))
+    # 4h. Kernel data (libulmk_kernel.a only)
+    out.append(read_fragment(os.path.join(args.kernel_dir, "kernel_data.ld.in")))
 
     # 4i. Kernel stacks
     out.append(read_fragment(os.path.join(args.kernel_dir, "kernel_stacks.ld.in")))
@@ -130,7 +126,32 @@ def main():
     if flags["HAVE_CSA"]:
         out.append(read_fragment(os.path.join(args.arch_dir, "csa_pool.ld.in")))
 
-    # 4k. User pool (always last in KERNEL_RAM)
+    # 4k. Small-data areas (arch-specific, kernel-owned RAM)
+    if flags["HAVE_SMALL_DATA"]:
+        out.append(read_fragment(os.path.join(args.arch_dir, "small_data.ld.in")))
+
+    # 4l. End of kernel static RAM
+    out.append(read_fragment(os.path.join(args.kernel_dir, "kernel_ram_end.ld.in")))
+
+    # 4m. Per-domain data snippets (includes auto-registered component domains)
+    domain_snippet = os.path.join(args.snippets, "domain_data.ld.in")
+    for entry in args.domain:
+        parts = entry.split(":", 1)
+        dname = parts[0]
+        dregion = parts[1] if len(parts) > 1 else "KERNEL_RAM"
+        out.append(render_snippet(domain_snippet,
+                                  {"DOMAIN_NAME": dname, "DOMAIN_REGION": dregion}))
+
+    # 4n. Userspace-accessible kernel BSS (root thread stack)
+    out.append(read_fragment(os.path.join(args.kernel_dir, "user_bss.ld.in")))
+
+    # 4o. Start of userspace static RAM
+    out.append(read_fragment(os.path.join(args.kernel_dir, "user_ram_start.ld.in")))
+
+    # 4o2. ISR stack (userspace MPU RAM — ISP before PRS elevation)
+    out.append(read_fragment(os.path.join(args.kernel_dir, "isr_stack.ld.in")))
+
+    # 4p. User pool (always last in KERNEL_RAM)
     out.append(read_fragment(os.path.join(args.kernel_dir, "user_pool.ld.in")))
 
     out.append("\n} /* SECTIONS */\n")

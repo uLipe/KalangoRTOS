@@ -1,0 +1,13 @@
+/* linker/kernel/user_runtime.ld.in
+ * Layer 1 — catch-all userspace flash after per-component sections.
+ *
+ * Collects libgcc, compiler runtime, and any object not placed in
+ * .kernel_text or .comp_*_text.  _ulmk_user_text_start is assigned
+ * by generate_ld.py immediately before the first component snippet.
+ */
+
+    .user_runtime : ALIGN(32) {
+        *(.text .text.* .rodata .rodata.*)
+        . = ALIGN(32);
+        _ulmk_user_text_end = .;
+    } > KERNEL_FLASH

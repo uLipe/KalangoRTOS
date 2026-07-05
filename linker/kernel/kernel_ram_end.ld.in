@@ -1,0 +1,6 @@
+/* linker/kernel/kernel_ram_end.ld.in
+ * Marks the end of kernel-owned static RAM (data, stacks, CSA, small-data).
+ * Userspace domains and user_pool follow in separate MPU ranges.
+ */
+
+    _ulmk_kernel_ram_end = .;

@@ -1,0 +1,9 @@
+/* linker/kernel/user_ram_start.ld.in
+ * First byte of userspace static RAM (component domains before user_pool).
+ * Empty userspace .data when no component globals are present.
+ */
+
+    _ulmk_user_ram_start = .;
+    _ulmk_user_data_start = .;
+    _ulmk_user_data_end = .;
+    __ulmk_user_data_load = .;
