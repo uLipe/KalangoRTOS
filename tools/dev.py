@@ -16,6 +16,7 @@ Usage:
 
     python3 tools/dev.py tests unit             # run all unit tests
     python3 tools/dev.py tests integ            # run all integration tests
+    python3 tools/dev.py tests hello            # hello_world production e2e smoke test
     python3 tools/dev.py tests unit  --test NAME
     python3 tools/dev.py tests integ --test NAME
     python3 tools/dev.py tests unit  --list
@@ -231,6 +232,8 @@ def _discover_tests(kind: str) -> list[str]:
     for d in sorted(TESTS_DIR.iterdir()):
         if not d.is_dir() or not (d / "Makefile").exists():
             continue
+        if d.name.endswith("_e2e"):
+            continue
         is_unit = d.name.endswith("_unit")
         if (kind == "unit") == is_unit:
             result.append(d.name)
@@ -276,11 +279,26 @@ def _run_all_shell(kind: str, tests: list[str]) -> str:
     return " ; ".join(lines)
 
 
+def _run_hello() -> None:
+    _killall()
+    BUILD_DIR.mkdir(parents=True, exist_ok=True)
+    shell_cmd = "make -C /workspace/tests/hello_e2e run"
+    cmd = _base_docker_cmd(interactive=False)
+    cmd += ["--volume", f"{BUILD_DIR}:/build"]
+    cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
+    os.execvp("docker", cmd)
+
+
 def _run_tests(args: argparse.Namespace) -> None:
     kind      = args.kind
     test_name = args.test
 
     _killall()
+
+    if kind == "hello":
+        print("Running hello_world e2e smoke test…")
+        _run_hello()
+        return
 
     if args.list:
         tests = _discover_tests(kind)
@@ -366,8 +384,8 @@ def _parse_args() -> argparse.Namespace:
     )
     tests_p.add_argument(
         "kind",
-        choices=["unit", "integ"],
-        help="Test suite type",
+        choices=["unit", "integ", "hello"],
+        help="Test suite type (hello = production hello_world e2e)",
     )
     tests_p.add_argument(
         "--test",
