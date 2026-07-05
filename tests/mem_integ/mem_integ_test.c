@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <ulmk/microkernel.h>
-#include <kernel/include/ulmk_printk.h>
+#include "../test_support.h"
 
 #define HEAP_SIZE	4096u
 

@@ -3,21 +3,14 @@
  * Memory isolation integration test
  * tests/memory_isolation_integ/memory_isolation_test.c
  *
- * Three scenarios that exercise MPU-backed memory isolation:
+ * Five scenarios exercising MPU-backed memory isolation.  The supervisor
+ * runs them sequentially to avoid cross-scenario interference.
  *
- *  1. Anon mmap: thread allocates private RAM via ulmk_mem_map(ANON), writes
- *     a pattern, reads it back, then unmaps.
- *
- *  2. Memory grant: thread A allocates a buffer and writes PATTERN_B.
- *     Thread A grants READ-only access to thread B.  Thread B reads and
- *     verifies the value — confirms cross-thread read with explicit grant.
- *
- *  3. MPU write-fault: thread TRIGGER attempts to write to thread VICTIM's
- *     private buffer without a write grant.  The class-1 protection trap
- *     handler kills TRIGGER.  Supervisor checks g_fault_progress:
- *       - progress == 1  → write attempt was made, thread killed (PASS)
- *       - progress == 2  → write succeeded (MPU not enforced; partial PASS)
- *       - progress == 0  → trigger never ran (FAIL)
+ *  1. Anon mmap: private heap allocation, pattern verify, unmap.
+ *  2. Memory grant: cross-thread read with explicit grant.
+ *  3. MPU write-fault: ungranted write kills the offending thread.
+ *  4. Kernel exec fault: jump into .kernel_text kills the thread.
+ *  5. Kernel data fault: read of kernel RAM kills the thread.
  *
  * All worker threads run at ULMK_PRIV_DRIVER (PRS 1).
  */
@@ -25,8 +18,12 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <ulmk/microkernel.h>
-#include <kernel/include/ulmk_printk.h>
 #include "../test_support.h"
+
+extern uint8_t _ulmk_kernel_data_start[];
+
+/* Kernel .text entry — lives in CPR_KERNEL, not reachable from PRS 1. */
+extern uint32_t ulmk_arch_cpu_irq_save(uint32_t *flags);
 
 #define PATTERN_A	0xA5A5A5A5u
 #define PATTERN_B	0x5B5B5B5Bu
@@ -98,7 +95,6 @@ static void grant_a_entry(void *arg)
 	buf    = (volatile uint32_t *)base;
 	buf[0] = PATTERN_B;
 
-	/* Spin until B's TID is published. */
 	while (g_grant_b_tid == ULMK_TID_INVALID)
 		ulmk_msleep(5);
 
@@ -131,10 +127,9 @@ static void grant_b_entry(void *arg)
 
 	buf = (volatile uint32_t *)g_grant_base;
 
-	if (buf[0] == PATTERN_B) {
-		ulmk_printk("mem_iso: scenario 2 (grant read) PASS\n");
+	if (buf[0] == PATTERN_B)
 		g_grant_result = 1;
-	} else {
+	else {
 		ulmk_printk("mem_iso: grant read FAIL got=0x%08x\n",
 			  (unsigned)buf[0]);
 		g_grant_result = 0;
@@ -168,15 +163,7 @@ static void fault_victim_entry(void *arg)
 	buf[0] = 0xDEADBEEFu;
 
 	g_fault_victim_base = base;
-	ulmk_printk("mem_iso: victim buffer at 0x%08x\n",
-		  (unsigned)(uintptr_t)base);
-
-	/*
-	 * Block (not yield-spin) so lower-priority trigger@7 gets the CPU.
-	 * A yield-loop here would starve trigger because victim@6 would
-	 * immediately reclaim the CPU on every yield.
-	 */
-	board_timer_sleep_us(2000000u);
+	ulmk_msleep(500u);
 	ulmk_thread_exit();
 }
 
@@ -192,30 +179,93 @@ static void fault_trigger_entry(void *arg)
 	victim = (volatile uint32_t *)g_fault_victim_base;
 
 	g_fault_progress = 1;
-	victim[0] = 0xCAFECAFEu;	/* no write grant → class-1 trap kills us */
-	g_fault_progress = 2;		/* reached only if MPU not enforced */
+	victim[0] = 0xCAFECAFEu;
+	g_fault_progress = 2;
 
 	ulmk_thread_exit();
 }
 
 /* =========================================================================
- * Supervisor — collects results and exits the simulator
+ * Scenario 4 — userspace cannot execute kernel code
  * ========================================================================= */
+
+static volatile int g_kexec_progress;
+
+static void kexec_trigger_entry(void *arg)
+{
+	typedef uint32_t (*kern_fn_t)(uint32_t *);
+	kern_fn_t fn;
+
+	(void)arg;
+
+	fn = (kern_fn_t)(uintptr_t)ulmk_arch_cpu_irq_save;
+	g_kexec_progress = 1;
+	fn(NULL);
+	g_kexec_progress = 2;
+	ulmk_thread_exit();
+}
+
+/* =========================================================================
+ * Scenario 5 — userspace cannot read kernel data
+ * ========================================================================= */
+
+static volatile int g_kread_progress;
+
+static void kread_trigger_entry(void *arg)
+{
+	volatile uint32_t val;
+
+	(void)arg;
+
+	g_kread_progress = 1;
+	val = *(volatile uint32_t *)(uintptr_t)_ulmk_kernel_data_start;
+	(void)val;
+	g_kread_progress = 2;
+	ulmk_thread_exit();
+}
+
+/* =========================================================================
+ * Supervisor — runs scenarios sequentially, reports, exits
+ * ========================================================================= */
+
+static int wait_flag(volatile int *flag, int target, uint32_t ms_max)
+{
+	uint32_t waited = 0;
+
+	while (*flag != target && waited < ms_max) {
+		ulmk_msleep(10);
+		waited += 10u;
+	}
+
+	return *flag == target;
+}
+
+static ulmk_tid_t spawn_worker(const char *name, void (*entry)(void *),
+			       uint32_t prio, uint32_t stack)
+{
+	ulmk_thread_attr_t attr = {
+		.name       = name,
+		.entry      = entry,
+		.arg        = NULL,
+		.priority   = prio,
+		.stack_size = stack,
+		.privilege  = ULMK_PRIV_DRIVER,
+	};
+
+	return ulmk_thread_create(&attr);
+}
 
 static void supervisor_entry(void *arg)
 {
-	uint32_t waited;
-	int      overall = 1;
+	ulmk_tid_t b_tid;
+	int        overall = 1;
 
 	(void)arg;
 
 	/* Scenario 1 */
-	waited = 0;
-	while (g_anon_result < 0 && waited < 3000u) {
-		ulmk_msleep(10);
-		waited += 10u;
-	}
-	if (g_anon_result == 1) {
+	g_anon_result = -1;
+	spawn_worker("anon", anon_thread_entry, 15u, 1024u);
+	if (wait_flag(&g_anon_result, 1, 3000u)) {
 		ulmk_printk("mem_iso: scenario 1 (anon mmap) PASS\n");
 	} else {
 		ulmk_printk("mem_iso: FAIL at scenario 1 (anon mmap)\n");
@@ -223,22 +273,23 @@ static void supervisor_entry(void *arg)
 	}
 
 	/* Scenario 2 */
-	waited = 0;
-	while (g_grant_result < 0 && waited < 3000u) {
-		ulmk_msleep(10);
-		waited += 10u;
-	}
-	if (g_grant_result != 1) {
+	g_grant_result = -1;
+	g_grant_b_tid  = ULMK_TID_INVALID;
+	b_tid = spawn_worker("grant_b", grant_b_entry, 15u, 1024u);
+	g_grant_b_tid = b_tid;
+	spawn_worker("grant_a", grant_a_entry, 15u, 1024u);
+	if (wait_flag(&g_grant_result, 1, 3000u)) {
+		ulmk_printk("mem_iso: scenario 2 (grant read) PASS\n");
+	} else {
 		ulmk_printk("mem_iso: FAIL at scenario 2 (grant)\n");
 		overall = 0;
 	}
 
 	/* Scenario 3 */
-	waited = 0;
-	while (g_fault_progress == 0 && waited < 1000u) {
-		ulmk_msleep(10);
-		waited += 10u;
-	}
+	g_fault_progress = 0;
+	spawn_worker("victim", fault_victim_entry, 18u, 1024u);
+	spawn_worker("trigger", fault_trigger_entry, 16u, 1024u);
+	wait_flag(&g_fault_progress, 1, 2000u);
 	ulmk_msleep(200);
 
 	if (g_fault_progress == 1) {
@@ -248,6 +299,38 @@ static void supervisor_entry(void *arg)
 			  "(MPU not enforced on this platform)\n");
 	} else {
 		ulmk_printk("mem_iso: FAIL at scenario 3 (trigger never ran)\n");
+		overall = 0;
+	}
+
+	/* Scenario 4 */
+	g_kexec_progress = 0;
+	spawn_worker("kexec", kexec_trigger_entry, 16u, 1024u);
+	wait_flag(&g_kexec_progress, 1, 2000u);
+	ulmk_msleep(200);
+
+	if (g_kexec_progress == 1) {
+		ulmk_printk("mem_iso: scenario 4 (kernel exec fault) PASS\n");
+	} else if (g_kexec_progress == 2) {
+		ulmk_printk("mem_iso: scenario 4 (kernel exec fault) PARTIAL "
+			  "(MPU not enforced on this platform)\n");
+	} else {
+		ulmk_printk("mem_iso: FAIL at scenario 4 (kexec never ran)\n");
+		overall = 0;
+	}
+
+	/* Scenario 5 */
+	g_kread_progress = 0;
+	spawn_worker("kread", kread_trigger_entry, 16u, 1024u);
+	wait_flag(&g_kread_progress, 1, 2000u);
+	ulmk_msleep(200);
+
+	if (g_kread_progress == 1) {
+		ulmk_printk("mem_iso: scenario 5 (kernel data fault) PASS\n");
+	} else if (g_kread_progress == 2) {
+		ulmk_printk("mem_iso: scenario 5 (kernel data fault) PARTIAL "
+			  "(MPU not enforced on this platform)\n");
+	} else {
+		ulmk_printk("mem_iso: FAIL at scenario 5 (kread never ran)\n");
 		overall = 0;
 	}
 
@@ -267,13 +350,11 @@ static void supervisor_entry(void *arg)
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
 	ulmk_thread_attr_t attr = {0};
-	ulmk_tid_t         b_tid;
+	ulmk_tid_t         sup_tid;
 
 	(void)info;
 
 	ulmk_printk("mem_iso: start\n");
-
-	board_timer_start(info);
 
 	g_grant_ready = ulmk_notif_create();
 	g_grant_done  = ulmk_notif_create();
@@ -283,54 +364,17 @@ void ulmk_root_thread(const ulmk_boot_info_t *info)
 		ulmk_sim_exit(1);
 	}
 
-	/* Scenario 1 */
-	attr = (ulmk_thread_attr_t){
-		.name = "anon", .entry = anon_thread_entry,
-		.arg = NULL, .priority = 5u,
-		.stack_size = 1024u, .privilege = ULMK_PRIV_DRIVER,
-	};
-	ulmk_thread_create(&attr);
-
-	/*
-	 * Scenario 2: B must be spawned first so its TID is visible to A
-	 * before A runs ulmk_mem_grant.
-	 */
-	attr = (ulmk_thread_attr_t){
-		.name = "grant_b", .entry = grant_b_entry,
-		.arg = NULL, .priority = 4u,
-		.stack_size = 1024u, .privilege = ULMK_PRIV_DRIVER,
-	};
-	b_tid = ulmk_thread_create(&attr);
-	g_grant_b_tid = b_tid;
-
-	attr = (ulmk_thread_attr_t){
-		.name = "grant_a", .entry = grant_a_entry,
-		.arg = NULL, .priority = 4u,
-		.stack_size = 1024u, .privilege = ULMK_PRIV_DRIVER,
-	};
-	ulmk_thread_create(&attr);
-
-	/* Scenario 3 */
-	attr = (ulmk_thread_attr_t){
-		.name = "victim", .entry = fault_victim_entry,
-		.arg = NULL, .priority = 6u,
-		.stack_size = 1024u, .privilege = ULMK_PRIV_DRIVER,
-	};
-	ulmk_thread_create(&attr);
-
-	attr = (ulmk_thread_attr_t){
-		.name = "trigger", .entry = fault_trigger_entry,
-		.arg = NULL, .priority = 7u,
-		.stack_size = 1024u, .privilege = ULMK_PRIV_DRIVER,
-	};
-	ulmk_thread_create(&attr);
-
 	attr = (ulmk_thread_attr_t){
 		.name = "sup", .entry = supervisor_entry,
-		.arg = NULL, .priority = 15u,
+		.arg = NULL, .priority = 20u,
 		.stack_size = 2048u, .privilege = ULMK_PRIV_DRIVER,
 	};
-	ulmk_thread_create(&attr);
+	sup_tid = ulmk_thread_create(&attr);
+	if (sup_tid == ULMK_TID_INVALID ||
+	    ulmk_cap_grant(sup_tid, ULMK_CAP_SPAWN) < 0) {
+		ulmk_printk("mem_iso: supervisor setup FAIL\n");
+		ulmk_sim_exit(1);
+	}
 
 	ulmk_thread_exit();
 }

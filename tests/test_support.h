@@ -14,6 +14,11 @@
 #include <stdint.h>
 #include <ulmk/microkernel.h>
 
+#ifdef ULMK_TEST_BUILD
+void test_printk(const char *fmt, ...);
+#define ulmk_printk test_printk
+#endif
+
 /*
  * ulmk_sim_exit — terminate the simulation and report pass (0) or fail (!=0).
  *

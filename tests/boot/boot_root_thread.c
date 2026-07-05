@@ -21,7 +21,6 @@
 #include <stdint.h>
 #include "../test_support.h"
 #include <ulmk/microkernel.h>
-#include <kernel/include/ulmk_printk.h>
 
 
 /*

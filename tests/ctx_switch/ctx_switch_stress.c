@@ -21,7 +21,6 @@
 #include "../test_support.h"
 #include <ulmk/microkernel.h>
 #include <ulmk_arch.h>
-#include <kernel/include/ulmk_printk.h>
 
 /*
  * Pool budget with the SVLCX/RSLCX/RFE context-switch implementation:

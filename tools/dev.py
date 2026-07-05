@@ -250,6 +250,7 @@ def _run_one_shell(kind: str, name: str) -> str:
     ]
     if kind == "integ" and _has_gen_config(name):
         steps.append("make gen_config -s")
+    steps.append("rm -rf integ_kernel libtest_kernel.a 2>/dev/null || true")
     steps += [
         "make -s",
         f"timeout --kill-after=5 {TEST_TIMEOUT} make run",

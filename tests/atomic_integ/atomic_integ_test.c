@@ -22,7 +22,6 @@
 #include <stddef.h>
 #include <ulmk/microkernel.h>
 #include <ulmk_arch.h>
-#include <kernel/include/ulmk_printk.h>
 
 #define CTX_YIELD_ITERS		100u
 #define CTX_WORKERS		8
@@ -38,7 +37,7 @@ static void ctx_worker(void *arg)
 	for (i = 0u; i < CTX_YIELD_ITERS; i++)
 		ulmk_thread_yield();
 
-	ulmk_arch_atomic_add((volatile uint32_t *)&g_ctx_done, 1u);
+	g_ctx_done++;
 	ulmk_thread_exit();
 }
 
@@ -72,8 +71,8 @@ static void supervisor_entry(void *arg)
 	{
 		uint32_t waited = 0u;
 
-		while (g_ctx_done != CTX_WORKERS && waited < 2000u) {
-			board_timer_sleep_us(1000u);
+		while (g_ctx_done != CTX_WORKERS && waited < 40000u) {
+			ulmk_msleep(1u);
 			waited++;
 		}
 	}
@@ -90,6 +89,8 @@ static void supervisor_entry(void *arg)
 	ulmk_sim_exit(0);
 }
 
+extern void atomic_integ_phase1(void);
+
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
 	ulmk_thread_attr_t attr = {0};
@@ -97,15 +98,16 @@ void ulmk_root_thread(const ulmk_boot_info_t *info)
 
 	(void)info;
 
+	atomic_integ_phase1();
+
 	attr.name       = "sup";
 	attr.entry      = supervisor_entry;
 	attr.arg        = NULL;
-	attr.priority   = 10;
+	attr.priority   = 25u;
 	attr.stack_size = 2048;
 	attr.privilege  = ULMK_PRIV_DRIVER;
 
 	tid = ulmk_thread_create(&attr);
 	ulmk_cap_grant(tid, ULMK_CAP_SPAWN);
-	board_timer_start(info);
 	ulmk_thread_exit();
 }

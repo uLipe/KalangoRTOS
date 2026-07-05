@@ -1,9 +1,12 @@
 CC      := tricore-elf-gcc
+AR      := tricore-elf-ar
 QEMU    := qemu-system-tricore
 MACHINE := KIT_AURIX_TC397B_TRB
 ROOT    := ../..
 TARGET  := memory_isolation_test.elf
 GEN_INC := /tmp/gen
+
+include ../integ_kernel.mk
 
 CONSOLE_SRC := $(ROOT)/boards/qemu_tc3xx/qemu_console.c
 
@@ -23,7 +26,9 @@ CFLAGS := \
     -DULMK_ARCH_QEMU_VIRT_CONSOLE=1 \
     -DULMK_ARCH_SRC_STM0_SR0=0xF0038300u \
     -DULMK_ARCH_SRC_SRE_BIT=10u \
-    -DULMK_ARCH_IDLE_IS_WAIT=0
+    -DULMK_ARCH_IDLE_IS_WAIT=0 \
+    -DULMK_ARCH_MPU_NUM_DPR=4 \
+    -DULMK_TEST_BUILD=1
 
 LDFLAGS := \
     -T ../boot/boot_test.ld \
@@ -34,37 +39,18 @@ LDFLAGS := \
 
 LIBS := -lc -lgcc
 
-KERNEL_SRCS := \
-    $(ROOT)/arch/tricore/startup.S \
-    $(ROOT)/arch/tricore/arch.c \
-    $(ROOT)/arch/tricore/ctx_switch.S \
-    $(ROOT)/arch/tricore/vectors.S \
-    $(ROOT)/kernel/kernel_main.c \
-    $(ROOT)/kernel/printk/ulmk_printk.c \
-    $(ROOT)/kernel/sched/sched.c \
-    $(ROOT)/kernel/sched/fifo_rt.c \
-    $(ROOT)/kernel/sched/bitmap_rt.c \
-    $(ROOT)/kernel/irq/irq.c \
-    $(ROOT)/kernel/mem/mem.c \
-    $(ROOT)/kernel/mem/tlsf.c \
-    $(ROOT)/kernel/thread/thread.c \
-    $(ROOT)/kernel/ipc/ep.c \
-    $(ROOT)/kernel/notif/notif.c \
-    $(ROOT)/kernel/syscall/syscall_router.c \
-    $(ROOT)/stub/board_init_stub.c
-
 TEST_SRCS := \
+    ../test_printk.c \
     memory_isolation_test.c \
-    $(CONSOLE_SRC) \
-    $(ROOT)/boards/qemu_tc3xx/board_timer.c
-
-SRCS := $(KERNEL_SRCS) $(TEST_SRCS)
+    $(CONSOLE_SRC)
 
 SENTINELS := \
     "mem_iso: start" \
     "mem_iso: scenario 1 (anon mmap) PASS" \
     "mem_iso: scenario 2 (grant read) PASS" \
     "mem_iso: scenario 3 (MPU fault) P" \
+    "mem_iso: scenario 4 (kernel exec fault) P" \
+    "mem_iso: scenario 5 (kernel data fault) P" \
     "MEMORY ISOLATION TEST: PASS"
 
 QEMU_TIMEOUT := 90
@@ -81,8 +67,8 @@ gen_config:
 
 all: gen_config $(TARGET)
 
-$(TARGET): $(SRCS) ../boot/boot_test.ld
-	$(CC) $(CFLAGS) $(SRCS) $(LDFLAGS) $(LIBS) -o $@
+$(TARGET): $(INTEG_KERNEL_LIB) $(TEST_SRCS) ../boot/boot_test.ld
+	$(CC) $(CFLAGS) $(LDFLAGS) -Wl,--whole-archive $(INTEG_KERNEL_LIB) -Wl,--no-whole-archive $(TEST_SRCS) $(LIBS) -o $@
 	tricore-elf-size $@
 
 run: $(TARGET)

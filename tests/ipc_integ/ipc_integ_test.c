@@ -34,7 +34,6 @@
 
 #include <ulmk/microkernel.h>
 #include "../test_support.h"
-#include <kernel/include/ulmk_printk.h>
 
 
 /* =========================================================================

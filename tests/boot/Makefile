@@ -1,9 +1,12 @@
 CC      := tricore-elf-gcc
+AR      := tricore-elf-ar
 QEMU    := qemu-system-tricore
 MACHINE := KIT_AURIX_TC397B_TRB
 ROOT    := ../..
 TARGET  := boot_test.elf
 GEN_INC := /tmp/gen
+
+include ../integ_kernel.mk
 
 CONSOLE_SRC := $(ROOT)/boards/qemu_tc3xx/qemu_console.c
 
@@ -23,7 +26,9 @@ CFLAGS := \
     -DULMK_ARCH_QEMU_VIRT_CONSOLE=1 \
     -DULMK_ARCH_SRC_STM0_SR0=0xF0038300u \
     -DULMK_ARCH_SRC_SRE_BIT=10u \
-    -DULMK_ARCH_IDLE_IS_WAIT=0
+    -DULMK_ARCH_IDLE_IS_WAIT=0 \
+    -DULMK_ARCH_MPU_NUM_DPR=4 \
+    -DULMK_TEST_BUILD=1
 
 LDFLAGS := \
     -T boot_test.ld \
@@ -34,30 +39,10 @@ LDFLAGS := \
 
 LIBS := -lc -lgcc
 
-KERNEL_SRCS := \
-    $(ROOT)/arch/tricore/startup.S \
-    $(ROOT)/arch/tricore/arch.c \
-    $(ROOT)/arch/tricore/ctx_switch.S \
-    $(ROOT)/arch/tricore/vectors.S \
-    $(ROOT)/kernel/kernel_main.c \
-    $(ROOT)/kernel/printk/ulmk_printk.c \
-    $(ROOT)/kernel/sched/sched.c \
-    $(ROOT)/kernel/sched/fifo_rt.c \
-    $(ROOT)/kernel/sched/bitmap_rt.c \
-    $(ROOT)/kernel/irq/irq.c \
-    $(ROOT)/kernel/mem/mem.c \
-    $(ROOT)/kernel/thread/thread.c \
-    $(ROOT)/kernel/ipc/ep.c \
-    $(ROOT)/kernel/notif/notif.c \
-    $(ROOT)/kernel/syscall/syscall_router.c \
-    $(ROOT)/kernel/mem/tlsf.c \
-    $(ROOT)/stub/board_init_stub.c
-
 TEST_SRCS := \
+    ../test_printk.c \
     boot_root_thread.c \
     $(CONSOLE_SRC)
-
-SRCS := $(KERNEL_SRCS) $(TEST_SRCS)
 
 SENTINEL_BSS  := boot_test: bss zero check — OK
 SENTINEL_BOOT := BOOT OK
@@ -73,8 +58,8 @@ gen_config:
 
 all: gen_config $(TARGET)
 
-$(TARGET): $(SRCS) boot_test.ld
-	$(CC) $(CFLAGS) $(SRCS) $(LDFLAGS) $(LIBS) -o $@
+$(TARGET): $(INTEG_KERNEL_LIB) $(TEST_SRCS) boot_test.ld
+	$(CC) $(CFLAGS) $(LDFLAGS) -Wl,--whole-archive $(INTEG_KERNEL_LIB) -Wl,--no-whole-archive $(TEST_SRCS) $(LIBS) -o $@
 	tricore-elf-size $@
 
 run: $(TARGET)
@@ -101,3 +86,4 @@ run: $(TARGET)
 
 clean:
 	rm -f $(TARGET) /tmp/boot_test.log
+	$(MAKE) integ_kernel_clean

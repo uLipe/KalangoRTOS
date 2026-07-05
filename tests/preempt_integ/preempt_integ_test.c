@@ -12,7 +12,6 @@
 #include "../test_support.h"
 #include <stddef.h>
 #include <ulmk/microkernel.h>
-#include <kernel/include/ulmk_printk.h>
 
 static volatile int g_preempt_seen;
 static volatile int g_stop;

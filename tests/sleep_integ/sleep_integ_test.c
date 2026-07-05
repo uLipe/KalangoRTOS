@@ -11,7 +11,6 @@
 #include "../test_support.h"
 #include <stddef.h>
 #include <ulmk/microkernel.h>
-#include <kernel/include/ulmk_printk.h>
 
 #define SLEEP_COUNT	3u
 #define SLEEP_US	10000u
@@ -22,14 +21,12 @@ static volatile uint32_t g_done;
 static void sleeper(void *arg)
 {
 	unsigned i;
-	char     tag = *(char *)arg;
-
-	(void)arg;
+	const char *tag = (const char *)arg;
 
 	for (i = 0; i < SLEEP_COUNT; i++)
 		board_timer_sleep_us(SLEEP_US);
 
-	ulmk_printk("sleep_integ: thread %c done\n", tag);
+	ulmk_printk("sleep_integ: thread %s done\n", tag);
 	g_done++;
 	ulmk_thread_exit();
 }
@@ -48,9 +45,6 @@ static void supervisor(void *arg)
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
 	ulmk_thread_attr_t attr = {0};
-	static char        tag_a = 'A';
-	static char        tag_b = 'B';
-	static char        tag_c = 'C';
 
 	(void)info;
 
@@ -65,15 +59,15 @@ void ulmk_root_thread(const ulmk_boot_info_t *info)
 
 	attr.name  = "A";
 	attr.entry = sleeper;
-	attr.arg   = &tag_a;
+	attr.arg   = (void *)"A";
 	ulmk_thread_create(&attr);
 
 	attr.name  = "B";
-	attr.arg   = &tag_b;
+	attr.arg   = (void *)"B";
 	ulmk_thread_create(&attr);
 
 	attr.name  = "C";
-	attr.arg   = &tag_c;
+	attr.arg   = (void *)"C";
 	ulmk_thread_create(&attr);
 
 	attr.name       = "sup";

@@ -12,7 +12,6 @@
 
 #include <ulmk/microkernel.h>
 #include "../test_support.h"
-#include <kernel/include/ulmk_printk.h>
 
 
 void ulmk_root_thread(const ulmk_boot_info_t *info)

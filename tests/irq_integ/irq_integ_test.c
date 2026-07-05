@@ -22,14 +22,11 @@
 #include <stdint.h>
 #include "../test_support.h"
 #include <ulmk/microkernel.h>
-#include <kernel/include/ulmk_printk.h>
-#include <ulmk_arch.h>
 
-/* =========================================================================
- * Shared state
- * ========================================================================= */
-
+/* SRPN 10 → QEMU IR slot 0xC2 (0xF0038308), distinct from STM0 SR0. */
 #define UL_IRQ_TEST_SRPN	10u
+#define UL_IRQ_TEST_SRC	0xF0038308u
+#define SRC_SETR_BIT		(1u << 26)
 #define IRQ_BIT			(1u << 0)
 #define BIT_SRV_RDY		(1u << 1)	/* server → trigger: step ready */
 #define BIT_TRG_ACK		(1u << 2)	/* trigger → server: step done  */
@@ -58,7 +55,8 @@ static void irq_server_entry(void *arg)
 	ulmk_printk("irq_integ: server start, binding SRPN=%u\n",
 		  (unsigned)UL_IRQ_TEST_SRPN);
 
-	ret = ulmk_irq_bind(UL_IRQ_TEST_SRPN, g_irq_notif, 0u);
+	ret = ulmk_irq_bind_hw(UL_IRQ_TEST_SRPN, g_irq_notif, 0u,
+			       (uintptr_t)UL_IRQ_TEST_SRC);
 	if (ret < 0) {
 		ulmk_printk("irq_integ: bind FAIL ret=%d\n", ret);
 		g_test_result = 0;
@@ -138,6 +136,13 @@ static void irq_server_entry(void *arg)
 
 static uint8_t trigger_stack[1024] __attribute__((aligned(8)));
 
+static void irq_sw_trigger(void)
+{
+	volatile uint32_t *src = (volatile uint32_t *)(uintptr_t)UL_IRQ_TEST_SRC;
+
+	*src |= SRC_SETR_BIT;
+}
+
 static void trigger_entry(void *arg)
 {
 	uint32_t bits;
@@ -160,7 +165,7 @@ static void trigger_entry(void *arg)
 
 	/* --- Phase 1 ---------------------------------------------------- */
 	for (i = 0; i < ITER_COUNT; i++) {
-		ulmk_arch_irq_src_trigger(UL_IRQ_TEST_SRPN);
+		irq_sw_trigger();
 		/*
 		 * ISR fires → ulmk_kern_irq_check_preempt() → server preempts
 		 * trigger immediately on ISR exit.  Server processes, then
@@ -171,7 +176,7 @@ static void trigger_entry(void *arg)
 	}
 
 	/* --- Phase 2: server disabled the IRQ, fire once and ack ---------- */
-	ulmk_arch_irq_src_trigger(UL_IRQ_TEST_SRPN);
+	irq_sw_trigger();
 	ulmk_notif_signal(g_sync_notif, BIT_TRG_ACK);
 
 	/* Wait for server to re-enable before firing phase 3. */
@@ -179,7 +184,7 @@ static void trigger_entry(void *arg)
 	ulmk_notif_wait(g_sync_notif, BIT_SRV_RDY, &bits);
 
 	/* --- Phase 3: fire after re-enable -------------------------------- */
-	ulmk_arch_irq_src_trigger(UL_IRQ_TEST_SRPN);
+	irq_sw_trigger();
 
 	ulmk_thread_exit();
 }

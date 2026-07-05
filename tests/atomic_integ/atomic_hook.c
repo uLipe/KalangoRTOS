@@ -11,12 +11,11 @@
 
 #include <stdint.h>
 #include <ulmk_arch.h>
-#include <kernel/include/ulmk_printk.h>
 #include "../test_support.h"
 
 #define PHASE1_ITERS	10000u
 
-void ulmk_kernel_pre_root_hook(void)
+void atomic_integ_phase1(void)
 {
 	volatile uint32_t counter;
 	uint32_t old;

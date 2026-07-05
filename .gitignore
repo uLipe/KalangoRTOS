@@ -11,6 +11,10 @@
 # Unit test binaries (host-compiled)
 tests/*_unit/*_unit_test
 
+# Integration test kernel static library (built per test dir)
+tests/**/integ_kernel/
+tests/**/libtest_kernel.a
+
 # TSIM simulation artefacts
 Sim.out
 Sim64.out
