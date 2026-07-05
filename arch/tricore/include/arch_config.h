@@ -238,25 +238,19 @@
 #define ULMK_ARCH_SYSCON_PROTEN	(1u << 1)
 
 /*
- * Static DPR/CPR slot assignments (coarse layout, fits 4 DPR boards):
+ * Static DPR/CPR slot assignments (QEMU 4-DPR coarse layout):
  *
  *   Slot 0: kernel bypass — entire 4 GiB (PRS 0 R+W only)
- *   Slot 1: kernel RAM — kernel_data..kernel_ram_end (PRS 0 only)
- *   Slot 2: user RAM — user_ram_start..user_pool_end (PRS 1 R+W)
- *   Slot 3: upper bus — flash read + virt console + peripherals (PRS 1)
- *   Slots ULMK_ARCH_MPU_USER_DPR_BASE..: per-thread dynamic (mpu_switch)
- *
- *   CPR 0: kernel executable (.startup + vectors + .kernel_text), PRS 0 X
- *   CPR 1: userspace executable (.comp_* + runtime), PRS 1 X
- *
- * PSW.PRS [13:12]: 0 = kernel/supervisor, 1 = userspace threads
+ *   Slot 1: SRAM — kernel_data..user_pool_end (PRS 0+1 R+W)
+ *   Slot 2: flash read (PRS 0+1 R)
+ *   Slot 3: virt console + peripherals from 0xBF000000 (PRS 0+1 R+W)
+ *   CPR 0: entire flash execute (PRS 0+1)
  */
 #define ULMK_ARCH_MPU_KERNEL_DPR	0
-#define ULMK_ARCH_MPU_KRAM_DPR	1
-#define ULMK_ARCH_MPU_URAM_DPR	2
-#define ULMK_ARCH_MPU_MMIO_DPR	3
-#define ULMK_ARCH_MPU_CPR_KERNEL	0
-#define ULMK_ARCH_MPU_CPR_USER	1
+#define ULMK_ARCH_MPU_SRAM_DPR	1
+#define ULMK_ARCH_MPU_FLASH_DPR	2
+#define ULMK_ARCH_MPU_VIRT_DPR	3
+#define ULMK_ARCH_MPU_CPR_ALL	0
 
 /* PSW.PRS value for non-kernel threads */
 #define ULMK_ARCH_PRS_USER	1u
