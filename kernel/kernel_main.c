@@ -68,6 +68,7 @@ void ulmk_kern_trap_recoverable(void)
 			  (unsigned)cur->tid);
 		cur->state = UL_THREAD_STATE_DEAD;
 		ulmk_sched_dequeue(cur);
+		ulmk_sched_set_dead_for_cleanup(cur);
 		ulmk_sched_schedule();
 	}
 
@@ -95,7 +96,6 @@ static void idle_thread_entry(void *arg)
 
 static void root_thread_entry(void *arg)
 {
-	ulmk_printk("ulmk: root thread\n");
 	ulmk_root_thread((const ulmk_boot_info_t *)arg);
 	ulmk_thread_exit();
 }
@@ -110,7 +110,7 @@ static uint8_t     idle_stack_g[256]
 
 static ulmk_thread_t root_thread_g   UL_KERNEL_BSS;
 static uint8_t     root_stack_g[4096]
-	__attribute__((aligned(8))) UL_KERNEL_BSS;
+	__attribute__((aligned(8), section(".user_bss")));
 
 /* =========================================================================
  * Kernel main — does not return
@@ -157,9 +157,16 @@ void ulmk_kern_main(const ulmk_boot_info_t *info)
 	attr.arg        = (void *)info;
 	attr.priority   = 0u;
 	attr.stack_size = sizeof(root_stack_g);
-	attr.privilege  = ULMK_PRIV_KERNEL;
+	attr.privilege  = ULMK_PRIV_DRIVER;
 	ulmk_thread_init(&root_thread_g, &attr, root_stack_g);
+	root_thread_g.cap_flags = ULMK_CAP_ALL;
 	ulmk_sched_enqueue(&root_thread_g);
+
+#ifdef ULMK_CSA_CTX_EARLY_TEST
+	extern void csa_ctx_run_early(void);
+
+	csa_ctx_run_early();
+#endif
 
 #ifdef UL_KERNEL_PRE_ROOT_HOOK
 	{

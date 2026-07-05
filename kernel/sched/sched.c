@@ -34,6 +34,13 @@ static ulmk_thread_t            * UL_KERNEL_BSS sched_current;
  */
 static ulmk_thread_t * UL_KERNEL_BSS g_sched_dead;
 
+static uint8_t sched_thread_prs(const ulmk_thread_t *t)
+{
+	if (t && t->privilege == ULMK_PRIV_KERNEL)
+		return 0u;
+	return 1u;
+}
+
 /*
  * Preemption handoff pointers: written by ulmk_sched_check_preempt() and consumed by ISR assembly stubs in the arch
  * layer.  The stub reads them after the C handler returns, before restoring
@@ -102,7 +109,8 @@ void ulmk_sched_start(void)
 
 	sched_current          = first;
 	first->state           = UL_THREAD_STATE_RUNNING;
-	ulmk_arch_mpu_switch(first->regions, first->region_count, 1u);
+	ulmk_arch_mpu_switch(first->regions, first->region_count,
+			     sched_thread_prs(first));
 	ulmk_arch_ctx_switch(&startup_ctx, &first->ctx);
 }
 
@@ -155,7 +163,8 @@ void ulmk_sched_schedule(void)
 	sched_current          = next;
 	next->state            = UL_THREAD_STATE_RUNNING;
 	to = &next->ctx;
-	ulmk_arch_mpu_switch(next->regions, next->region_count, 1u);
+	ulmk_arch_mpu_switch(next->regions, next->region_count,
+			     sched_thread_prs(next));
 
 	if (from == to) {
 		ulmk_arch_cpu_irq_enable();
@@ -232,7 +241,8 @@ void ulmk_sched_check_preempt(void)
 
 	sched_current         = next;
 	next->state           = UL_THREAD_STATE_RUNNING;
-	ulmk_arch_mpu_switch(next->regions, next->region_count, 1u);
+	ulmk_arch_mpu_switch(next->regions, next->region_count,
+			     sched_thread_prs(next));
 	g_preempt_old_ctx = &cur->ctx;
 	g_preempt_new_ctx = &next->ctx;
 }

@@ -111,7 +111,8 @@ uint32_t ulmk_kern_mem_map(uint32_t hint, uint32_t size,
 			return (uint32_t)(int32_t)rc;
 
 		/* Immediately apply the new region to PRS 1 DPRs. */
-		ulmk_arch_mpu_switch(cur->regions, cur->region_count, 1u);
+		ulmk_arch_mpu_switch(cur->regions, cur->region_count,
+				     cur->privilege == ULMK_PRIV_KERNEL ? 0u : 1u);
 		return (uint32_t)base;
 	}
 
@@ -128,7 +129,8 @@ uint32_t ulmk_kern_mem_map(uint32_t hint, uint32_t size,
 		}
 
 		/* Immediately apply the new region to PRS 1 DPRs. */
-		ulmk_arch_mpu_switch(cur->regions, cur->region_count, 1u);
+		ulmk_arch_mpu_switch(cur->regions, cur->region_count,
+				     cur->privilege == ULMK_PRIV_KERNEL ? 0u : 1u);
 		return (uint32_t)base;
 	}
 
@@ -222,6 +224,7 @@ uint32_t ulmk_kern_heap_extend(uint32_t size)
 		return (uint32_t)(int32_t)rc;
 	}
 
-	ulmk_arch_mpu_switch(cur->regions, cur->region_count, 1u);
+	ulmk_arch_mpu_switch(cur->regions, cur->region_count,
+			     cur->privilege == ULMK_PRIV_KERNEL ? 0u : 1u);
 	return (uint32_t)ULMK_OK;
 }

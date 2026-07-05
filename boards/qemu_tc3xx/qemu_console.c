@@ -24,24 +24,18 @@
 #include <ulmk/microkernel.h>
 #include "console.h"
 
-/*
- * This is the ONLY board file permitted to include ulmk_printk.h — it provides
- * the kernel hook ulmk_printk_char_out() and is compiled as part of the kernel
- * image, not as isolated userspace code.
- */
+#ifndef ULMK_TEST_BUILD
 #include <kernel/include/ulmk_printk.h>
 
 #define VIRT_BASE        0xBF000000UL
-#define VIRT_REGION_SIZE 0x40U
 #define VIRT_PUTCHAR_OFF 0x20U
 #define VIRT_EXIT_OFF    0x28U
-
-/* ── Kernel hook ──────────────────────────────────────────────────────────── */
 
 void ulmk_printk_char_out(char c)
 {
 	volatile uint32_t *reg =
 		(volatile uint32_t *)(VIRT_BASE + VIRT_PUTCHAR_OFF);
+
 	*reg = (uint32_t)(uint8_t)c;
 }
 
@@ -49,12 +43,16 @@ __attribute__((noreturn)) void ulmk_sim_exit(int code)
 {
 	volatile uint32_t *reg =
 		(volatile uint32_t *)(VIRT_BASE + VIRT_EXIT_OFF);
+
 	*reg = (uint32_t)code;
 	for (;;)
 		;
 }
+#endif /* !ULMK_TEST_BUILD */
 
-/* ── Userspace console ────────────────────────────────────────────────────── */
+#define VIRT_BASE        0xBF000000UL
+#define VIRT_REGION_SIZE 0x40U
+#define VIRT_PUTCHAR_OFF 0x20U
 
 static volatile uint32_t *s_putchar_reg;
 
