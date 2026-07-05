@@ -25,6 +25,7 @@ set(ULMK_BOARD_CFLAGS
     -DULMK_ARCH_SRC_SRE_BIT=10u
     -DULMK_ARCH_IDLE_IS_WAIT=0
     -DULMK_ARCH_MPU_NUM_DPR=4
+    -DULMK_ARCH_MPU_NUM_CPR=4
 )
 
 # CMake-specific: propagate mcpu to C/ASM compilers and linker.

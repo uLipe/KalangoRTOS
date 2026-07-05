@@ -402,11 +402,14 @@ static void mpu_write_enables(uint8_t prs, uint32_t dpre, uint32_t dpwe,
 /*
  * Static DPR/CPR layout (configured once at boot):
  *
- *   DPR 0: entire 4 GiB (PRS 0 R+W)
- *   DPR 1: SRAM kernel_data..user_pool_end (PRS 0+1 R+W)
- *   DPR 2: flash read (PRS 0+1 R)
- *   DPR 3: virt console + peripherals 0xBF000000.. (PRS 0+1 R+W)
- *   CPR 0: entire flash execute (PRS 0+1)
+ *   DPR 0: entire 4 GiB (PRS 0 R+W bypass)
+ *   DPR 1: kernel static RAM (PRS 0 only)
+ *   DPR 2: userspace RAM (PRS 1 R+W)
+ *   DPR 3: flash read + MMIO (PRS 1 R+W)
+ *   DPR ULMK_ARCH_MPU_USER_DPR_BASE+: per-thread dynamic (mpu_switch)
+ *
+ *   CPR 0: kernel executable flash (PRS 0 X only)
+ *   CPR 1: userspace executable flash (PRS 1 X only)
  */
 static uint32_t mpu_range_upper(uintptr_t end)
 {
@@ -417,8 +420,24 @@ void ulmk_arch_mpu_init(void)
 {
 	uint32_t syscon;
 	uint8_t  i;
+	uintptr_t kexec_lo;
+	uintptr_t kexec_hi;
+	uintptr_t utext_lo;
+	uintptr_t utext_hi;
+	uintptr_t kram_lo;
+	uintptr_t kram_hi;
+	uintptr_t uram_lo;
+	uintptr_t uram_hi;
+	uint32_t  prs1_cpre;
+	uint32_t  prs1_cpxe;
 
+	extern uint8_t _ulmk_kernel_exec_start[];
+	extern uint8_t _ulmk_kernel_exec_end[];
+	extern uint8_t _ulmk_user_text_start[];
+	extern uint8_t _ulmk_user_text_end[];
 	extern uint8_t _ulmk_kernel_data_start[];
+	extern uint8_t _ulmk_kernel_ram_end[];
+	extern uint8_t _ulmk_user_ram_start[];
 	extern uint8_t _ulmk_user_pool_end[];
 
 	/* Disable protection during reconfiguration */
@@ -436,43 +455,76 @@ void ulmk_arch_mpu_init(void)
 	for (i = 0u; i < ULMK_ARCH_NUM_PRS; i++)
 		mpu_write_enables(i, 0u, 0u, 0u, 0u);
 
+	kexec_lo = (uintptr_t)_ulmk_kernel_exec_start;
+	kexec_hi = (uintptr_t)_ulmk_kernel_exec_end;
+	utext_lo = (uintptr_t)_ulmk_user_text_start;
+	utext_hi = (uintptr_t)_ulmk_user_text_end;
+	kram_lo  = (uintptr_t)_ulmk_kernel_data_start;
+	kram_hi  = (uintptr_t)_ulmk_kernel_ram_end;
+	uram_lo  = (uintptr_t)_ulmk_user_ram_start;
+	uram_hi  = (uintptr_t)_ulmk_user_pool_end;
+
 	/* DPR 0: entire 4 GiB — kernel full R+W via PRS 0 */
 	mpu_write_dpr(ULMK_ARCH_MPU_KERNEL_DPR, 0x00000000u, 0xFFFFFFF8u);
 
-	/* DPR 1: unified SRAM — kernel and userspace share one slot on QEMU */
-	mpu_write_dpr(ULMK_ARCH_MPU_SRAM_DPR,
-		      (uint32_t)(uintptr_t)_ulmk_kernel_data_start,
-		      mpu_range_upper((uintptr_t)_ulmk_user_pool_end));
+	/* DPR 1: kernel-owned static RAM — not exposed to PRS 1 */
+	if (kram_hi > kram_lo)
+		mpu_write_dpr(ULMK_ARCH_MPU_KRAM_DPR, (uint32_t)kram_lo,
+			      mpu_range_upper(kram_hi));
 
-	/* DPR 2: flash read-only for .rodata */
-	mpu_write_dpr(ULMK_ARCH_MPU_FLASH_DPR,
-		      ULMK_ARCH_FLASH_BASE,
-		      ULMK_ARCH_FLASH_BASE + ULMK_ARCH_FLASH_SIZE - 8u);
+	/* DPR 2: userspace RAM (domains + heap pool) */
+	if (uram_hi > uram_lo)
+		mpu_write_dpr(ULMK_ARCH_MPU_URAM_DPR, (uint32_t)uram_lo,
+			      mpu_range_upper(uram_hi));
 
-	/* DPR 3: virt console + full peripheral window */
-	mpu_write_dpr(ULMK_ARCH_MPU_VIRT_DPR, 0xBF000000u, 0xFFFFFFF8u);
+	/*
+	 * DPR 3: flash read + virt console + peripherals in one coarse slot.
+	 * Execution is gated separately by CPR 1; this covers .rodata loads
+	 * and MMIO accesses for driver threads.
+	 */
+	mpu_write_dpr(ULMK_ARCH_MPU_MMIO_DPR,
+		      ULMK_ARCH_FLASH_BASE, 0xFFFFFFF8u);
 
-	/* CPR 0: entire flash — all threads execute from one range */
-	mpu_write_cpr(ULMK_ARCH_MPU_CPR_ALL,
-		      ULMK_ARCH_FLASH_BASE,
-		      ULMK_ARCH_FLASH_BASE + ULMK_ARCH_FLASH_SIZE - 8u);
+	/* CPR 0: kernel code only */
+	if (kexec_hi > kexec_lo)
+		mpu_write_cpr(ULMK_ARCH_MPU_CPR_KERNEL, (uint32_t)kexec_lo,
+			      mpu_range_upper(kexec_hi));
+
+	/* CPR 1: userspace code */
+	if (utext_hi > utext_lo)
+		mpu_write_cpr(ULMK_ARCH_MPU_CPR_USER, (uint32_t)utext_lo,
+			      mpu_range_upper(utext_hi));
 
 	__asm__ volatile("isync" ::: "memory");
 
+	prs1_cpre = 0u;
+	prs1_cpxe = 0u;
+	if (utext_hi > utext_lo) {
+		prs1_cpre = (1u << ULMK_ARCH_MPU_CPR_USER);
+		prs1_cpxe = (1u << ULMK_ARCH_MPU_CPR_USER);
+	}
+
+	/*
+	 * PRS 0 (kernel): all static DPR slots + kernel CPR execute.
+	 * DPR 0 already covers the full address space.
+	 */
 	mpu_write_enables(0u,
 			  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
 			  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
-			  (1u << ULMK_ARCH_MPU_CPR_ALL),
-			  (1u << ULMK_ARCH_MPU_CPR_ALL));
+			  (1u << ULMK_ARCH_MPU_CPR_KERNEL),
+			  (1u << ULMK_ARCH_MPU_CPR_KERNEL));
 
+	/*
+	 * PRS 1 (userspace): user RAM + MMIO/flash read; execute only user CPR.
+	 * DPR 0 (kernel bypass) and DPR 1 (kernel RAM) are intentionally omitted.
+	 */
 	mpu_write_enables(1u,
-			  (1u << ULMK_ARCH_MPU_SRAM_DPR) |
-			  (1u << ULMK_ARCH_MPU_FLASH_DPR) |
-			  (1u << ULMK_ARCH_MPU_VIRT_DPR),
-			  (1u << ULMK_ARCH_MPU_SRAM_DPR) |
-			  (1u << ULMK_ARCH_MPU_VIRT_DPR),
-			  (1u << ULMK_ARCH_MPU_CPR_ALL),
-			  (1u << ULMK_ARCH_MPU_CPR_ALL));
+			  (1u << ULMK_ARCH_MPU_URAM_DPR) |
+			  (1u << ULMK_ARCH_MPU_MMIO_DPR),
+			  (1u << ULMK_ARCH_MPU_URAM_DPR) |
+			  (1u << ULMK_ARCH_MPU_MMIO_DPR),
+			  prs1_cpre,
+			  prs1_cpxe);
 
 	/* PRS 2, 3: remain zeroed (unused) */
 }
@@ -496,8 +548,9 @@ void ulmk_arch_mpu_disable(void)
 }
 
 /*
- * Configure user DPR slots (6–17) for the given PRS from @regions.
- * Also updates the PRS enable bits, preserving the static flash-read bit (DPR 2).
+ * Configure dynamic DPR slots for the given PRS from @regions.
+ * Preserves the static minimum-isolation enables programmed at boot.
+ * Regions that do not fit (QEMU: USER_DPR_BASE == NUM_DPR) are ignored.
  */
 static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 				uint8_t count)
@@ -508,38 +561,64 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 	uint32_t cpxe;
 	uint8_t  d_slot;
 	uint8_t  i;
+	uintptr_t utext_lo;
+	uintptr_t utext_hi;
 
-	dpre = (1u << ULMK_ARCH_MPU_SRAM_DPR) |
-	       (1u << ULMK_ARCH_MPU_FLASH_DPR) |
-	       (1u << ULMK_ARCH_MPU_VIRT_DPR);
-	dpwe = (1u << ULMK_ARCH_MPU_SRAM_DPR) |
-	       (1u << ULMK_ARCH_MPU_VIRT_DPR);
-	cpre = (1u << ULMK_ARCH_MPU_CPR_ALL);
-	cpxe = (1u << ULMK_ARCH_MPU_CPR_ALL);
+	extern uint8_t _ulmk_user_text_start[];
+	extern uint8_t _ulmk_user_text_end[];
 
-	/* Clear dynamic DPR slots before reprogramming */
+	utext_lo = (uintptr_t)_ulmk_user_text_start;
+	utext_hi = (uintptr_t)_ulmk_user_text_end;
+
+	if (prs == 0u) {
+		mpu_write_enables(0u,
+				  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
+				  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
+				  (1u << ULMK_ARCH_MPU_CPR_KERNEL),
+				  (1u << ULMK_ARCH_MPU_CPR_KERNEL));
+		return;
+	}
+
+	/*
+	 * Static bits for PRS 1 (userspace threads):
+	 *   DPR 2 — user RAM R+W
+	 *   DPR 3 — flash read + MMIO R+W
+	 *   CPR 1 — userspace code execute (when non-empty at boot)
+	 *
+	 * DPR 0 (kernel bypass) and DPR 1 (kernel RAM) are omitted for PRS 1.
+	 */
+	dpre = (1u << ULMK_ARCH_MPU_URAM_DPR) |
+	       (1u << ULMK_ARCH_MPU_MMIO_DPR);
+	dpwe = (1u << ULMK_ARCH_MPU_URAM_DPR) |
+	       (1u << ULMK_ARCH_MPU_MMIO_DPR);
+	cpre = 0u;
+	cpxe = 0u;
+	if (utext_hi > utext_lo) {
+		cpre = (1u << ULMK_ARCH_MPU_CPR_USER);
+		cpxe = (1u << ULMK_ARCH_MPU_CPR_USER);
+	}
+
 	for (i = ULMK_ARCH_MPU_USER_DPR_BASE; i < ULMK_ARCH_MPU_NUM_DPR; i++)
 		mpu_write_dpr(i, 0u, 0u);
 
 	d_slot = ULMK_ARCH_MPU_USER_DPR_BASE;
 
-	if (!regions || count == 0u)
-		goto write_enables;
+	if (regions && count > 0u) {
+		for (i = 0u; i < count && d_slot < ULMK_ARCH_MPU_NUM_DPR; i++) {
+			mpu_write_dpr(d_slot,
+				      (uint32_t)regions[i].base,
+				      (uint32_t)(regions[i].base +
+						 regions[i].size - 8u));
 
-	for (i = 0u; i < count && d_slot < ULMK_ARCH_MPU_NUM_DPR; i++) {
-		mpu_write_dpr(d_slot,
-			      (uint32_t)regions[i].base,
-			      (uint32_t)(regions[i].base + regions[i].size - 8u));
+			if (regions[i].perms & ULMK_PERM_READ)
+				dpre |= (1u << d_slot);
+			if (regions[i].perms & ULMK_PERM_WRITE)
+				dpwe |= (1u << d_slot);
 
-		if (regions[i].perms & ULMK_PERM_READ)
-			dpre |= (1u << d_slot);
-		if (regions[i].perms & ULMK_PERM_WRITE)
-			dpwe |= (1u << d_slot);
-
-		d_slot++;
+			d_slot++;
+		}
 	}
 
-write_enables:
 	mpu_write_enables(prs, dpre, dpwe, cpre, cpxe);
 }
 
@@ -574,7 +653,7 @@ bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
 
 		/* Read DPR_L and DPR_U by using the MFCR switch */
 		/* We only check user slots (6-17); static slots are kernel-only */
-		if (i < ULMK_ARCH_MPU_USER_DPR_BASE && i != ULMK_ARCH_MPU_VIRT_DPR)
+		if (i < ULMK_ARCH_MPU_USER_DPR_BASE && i != ULMK_ARCH_MPU_MMIO_DPR)
 			continue;
 
 		__asm__ volatile("" ::: "memory");

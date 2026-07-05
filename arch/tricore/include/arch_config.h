@@ -21,7 +21,8 @@
  *   -DULMK_ARCH_RAM_BASE=0x70000000u       (CPU0 DSPR)
  *   -DULMK_ARCH_IDLE_IS_WAIT=0             (NOP idle in QEMU)
  *   -DULMK_ARCH_QEMU_VIRT_CONSOLE=1        (enable VIRT device DPR range)
- *   -DULMK_ARCH_MPU_NUM_DPR=4              (QEMU: only 4 DPR slots work)
+ *   -DULMK_ARCH_MPU_NUM_DPR=4              (QEMU: 4 DPR via 0xC000+n*8)
+ *   -DULMK_ARCH_MPU_NUM_CPR=4              (QEMU: 4 CPR via 0xD000+n*8)
  */
 
 #ifndef ULMK_ARCH_TRICORE_CONFIG_H
@@ -37,8 +38,14 @@
 
 /*
  * Effective DPR/CPR slot counts for this board build.
- * Override via board.cmake (-DULMK_ARCH_MPU_NUM_DPR=N).  QEMU implements 4
- * DPR slots; real TC2xx silicon exposes up to 18.
+ * Override via board.cmake (-DULMK_ARCH_MPU_NUM_DPR=N /
+ * -DULMK_ARCH_MPU_NUM_CPR=N).
+ *
+ * QEMU Linumiz: mtcr uses TC2xx sequential CSFR addresses (DPRn @ 0xC000+n*8,
+ * CPRn @ 0xD000+n*8).  Only n=0..3 map to implemented CSFRs (DPR0_0..3,
+ * CPR0_0..3).  tricore_mpu_check() walks 16 logical ranges internally.
+ *
+ * Real TC2xx silicon exposes up to 18 DPR and 10 CPR at the same addresses.
  */
 #ifndef ULMK_ARCH_MPU_NUM_DPR
 #define ULMK_ARCH_MPU_NUM_DPR	ULMK_ARCH_NUM_DPR
@@ -48,6 +55,12 @@
 #define ULMK_ARCH_MPU_NUM_CPR	ULMK_ARCH_NUM_CPR
 #endif
 
+/*
+ * First DPR slot programmed dynamically by mpu_switch().
+ * On 4-DPR boards the static minimum-isolation layout consumes all slots;
+ * extra regions from mmap are tracked in the kernel but ignored by arch.
+ * On 18-DPR silicon, slots 6–17 are dynamic.
+ */
 #if ULMK_ARCH_MPU_NUM_DPR <= 4
 #define ULMK_ARCH_MPU_USER_DPR_BASE	ULMK_ARCH_MPU_NUM_DPR
 #else
@@ -238,19 +251,23 @@
 #define ULMK_ARCH_SYSCON_PROTEN	(1u << 1)
 
 /*
- * Static DPR/CPR slot assignments (QEMU 4-DPR coarse layout):
+ * Static DPR/CPR slot assignments (minimum isolation, fits 4+4 boards):
  *
- *   Slot 0: kernel bypass — entire 4 GiB (PRS 0 R+W only)
- *   Slot 1: SRAM — kernel_data..user_pool_end (PRS 0+1 R+W)
- *   Slot 2: flash read (PRS 0+1 R)
- *   Slot 3: virt console + peripherals from 0xBF000000 (PRS 0+1 R+W)
- *   CPR 0: entire flash execute (PRS 0+1)
+ *   DPR 0: kernel bypass — entire 4 GiB (PRS 0 R+W only)
+ *   DPR 1: kernel RAM — kernel_data..kernel_ram_end (PRS 0 only)
+ *   DPR 2: user RAM — user_ram_start..user_pool_end (PRS 1 R+W)
+ *   DPR 3: flash read + MMIO — flash_base..4 GiB (PRS 1 R+W)
+ *   DPR ULMK_ARCH_MPU_USER_DPR_BASE+: per-thread dynamic (silicon only)
+ *
+ *   CPR 0: kernel executable — _ulmk_kernel_exec_* (PRS 0 X only)
+ *   CPR 1: user executable — _ulmk_user_text_* (PRS 1 X only)
  */
 #define ULMK_ARCH_MPU_KERNEL_DPR	0
-#define ULMK_ARCH_MPU_SRAM_DPR	1
-#define ULMK_ARCH_MPU_FLASH_DPR	2
-#define ULMK_ARCH_MPU_VIRT_DPR	3
-#define ULMK_ARCH_MPU_CPR_ALL	0
+#define ULMK_ARCH_MPU_KRAM_DPR	1
+#define ULMK_ARCH_MPU_URAM_DPR	2
+#define ULMK_ARCH_MPU_MMIO_DPR	3
+#define ULMK_ARCH_MPU_CPR_KERNEL	0
+#define ULMK_ARCH_MPU_CPR_USER	1
 
 /* PSW.PRS value for non-kernel threads */
 #define ULMK_ARCH_PRS_USER	1u
