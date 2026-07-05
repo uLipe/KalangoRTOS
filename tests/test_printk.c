@@ -126,12 +126,3 @@ void test_printk(const char *fmt, ...)
 
 	va_end(ap);
 }
-
-__attribute__((noreturn)) void ulmk_sim_exit(int code)
-{
-	volatile uint32_t *reg = (volatile uint32_t *)(0xBF000000UL + 0x28U);
-
-	*reg = (uint32_t)code;
-	for (;;)
-		;
-}
