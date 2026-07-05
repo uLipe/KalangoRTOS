@@ -25,8 +25,10 @@
 #        [arch/tricore/linker/csa_pool.ld.in    if HAVE_CSA=1]
 #        [arch/tricore/linker/small_data.ld.in  if HAVE_SMALL_DATA=1]
 #        kernel/kernel_ram_end.ld.in
-#        [rendered snippets/domain_data.ld.in for each --domain]
 #        kernel/user_ram_start.ld.in
+#        [rendered snippets/domain_data.ld.in for each --domain]
+#        kernel/isr_stack.ld.in
+#        kernel/user_bss.ld.in
 #        kernel/user_pool.ld.in
 #      }
 
@@ -133,7 +135,10 @@ def main():
     # 4l. End of kernel static RAM
     out.append(read_fragment(os.path.join(args.kernel_dir, "kernel_ram_end.ld.in")))
 
-    # 4m. Per-domain data snippets (includes auto-registered component domains)
+    # 4m. Start of userspace static RAM (domains/stacks/pool must follow)
+    out.append(read_fragment(os.path.join(args.kernel_dir, "user_ram_start.ld.in")))
+
+    # 4n. Per-domain data snippets (includes auto-registered component domains)
     domain_snippet = os.path.join(args.snippets, "domain_data.ld.in")
     for entry in args.domain:
         parts = entry.split(":", 1)
@@ -142,16 +147,13 @@ def main():
         out.append(render_snippet(domain_snippet,
                                   {"DOMAIN_NAME": dname, "DOMAIN_REGION": dregion}))
 
-    # 4n. Userspace-accessible kernel BSS (root thread stack)
-    out.append(read_fragment(os.path.join(args.kernel_dir, "user_bss.ld.in")))
-
-    # 4o. Start of userspace static RAM
-    out.append(read_fragment(os.path.join(args.kernel_dir, "user_ram_start.ld.in")))
-
-    # 4o2. ISR stack (userspace MPU RAM — ISP before PRS elevation)
+    # 4o. ISR stack (userspace MPU RAM — ISP before PRS elevation)
     out.append(read_fragment(os.path.join(args.kernel_dir, "isr_stack.ld.in")))
 
-    # 4p. User pool (always last in KERNEL_RAM)
+    # 4p. Userspace-accessible kernel BSS (root thread stack, board IPC globals)
+    out.append(read_fragment(os.path.join(args.kernel_dir, "user_bss.ld.in")))
+
+    # 4q. User pool (always last in KERNEL_RAM)
     out.append(read_fragment(os.path.join(args.kernel_dir, "user_pool.ld.in")))
 
     out.append("\n} /* SECTIONS */\n")

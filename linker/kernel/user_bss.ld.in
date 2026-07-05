@@ -1,8 +1,10 @@
 /* linker/kernel/user_bss.ld.in
- * Userspace-accessible BSS owned by the kernel image (root thread stack).
+ * Userspace-accessible BSS owned by the kernel image (root thread stack,
+ * board service IPC globals).  Must follow _ulmk_user_ram_start.
  */
 
     .user_bss (NOLOAD) : ALIGN(8) {
         *libulmk_kernel.a:(.user_bss .user_bss.*)
+        *(.user_bss .user_bss.*)
         . = ALIGN(8);
     } > KERNEL_RAM

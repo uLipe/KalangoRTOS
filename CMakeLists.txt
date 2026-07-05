@@ -72,8 +72,11 @@ add_library(ulmk_kernel STATIC
     kernel/mem/tlsf.c
     kernel/irq/irq.c
     arch/tricore/arch.c
-    arch/tricore/ctx_switch.S
-    ${_ULMK_BOARD_SRCS})
+    arch/tricore/ctx_switch.S)
+
+if(EXISTS "${ULMK_CHIP_DIR}/qemu_printk_hook.c")
+    target_sources(ulmk_kernel PRIVATE "${ULMK_CHIP_DIR}/qemu_printk_hook.c")
+endif()
 
 target_include_directories(ulmk_kernel PUBLIC
     "${CMAKE_SOURCE_DIR}/include"
@@ -85,6 +88,9 @@ target_include_directories(ulmk_kernel PRIVATE
     "${ULMK_CHIP_DIR}")
 
 target_compile_definitions(ulmk_kernel PRIVATE ULMK_KERNEL_BUILD=1)
+
+# Keep kernel globals in .bss/.data so kernel_bss.ld.in collects them.
+target_compile_options(ulmk_kernel PRIVATE -fno-data-sections)
 
 if(DEFINED ULMK_BOARD_CFLAGS)
     target_compile_options(ulmk_kernel PRIVATE ${ULMK_BOARD_CFLAGS})
@@ -125,7 +131,19 @@ ulmk_components_finalize()
 
 add_executable(ulmk
     arch/tricore/startup.S
-    arch/tricore/vectors.S)
+    arch/tricore/vectors.S
+    ${_ULMK_BOARD_SRCS})
+
+target_include_directories(ulmk PRIVATE
+    "${CMAKE_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/arch/tricore/include"
+    "${ULMK_CHIP_DIR}")
+
+target_compile_options(ulmk PRIVATE -fno-data-sections)
+
+if(DEFINED ULMK_BOARD_CFLAGS)
+    target_compile_options(ulmk PRIVATE ${ULMK_BOARD_CFLAGS})
+endif()
 
 target_link_libraries(ulmk PRIVATE ulmk_kernel)
 

@@ -16,7 +16,7 @@ find_program(CMAKE_SIZE         "${TRICORE_TRIPLE}-size"    REQUIRED)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 # Freestanding environment: no hosted runtime assumptions.
-set(CMAKE_C_FLAGS_INIT   "-ffunction-sections -fdata-sections -ffreestanding -DULMK_KERNEL_BUILD")
+set(CMAKE_C_FLAGS_INIT   "-ffunction-sections -fdata-sections -ffreestanding")
 set(CMAKE_ASM_FLAGS_INIT "")
 
 set(CMAKE_EXE_LINKER_FLAGS_INIT "-nostartfiles -Wl,--gc-sections")
