@@ -133,11 +133,15 @@ void ulmk_thread_free(ulmk_thread_t *th)
 
 	ulmk_arch_cpu_irq_restore(key);
 
-	if (th->slab_base) {
-		ulmk_heap_free(th->slab_base);
-	} else if (th->stack_base) {
-		ulmk_heap_free(th->stack_base);
-	}
+	/*
+	 * Static threads (idle, root) have slab_base == NULL; their TCB and
+	 * stack live in linker-reserved sections and must not be passed to
+	 * the heap allocator.
+	 */
+	if (!th->slab_base)
+		return;
+
+	ulmk_heap_free(th->slab_base);
 	ulmk_heap_free(th);
 }
 
