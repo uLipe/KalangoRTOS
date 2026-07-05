@@ -87,3 +87,6 @@ via `mpu_switch()` are unavailable on QEMU (same as having zero spare slots).
 Isolation tests (`memory_isolation_integ`) expect real class-1 faults for
 cross-domain access; a `PARTIAL` result (progress == 2) means the emulator
 did not enforce the expected restriction.
+
+See `TRAP_LIMITATIONS.md` in this directory for a detailed analysis of which
+scenarios PASS vs PARTIAL on QEMU and why (TLB/PRS staleness, 4-DPR limit).
