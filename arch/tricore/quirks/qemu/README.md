@@ -74,7 +74,16 @@ real silicon but is more visible in QEMU because `CDE` is always 1.
 
 ## MPU
 
-QEMU only implements DPR slots 0–3; writes to DPR 4+ are silently ignored.
-The MPU init in `arch.c` conditionally skips the VIRT DPR slot (DPR 3)
-when `ULMK_ARCH_QEMU_VIRT_CONSOLE=0`, so TSIM/silicon builds do not waste a
-DPR slot on a non-existent device.
+QEMU Linumiz emulates TriCore MPU protection (class-1 internal protection
+traps on DPR/CPR violations).  `tricore_mpu_check()` runs on every data and
+code access once `SYSCON.PROTEN` is set.
+
+**Limitation:** only DPR slots 0–3 are functional; writes to DPR 4+ are
+silently ignored.  QEMU builds therefore use `-DULMK_ARCH_MPU_NUM_DPR=4`
+via `boards/qemu_tc3xx/board.cmake`.  The static layout (KRAM, URAM, MMIO,
+CPR_KERNEL, CPR_USER) fits within four DPRs — per-thread dynamic regions
+via `mpu_switch()` are unavailable on QEMU (same as having zero spare slots).
+
+Isolation tests (`memory_isolation_integ`) expect real class-1 faults for
+cross-domain access; a `PARTIAL` result (progress == 2) means the emulator
+did not enforce the expected restriction.

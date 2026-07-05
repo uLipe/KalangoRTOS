@@ -402,27 +402,42 @@ static void mpu_write_enables(uint8_t prs, uint32_t dpre, uint32_t dpwe,
 /*
  * Static DPR/CPR layout (configured once at boot):
  *
- *   DPR 0: entire 4 GiB address space (kernel PRS 0, R+W)
- *   DPR 1: peripheral region (kernel PRS 0, R+W)
- *   DPR 2: flash region (user PRS 1, R only — needed for const data)
- *   DPR 3: board console device (PRS 0+1, R+W; only when ULMK_ARCH_QEMU_VIRT_CONSOLE)
- *   DPR 4: shared RAM (BSS..user_pool_end, PRS 1 R+W) — temporary, see arch_config.h
- *   DPR 5: reserved (unused, zeroed)
- *   DPR 6–17: per-thread dynamic (configured by mpu_switch())
+ *   DPR 0: entire 4 GiB (PRS 0 R+W bypass)
+ *   DPR 1: kernel static RAM (PRS 0 only)
+ *   DPR 2: userspace RAM (PRS 1 R+W)
+ *   DPR 3: upper bus — flash read + peripherals (PRS 1)
+ *   DPR ULMK_ARCH_MPU_USER_DPR_BASE+: per-thread dynamic (mpu_switch)
  *
- *   CPR 0: entire flash (PRS 0 and PRS 1, execute+read)
- *   CPR 1–9: reserved / per-thread code regions
+ *   CPR 0: kernel executable flash (PRS 0 X only)
+ *   CPR 1: userspace executable flash (PRS 1 X only)
  */
+static uint32_t mpu_range_upper(uintptr_t end)
+{
+	return (uint32_t)end - 8u;
+}
+
 void ulmk_arch_mpu_init(void)
 {
 	uint32_t syscon;
 	uint8_t  i;
+	uintptr_t kexec_lo;
+	uintptr_t kexec_hi;
+	uintptr_t utext_lo;
+	uintptr_t utext_hi;
+	uintptr_t kram_lo;
+	uintptr_t kram_hi;
+	uintptr_t uram_lo;
+	uintptr_t uram_hi;
+	uint32_t  prs1_cpre;
+	uint32_t  prs1_cpxe;
 
-	/*
-	 * Linker-defined bounds for the SRAM DPR.
-	 * Declared here to avoid polluting the global namespace.
-	 */
+	extern uint8_t _ulmk_kernel_exec_start[];
+	extern uint8_t _ulmk_kernel_exec_end[];
+	extern uint8_t _ulmk_user_text_start[];
+	extern uint8_t _ulmk_user_text_end[];
 	extern uint8_t _ulmk_kernel_data_start[];
+	extern uint8_t _ulmk_kernel_ram_end[];
+	extern uint8_t _ulmk_user_ram_start[];
 	extern uint8_t _ulmk_user_pool_end[];
 
 	/* Disable protection during reconfiguration */
@@ -430,95 +445,91 @@ void ulmk_arch_mpu_init(void)
 	mpu_mtcr(ULMK_ARCH_CSFR_SYSCON, syscon & ~ULMK_ARCH_SYSCON_PROTEN);
 	__asm__ volatile("isync" ::: "memory");
 
-	/* Zero all DPR and CPR ranges */
-	for (i = 0u; i < ULMK_ARCH_NUM_DPR; i++)
+	/* Zero implemented DPR/CPR ranges */
+	for (i = 0u; i < ULMK_ARCH_MPU_NUM_DPR; i++)
 		mpu_write_dpr(i, 0u, 0u);
-	for (i = 0u; i < ULMK_ARCH_NUM_CPR; i++)
+	for (i = 0u; i < ULMK_ARCH_MPU_NUM_CPR; i++)
 		mpu_write_cpr(i, 0u, 0u);
 
 	/* Zero all PRS enable registers */
 	for (i = 0u; i < ULMK_ARCH_NUM_PRS; i++)
 		mpu_write_enables(i, 0u, 0u, 0u, 0u);
 
-	/*
-	 * DPR layout — 4-slot model required by the current QEMU build.
-	 *
-	 * The QEMU linumiz fork (release/ifx/tricore-2.0) implements only
-	 * DPR slots 0-3 (CSFR 0xC000-0xC018).  Slots 4+ (0xC020+) are
-	 * silently ignored.  All PRS1 accesses must therefore fit within
-	 * slots 0-3.  Slot 0 is kernel-only (full 4 GiB); slots 1-3 are
-	 * accessible to PRS 1.
-	 */
+	kexec_lo = (uintptr_t)_ulmk_kernel_exec_start;
+	kexec_hi = (uintptr_t)_ulmk_kernel_exec_end;
+	utext_lo = (uintptr_t)_ulmk_user_text_start;
+	utext_hi = (uintptr_t)_ulmk_user_text_end;
+	kram_lo  = (uintptr_t)_ulmk_kernel_data_start;
+	kram_hi  = (uintptr_t)_ulmk_kernel_ram_end;
+	uram_lo  = (uintptr_t)_ulmk_user_ram_start;
+	uram_hi  = (uintptr_t)_ulmk_user_pool_end;
 
-	/* DPR 0: entire 4 GiB — kernel full R+W access via PRS 0 */
-	mpu_write_dpr(ULMK_ARCH_MPU_KERNEL_DPR,
-		      0x00000000u, 0xFFFFFFF8u);
+	/* DPR 0: entire 4 GiB — kernel full R+W via PRS 0 */
+	mpu_write_dpr(ULMK_ARCH_MPU_KERNEL_DPR, 0x00000000u, 0xFFFFFFF8u);
 
-	/*
-	 * DPR 1: SRAM region (kernel_data_start..user_pool_end).
-	 * Both PRS 0 and PRS 1 need R+W here: driver threads access globals,
-	 * stacks, and heap blocks; kernel accesses TCBs, IRQ tables, etc.
-	 */
-	mpu_write_dpr(ULMK_ARCH_MPU_SRAM_DPR,
-		      (uint32_t)(uintptr_t)_ulmk_kernel_data_start,
-		      (uint32_t)(uintptr_t)_ulmk_user_pool_end - 8u);
+	/* DPR 1: kernel-owned static RAM — not exposed to PRS 1 */
+	if (kram_hi > kram_lo)
+		mpu_write_dpr(ULMK_ARCH_MPU_KRAM_DPR, (uint32_t)kram_lo,
+			      mpu_range_upper(kram_hi));
 
-	/*
-	 * DPR 2: flash read-only (0x80000000..flash_end).
-	 * User threads need this to load .rodata (string literals, const arrays).
-	 */
-	mpu_write_dpr(ULMK_ARCH_MPU_FLASH_DPR,
-		      ULMK_ARCH_FLASH_BASE,
-		      ULMK_ARCH_FLASH_BASE + ULMK_ARCH_FLASH_SIZE - 8u);
+	/* DPR 2: userspace RAM (domains + heap pool) */
+	if (uram_hi > uram_lo)
+		mpu_write_dpr(ULMK_ARCH_MPU_URAM_DPR, (uint32_t)uram_lo,
+			      mpu_range_upper(uram_hi));
 
 	/*
-	 * DPR 3: console + peripheral range (0xBF000000..0xFFFFFFF8).
-	 * Covers both the QEMU virt debug UART (0xBF000000) and the TriCore
-	 * peripheral space (0xF0000000+) in a single slot — the only one
-	 * available for PRS 1 after SRAM and flash slots are consumed.
-	 * Driver threads need peripheral access for SRC registers, STM, etc.
+	 * DPR 3: flash read + virt console + peripherals in one coarse slot.
+	 * Execution is gated separately by CPR 1; this covers .rodata loads
+	 * and MMIO accesses for driver threads.
 	 */
-	mpu_write_dpr(ULMK_ARCH_MPU_VIRT_DPR,
-		      0xBF000000u, 0xFFFFFFF8u);
+	mpu_write_dpr(ULMK_ARCH_MPU_MMIO_DPR,
+		      ULMK_ARCH_FLASH_BASE, 0xFFFFFFF8u);
 
-	/* CPR 0: entire flash — all threads may execute code from here */
-	mpu_write_cpr(ULMK_ARCH_MPU_CPR_ALL,
-		      ULMK_ARCH_FLASH_BASE,
-		      ULMK_ARCH_FLASH_BASE + ULMK_ARCH_FLASH_SIZE - 8u);
+	/* CPR 0: kernel code only */
+	if (kexec_hi > kexec_lo)
+		mpu_write_cpr(ULMK_ARCH_MPU_CPR_KERNEL, (uint32_t)kexec_lo,
+			      mpu_range_upper(kexec_hi));
+
+	/* CPR 1: userspace code */
+	if (utext_hi > utext_lo)
+		mpu_write_cpr(ULMK_ARCH_MPU_CPR_USER, (uint32_t)utext_lo,
+			      mpu_range_upper(utext_hi));
 
 	__asm__ volatile("isync" ::: "memory");
 
+	prs1_cpre = 0u;
+	prs1_cpxe = 0u;
+	if (utext_hi > utext_lo) {
+		prs1_cpre = (1u << ULMK_ARCH_MPU_CPR_USER);
+		prs1_cpxe = (1u << ULMK_ARCH_MPU_CPR_USER);
+	}
+
 	/*
-	 * PRS 0 (kernel): DPRs 0-3 R+W, CPR 0 R+X.
-	 * DPR 0 already covers the full address space, so bits 1-3 are
-	 * redundant for PRS 0 but kept for symmetry.
+	 * PRS 0 (kernel): all static DPR slots + kernel CPR execute.
+	 * DPR 0 already covers the full address space.
 	 */
 	mpu_write_enables(0u,
-			  0xFu,  /* DPRE: slots 0-3 readable */
-			  0xFu,  /* DPWE: slots 0-3 writable */
-			  0x1u,  /* CPRE: CPR 0 readable */
-			  0x1u); /* CPXE: CPR 0 executable */
+			  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
+			  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
+			  (1u << ULMK_ARCH_MPU_CPR_KERNEL),
+			  (1u << ULMK_ARCH_MPU_CPR_KERNEL));
 
 	/*
-	 * PRS 1 (user/driver threads):
-	 *   DPR 1 — SRAM (R+W) — globals, stacks, heap
-	 *   DPR 2 — flash (R only) — .rodata access
-	 *   DPR 3 — console + peripheral (R+W) — ulmk_printk, SRC, STM
-	 *
-	 * DPR 0 (full 4 GiB) is intentionally excluded from PRS 1 so that
-	 * kernel-only addresses (CSFRs, etc.) remain inaccessible.
+	 * PRS 1 (userspace): user RAM + MMIO/flash read; execute only user CPR.
+	 * DPR 1 (kernel RAM) and DPR 0 are intentionally omitted.
 	 */
 	mpu_write_enables(1u,
-			  (1u << ULMK_ARCH_MPU_SRAM_DPR)  |
-			  (1u << ULMK_ARCH_MPU_FLASH_DPR) |
-			  (1u << ULMK_ARCH_MPU_VIRT_DPR),
-			  (1u << ULMK_ARCH_MPU_SRAM_DPR)  |
-			  (1u << ULMK_ARCH_MPU_VIRT_DPR),
-			  (1u << ULMK_ARCH_MPU_CPR_ALL),
-			  (1u << ULMK_ARCH_MPU_CPR_ALL));
+			  (1u << ULMK_ARCH_MPU_URAM_DPR) |
+			  (1u << ULMK_ARCH_MPU_MMIO_DPR),
+			  (1u << ULMK_ARCH_MPU_URAM_DPR) |
+			  (1u << ULMK_ARCH_MPU_MMIO_DPR),
+			  prs1_cpre,
+			  prs1_cpxe);
 
 	/* PRS 2, 3: remain zeroed (unused) */
-}void ulmk_arch_mpu_enable(void)
+}
+
+void ulmk_arch_mpu_enable(void)
 {
 	uint32_t syscon;
 
@@ -549,28 +560,36 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 	uint32_t cpxe;
 	uint8_t  d_slot;
 	uint8_t  i;
+	uintptr_t utext_lo;
+	uintptr_t utext_hi;
+
+	extern uint8_t _ulmk_user_text_start[];
+	extern uint8_t _ulmk_user_text_end[];
+
+	utext_lo = (uintptr_t)_ulmk_user_text_start;
+	utext_hi = (uintptr_t)_ulmk_user_text_end;
 
 	/*
-	 * Static bits for PRS 1 (user/driver threads):
-	 *   DPR 1: SRAM R+W — globals, stacks, heap
-	 *   DPR 2: flash R — .rodata access
-	 *   DPR 3: console + peripheral R+W — ulmk_printk, SRC, STM
+	 * Static bits for PRS 1 (userspace threads):
+	 *   DPR 2 — user RAM R+W
+	 *   DPR 3 — flash read + MMIO R+W
+	 *   CPR 1 — userspace code execute (when non-empty at boot)
 	 *
-	 * DPR 0 (full 4 GiB, kernel-only) is intentionally omitted.
-	 * Slots 6-17 below handle per-thread regions; in the current QEMU
-	 * build those slots are unmapped (writes are no-ops), so all threads
-	 * share the SRAM/flash/periph ranges set above.
+	 * DPR 0 (kernel bypass) and DPR 1 (kernel RAM) are omitted for PRS 1.
 	 */
-	dpre = (1u << ULMK_ARCH_MPU_SRAM_DPR) |
-	       (1u << ULMK_ARCH_MPU_FLASH_DPR) |
-	       (1u << ULMK_ARCH_MPU_VIRT_DPR);
-	dpwe = (1u << ULMK_ARCH_MPU_SRAM_DPR) |
-	       (1u << ULMK_ARCH_MPU_VIRT_DPR);
-	cpre = (1u << ULMK_ARCH_MPU_CPR_ALL);
-	cpxe = (1u << ULMK_ARCH_MPU_CPR_ALL);
+	dpre = (1u << ULMK_ARCH_MPU_URAM_DPR) |
+	       (1u << ULMK_ARCH_MPU_MMIO_DPR);
+	dpwe = (1u << ULMK_ARCH_MPU_URAM_DPR) |
+	       (1u << ULMK_ARCH_MPU_MMIO_DPR);
+	cpre = 0u;
+	cpxe = 0u;
+	if (utext_hi > utext_lo) {
+		cpre = (1u << ULMK_ARCH_MPU_CPR_USER);
+		cpxe = (1u << ULMK_ARCH_MPU_CPR_USER);
+	}
 
-	/* Clear all user DPR slots before reprogramming */
-	for (i = ULMK_ARCH_MPU_USER_DPR_BASE; i < ULMK_ARCH_NUM_DPR; i++)
+	/* Clear dynamic DPR slots before reprogramming */
+	for (i = ULMK_ARCH_MPU_USER_DPR_BASE; i < ULMK_ARCH_MPU_NUM_DPR; i++)
 		mpu_write_dpr(i, 0u, 0u);
 
 	d_slot = ULMK_ARCH_MPU_USER_DPR_BASE;
@@ -578,7 +597,7 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 	if (!regions || count == 0u)
 		goto write_enables;
 
-	for (i = 0u; i < count && d_slot < ULMK_ARCH_NUM_DPR; i++) {
+	for (i = 0u; i < count && d_slot < ULMK_ARCH_MPU_NUM_DPR; i++) {
 		mpu_write_dpr(d_slot,
 			      (uint32_t)regions[i].base,
 			      (uint32_t)(regions[i].base + regions[i].size - 8u));
@@ -626,7 +645,7 @@ bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
 
 		/* Read DPR_L and DPR_U by using the MFCR switch */
 		/* We only check user slots (6-17); static slots are kernel-only */
-		if (i < ULMK_ARCH_MPU_USER_DPR_BASE && i != ULMK_ARCH_MPU_FLASH_DPR)
+		if (i < ULMK_ARCH_MPU_USER_DPR_BASE && i != ULMK_ARCH_MPU_MMIO_DPR)
 			continue;
 
 		__asm__ volatile("" ::: "memory");
@@ -772,12 +791,13 @@ void _arch_generic_isr_handler(void)
 	uint32_t psw;
 
 	/*
-	 * Elevate to kernel PRS 0 so that subsequent data accesses (kernel
-	 * dispatch table, notif objects, etc.) succeed.  This must happen
-	 * before any C-generated stack write — hence the register-only vars.
+	 * Elevate to kernel PRS 0 and supervisor IO so CSFR access (ICR) and
+	 * kernel data structures succeed.  Assembly stub already cleared PRS
+	 * before SVLCX; IO must wait until the task CSA is saved.
 	 */
 	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
-	psw &= ~0x3000u;	/* PSW.PRS [13:12] = 0 */
+	psw &= ~0x3C00u;	/* clear PSW.PRS and PSW.IO */
+	psw |= 0x800u;		/* IO = supervisor, PRS = 0 */
 	__asm__ volatile("mtcr 0xFE04, %0\n\t"
 			 "isync"
 			 :: "d"(psw) : "memory");
@@ -968,29 +988,60 @@ static const char * const trap_class_names[] = {
 };
 
 /*
+ * PSW of the context that caused the trap — read from the hardware-saved
+ * upper CSA, not the live CSFR (trap stubs may already have raised IO/PRS).
+ */
+static uint32_t trap_interrupted_psw(void)
+{
+	uint32_t  pcxi;
+	uint32_t *uc;
+	uint32_t  link;
+
+	__asm__ volatile("mfcr %0, 0xFE00" : "=d"(pcxi));
+	uc = pcxi_to_csa(pcxi);
+
+	/*
+	 * Trap stubs "call ulmk_arch_trap_entry", adding one upper CSA layer;
+	 * follow the link word to reach the hardware trap frame (UC0).
+	 */
+	link = uc[0];
+	if (link != 0u)
+		uc = pcxi_to_csa(link);
+
+	return uc[1];
+}
+
+/*
  * ulmk_arch_trap_entry — arch-level trap dispatcher, called from vectors.S.
  *
- * Reads PSW to determine whether the fault came from kernel context (ISR
- * active or supervisor privilege) or from a user/driver thread.  Performs
- * the arch-specific dump, then invokes the appropriate kernel callback:
+ * Reads the interrupted context's saved PSW to determine whether the fault
+ * came from kernel context (ISR active or supervisor privilege) or from a
+ * user/driver thread.  Performs the arch-specific dump, then invokes the
+ * appropriate kernel callback:
  *   - ulmk_kern_trap_recoverable(): thread killed, scheduler picks next
  *   - ulmk_kern_trap_panic():       unrecoverable, system halted
  *
- * Class 1 (Internal Protection) originating from a non-kernel thread is
- * the only recoverable case — all others are fatal.
+ * Class 0 (MPU data) and class 1 (internal protection) originating from a
+ * non-ISR thread are recoverable — the faulting thread is killed.  All
+ * other cases are fatal.
  */
 void ulmk_arch_trap_entry(uint8_t trap_class, uint8_t tin)
 {
 	uint32_t psw;
-	uint32_t io;
 	uint32_t is;
 	int      from_kernel;
 
-	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
-
-	io          = (psw >> 10) & 3u;	/* PSW.IO[11:10]: 2 = supervisor */
+	psw         = trap_interrupted_psw();
 	is          = (psw >>  9) & 1u;	/* PSW.IS[9]: 1 = on ISP (ISR)   */
-	from_kernel = (io == 2u) || (is != 0u);
+	from_kernel = (is != 0u);
+
+	/* Elevate live PSW for kernel diagnostics (printk, CSFR dump). */
+	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
+	psw &= ~0x3C00u;
+	psw |= 0x800u;
+	__asm__ volatile("mtcr 0xFE04, %0\n\t"
+			 "isync"
+			 :: "d"(psw) : "memory");
 
 	ulmk_printk("TRAP class=%u (%s) tin=%u %s\n",
 		  (unsigned)trap_class,
@@ -1000,7 +1051,7 @@ void ulmk_arch_trap_entry(uint8_t trap_class, uint8_t tin)
 
 	ulmk_arch_trap_dump(trap_class, tin);
 
-	if (trap_class == 1u && !from_kernel) {
+	if ((trap_class == 0u || trap_class == 1u) && !from_kernel) {
 		ulmk_kern_trap_recoverable();
 	} else {
 		ulmk_kern_trap_panic();

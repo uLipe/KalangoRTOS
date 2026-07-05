@@ -21,6 +21,7 @@
  *   -DULMK_ARCH_RAM_BASE=0x70000000u       (CPU0 DSPR)
  *   -DULMK_ARCH_IDLE_IS_WAIT=0             (NOP idle in QEMU)
  *   -DULMK_ARCH_QEMU_VIRT_CONSOLE=1        (enable VIRT device DPR range)
+ *   -DULMK_ARCH_MPU_NUM_DPR=4              (QEMU: only 4 DPR slots work)
  */
 
 #ifndef ULMK_ARCH_TRICORE_CONFIG_H
@@ -30,9 +31,28 @@
  * MPU hardware limits (TC2xx data sheet, DCON0/DPRE/DPWE registers)
  * ========================================================================= */
 
-#define ULMK_ARCH_NUM_DPR		18	/* data protection ranges */
-#define ULMK_ARCH_NUM_CPR		10	/* code protection ranges */
+#define ULMK_ARCH_NUM_DPR		18	/* data protection ranges (silicon) */
+#define ULMK_ARCH_NUM_CPR		10	/* code protection ranges (silicon) */
 #define ULMK_ARCH_NUM_PRS		 4	/* protection register sets */
+
+/*
+ * Effective DPR/CPR slot counts for this board build.
+ * Override via board.cmake (-DULMK_ARCH_MPU_NUM_DPR=N).  QEMU implements 4
+ * DPR slots; real TC2xx silicon exposes up to 18.
+ */
+#ifndef ULMK_ARCH_MPU_NUM_DPR
+#define ULMK_ARCH_MPU_NUM_DPR	ULMK_ARCH_NUM_DPR
+#endif
+
+#ifndef ULMK_ARCH_MPU_NUM_CPR
+#define ULMK_ARCH_MPU_NUM_CPR	ULMK_ARCH_NUM_CPR
+#endif
+
+#if ULMK_ARCH_MPU_NUM_DPR <= 4
+#define ULMK_ARCH_MPU_USER_DPR_BASE	ULMK_ARCH_MPU_NUM_DPR
+#else
+#define ULMK_ARCH_MPU_USER_DPR_BASE	6
+#endif
 
 /*
  * Max MPU regions tracked per thread (code + data combined).
@@ -218,36 +238,25 @@
 #define ULMK_ARCH_SYSCON_PROTEN	(1u << 1)
 
 /*
- * Static DPR/CPR slot assignments:
+ * Static DPR/CPR slot assignments (coarse layout, fits 4 DPR boards):
  *
- *   The current QEMU linumiz build (release/ifx/tricore-2.0) implements
- *   only 4 shared DPR range registers (slots 0-3 at CSFR 0xC000-0xC018).
- *   Slots 4+ (0xC020+) are unmapped and writes are silently ignored.  The
- *   layout below fits within these 4 slots.  When QEMU gains full TC1.6.2
- *   DPR support (18 slots), slots 4-17 will become usable for finer-grained
- *   per-thread isolation.
+ *   Slot 0: kernel bypass — entire 4 GiB (PRS 0 R+W only)
+ *   Slot 1: kernel RAM — kernel_data..kernel_ram_end (PRS 0 only)
+ *   Slot 2: user RAM — user_ram_start..user_pool_end (PRS 1 R+W)
+ *   Slot 3: upper bus — flash read + virt console + peripherals (PRS 1)
+ *   Slots ULMK_ARCH_MPU_USER_DPR_BASE..: per-thread dynamic (mpu_switch)
  *
- *   Slot 0: kernel — covers entire address space (PRS 0 R+W only)
- *   Slot 1: SRAM — covers kernel_data_start..user_pool_end (PRS 0+1 R+W)
- *   Slot 2: flash read (PRS 0+1 R — all threads need to read .rodata)
- *   Slot 3: console + peripheral — covers 0xBF000000..0xFFFFFFF8 (PRS 0+1 R+W)
- *   Slots 4–5: reserved (unused in current QEMU)
- *   Slots 6–17: per-thread dynamic regions; configured by mpu_switch()
- *               (no-op in current QEMU, functional when DPR slots 6+ are added)
+ *   CPR 0: kernel executable (.startup + vectors + .kernel_text), PRS 0 X
+ *   CPR 1: userspace executable (.comp_* + runtime), PRS 1 X
  *
- *   CPR slot 0: all flash execute+read (enabled for PRS 0 and PRS 1)
- *   CPR slots 1–9: per-thread code regions (reserved for future use)
- *
- * PSW.PRS field [13:12]:
- *   0 = kernel PRS (used by root thread and kernel internals)
- *   1 = user PRS  (all non-kernel threads)
+ * PSW.PRS [13:12]: 0 = kernel/supervisor, 1 = userspace threads
  */
 #define ULMK_ARCH_MPU_KERNEL_DPR	0
-#define ULMK_ARCH_MPU_SRAM_DPR	1  /* SRAM (was PERIPH_DPR — repurposed) */
-#define ULMK_ARCH_MPU_FLASH_DPR	2
-#define ULMK_ARCH_MPU_VIRT_DPR	3  /* console + full peripheral range */
-#define ULMK_ARCH_MPU_USER_DPR_BASE 6
-#define ULMK_ARCH_MPU_CPR_ALL	0
+#define ULMK_ARCH_MPU_KRAM_DPR	1
+#define ULMK_ARCH_MPU_URAM_DPR	2
+#define ULMK_ARCH_MPU_MMIO_DPR	3
+#define ULMK_ARCH_MPU_CPR_KERNEL	0
+#define ULMK_ARCH_MPU_CPR_USER	1
 
 /* PSW.PRS value for non-kernel threads */
 #define ULMK_ARCH_PRS_USER	1u

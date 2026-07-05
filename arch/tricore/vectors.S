@@ -30,6 +30,11 @@
 _trap_class0:
     mov     %d4, 0
     mov     %d5, %d15
+    mfcr    %d15, 0xFE04
+    mov     %d14, 0x3000
+    andn    %d15, %d15, %d14
+    mtcr    0xFE04, %d15
+    isync
     call    ulmk_arch_trap_entry
     j       .
 
@@ -39,6 +44,11 @@ _trap_class0:
 _trap_class1:
     mov     %d4, 1
     mov     %d5, %d15
+    mfcr    %d15, 0xFE04
+    mov     %d14, 0x3000
+    andn    %d15, %d15, %d14
+    mtcr    0xFE04, %d15
+    isync
     call    ulmk_arch_trap_entry
     j       .
 
@@ -48,6 +58,11 @@ _trap_class1:
 _trap_class2:
     mov     %d4, 2
     mov     %d5, %d15
+    mfcr    %d15, 0xFE04
+    mov     %d14, 0x3000
+    andn    %d15, %d15, %d14
+    mtcr    0xFE04, %d15
+    isync
     call    ulmk_arch_trap_entry
     j       .
 
@@ -57,6 +72,11 @@ _trap_class2:
 _trap_class3:
     mov     %d4, 3
     mov     %d5, %d15
+    mfcr    %d15, 0xFE04
+    mov     %d14, 0x3000
+    andn    %d15, %d15, %d14
+    mtcr    0xFE04, %d15
+    isync
     call    ulmk_arch_trap_entry
     j       .
 
@@ -66,6 +86,11 @@ _trap_class3:
 _trap_class4:
     mov     %d4, 4
     mov     %d5, %d15
+    mfcr    %d15, 0xFE04
+    mov     %d14, 0x3000
+    andn    %d15, %d15, %d14
+    mtcr    0xFE04, %d15
+    isync
     call    ulmk_arch_trap_entry
     j       .
 
@@ -75,6 +100,11 @@ _trap_class4:
 _trap_class5:
     mov     %d4, 5
     mov     %d5, %d15
+    mfcr    %d15, 0xFE04
+    mov     %d14, 0x3000
+    andn    %d15, %d15, %d14
+    mtcr    0xFE04, %d15
+    isync
     call    ulmk_arch_trap_entry
     j       .
 
@@ -91,6 +121,11 @@ _trap_class6:
 _trap_class7:
     mov     %d4, 7
     mov     %d5, %d15
+    mfcr    %d15, 0xFE04
+    mov     %d14, 0x3000
+    andn    %d15, %d15, %d14
+    mtcr    0xFE04, %d15
+    isync
     call    ulmk_arch_trap_entry
     j       .
 
@@ -147,6 +182,17 @@ _ulmk_int_table:
     .type   _arch_generic_preempt_isr, @function
 
 _arch_generic_preempt_isr:
+    /*
+     * PRS 0 + supervisor IO before svlcx — CSA pool lives in kernel RAM
+     * and is unreachable at PRS 1 (userspace protection set).
+     */
+    mfcr    %d15, 0xFE04
+    mov     %d14, 0x3C00
+    andn    %d15, %d15, %d14
+    mov     %d14, 0x800
+    or      %d15, %d14
+    mtcr    0xFE04, %d15
+    isync
     svlcx
     call    _arch_generic_isr_handler
 
