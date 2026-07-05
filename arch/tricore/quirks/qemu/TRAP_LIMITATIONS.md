@@ -20,7 +20,8 @@ cause analysis for scenarios that report `PARTIAL` instead of `PASS`.
 
 ## Scenario 3 — per-thread heap isolation (expected PARTIAL)
 
-With `-DULMK_ARCH_MPU_NUM_DPR=4`, all static slots are consumed:
+With `-DULMK_ARCH_MPU_NUM_DPR=4`, the static minimum-isolation layout uses
+all four slots:
 
 | Slot | Use |
 |------|-----|

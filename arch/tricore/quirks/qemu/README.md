@@ -75,18 +75,44 @@ real silicon but is more visible in QEMU because `CDE` is always 1.
 ## MPU
 
 QEMU Linumiz emulates TriCore MPU protection (class-1 internal protection
-traps on DPR/CPR violations).  `tricore_mpu_check()` runs on every data and
-code access once `SYSCON.PROTEN` is set.
+traps on DPR/CPR violations).  `tricore_mpu_check()` walks **16 logical**
+DPR/CPR ranges per access (`MPU_NUM_RANGES` in `helper.c`).
 
-**Limitation:** only DPR slots 0–3 are functional; writes to DPR 4+ are
-silently ignored.  QEMU builds therefore use `-DULMK_ARCH_MPU_NUM_DPR=4`
-via `boards/qemu_tc3xx/board.cmake`.  The static layout (KRAM, URAM, MMIO,
-CPR_KERNEL, CPR_USER) fits within four DPRs — per-thread dynamic regions
-via `mpu_switch()` are unavailable on QEMU (same as having zero spare slots).
+**CSFR addressing:** our port uses the TC2xx sequential layout (`DPRn_L =
+0xC000 + n×8`, `CPRn_L = 0xD000 + n×8`).  The emulator maps only the first
+group to implemented CSFRs:
 
-Isolation tests (`memory_isolation_integ`) expect real class-1 faults for
-cross-domain access; a `PARTIAL` result (progress == 2) means the emulator
-did not enforce the expected restriction.
+| Slot (n) | DPR CSFR | CPR CSFR | QEMU env field |
+|----------|----------|----------|----------------|
+| 0 | 0xC000 | 0xD000 | DPR0_0 / CPR0_0 |
+| 1 | 0xC008 | 0xD008 | DPR0_1 / CPR0_1 |
+| 2 | 0xC010 | 0xD010 | DPR0_2 / CPR0_2 |
+| 3 | 0xC018 | 0xD018 | DPR0_3 / CPR0_3 |
+| 4+ | 0xC020+ | 0xD020+ | unimplemented (writes ignored) |
 
-See `TRAP_LIMITATIONS.md` in this directory for a detailed analysis of which
-scenarios PASS vs PARTIAL on QEMU and why (TLB/PRS staleness, 4-DPR limit).
+QEMU builds therefore set both:
+
+```
+-DULMK_ARCH_MPU_NUM_DPR=4
+-DULMK_ARCH_MPU_NUM_CPR=4
+```
+
+via `boards/qemu_tc3xx/board.cmake`.
+
+**Minimum isolation layout (4 DPR + 2 CPR used):**
+
+| Slot | Role | PRS 1 |
+|------|------|-------|
+| DPR 0 | kernel bypass 4 GiB | off |
+| DPR 1 | kernel RAM | off |
+| DPR 2 | user RAM | R+W |
+| DPR 3 | flash read + MMIO | R+W |
+| CPR 0 | kernel exec | X off |
+| CPR 1 | user exec | X on |
+
+`ULMK_ARCH_MPU_USER_DPR_BASE == 4` on QEMU — no spare DPR for per-thread
+dynamic regions; `mpu_switch()` preserves the static layout and ignores extra
+regions from mmap.  Per-thread heap isolation requires real silicon (18 DPR,
+dynamic slots from index 6).
+
+See `TRAP_LIMITATIONS.md` for PASS vs PARTIAL scenarios and TLB/PRS gaps.
