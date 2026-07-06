@@ -2,24 +2,36 @@
 """
 ulmk development container and build/test driver.
 
-Usage:
-    python3 tools/dev.py                        # enter interactive shell
-    python3 tools/dev.py --rebuild              # rebuild image, then enter
+Subcommands:
+    (none)              Enter interactive dev container shell
+    build               Configure and compile kernel ELF (CMake/Ninja)
+    build qemu          Build if needed, then run in QEMU
+    components list     Discover components under components/ and ../ulmk_apps/
+    components status   Show manifest default vs .ulmk/components.conf
+    components enable   Persist component ON in .ulmk/components.conf
+    components disable  Remove component from .ulmk/components.conf
+    tests unit          Run host-compiled unit tests
+    tests integ         Run QEMU integration tests
+    killall             Stop all running dev containers
 
-    python3 tools/dev.py build                  # build kernel (default board)
-    python3 tools/dev.py build --board PATH     # build for a specific board
-    python3 tools/dev.py build --clean          # clean rebuild
-    python3 tools/dev.py build qemu             # build (if needed) and run in QEMU
+Components default OFF in CMake manifests. Enable before building the demo:
 
-    python3 tools/dev.py tests unit             # run all unit tests
-    python3 tools/dev.py tests integ            # run all integration tests
-    python3 tools/dev.py tests unit  --test NAME
-    python3 tools/dev.py tests integ --test NAME
-    python3 tools/dev.py tests unit  --list
-    python3 tools/dev.py tests integ --list
-    python3 tools/dev.py tests integ --board boards/qemu_riscv_virt
+    python3 tools/dev.py components enable hello_world ping_pong
+    python3 tools/dev.py build --board boards/qemu_riscv_virt
+    python3 tools/dev.py build qemu --board boards/qemu_riscv_virt
 
-    python3 tools/dev.py killall                # stop all running dev containers
+One-shot build without saving config:
+
+    python3 tools/dev.py build --component hello_world --component ping_pong
+    python3 tools/dev.py build --no-components
+
+Options:
+    --rebuild           Force Docker image rebuild (shell entry only)
+
+See also: python3 tools/dev.py --help
+          python3 tools/dev.py build --help
+          python3 tools/dev.py components --help
+          python3 tools/dev.py tests --help
 """
 
 from __future__ import annotations
@@ -37,13 +49,14 @@ DOCKERFILE_DIR = Path(__file__).parent / "docker"
 WORKSPACE_ROOT = Path(__file__).parent.parent.resolve()
 TESTS_DIR      = WORKSPACE_ROOT / "tests"
 BUILD_DIR      = WORKSPACE_ROOT.parent / "build"
+COMPONENTS_CONF = WORKSPACE_ROOT / ".ulmk" / "components.conf"
 
 DEFAULT_BOARD  = "boards/qemu_tc3xx"
 DEFAULT_BOARD_RISCV = "boards/qemu_riscv_virt"
 
 TEST_TIMEOUT = 120
 
-ARCH_TRICORE_ONLY_TESTS = frozenset({"csa_ctx"})
+ARCH_TRICORE_ONLY_TESTS = frozenset({"ctx_early_tricore"})
 
 QEMU_TRICORE = "/opt/qemu-tricore/bin/qemu-system-tricore"
 QEMU_RISCV   = "qemu-system-riscv32"
@@ -97,6 +110,195 @@ def _run_container() -> None:
     cmd = _base_docker_cmd(interactive=True)
     cmd += [IMAGE_NAME, "/bin/bash"]
     os.execvp("docker", cmd)
+
+
+# ---------------------------------------------------------------------------
+# Component discovery and configuration
+# ---------------------------------------------------------------------------
+
+_REGISTER_KW = frozenset({
+    "NAME", "ENABLED", "SOURCES", "INCLUDE_DIRS", "REQUIRES",
+    "ROOT_THREAD", "LINKER_FRAGMENT",
+})
+
+
+def _component_scan_dirs() -> list[Path]:
+    """Return directories that may contain ulmk_component_register()."""
+    dirs: list[Path] = []
+
+    comp_root = WORKSPACE_ROOT / "components"
+    if comp_root.is_dir():
+        for entry in sorted(comp_root.iterdir()):
+            if not entry.is_dir():
+                continue
+            if entry.name == "drivers":
+                for sub in sorted(entry.iterdir()):
+                    if sub.is_dir() and (sub / "CMakeLists.txt").is_file():
+                        dirs.append(sub)
+            elif (entry / "CMakeLists.txt").is_file():
+                dirs.append(entry)
+
+    apps_root = WORKSPACE_ROOT.parent / "ulmk_apps"
+    if apps_root.is_dir():
+        for entry in sorted(apps_root.iterdir()):
+            if entry.is_dir() and (entry / "CMakeLists.txt").is_file():
+                dirs.append(entry)
+
+    return dirs
+
+
+def _parse_component_cmake(path: Path) -> dict | None:
+    text = path.read_text()
+    m = re.search(r"ulmk_component_register\s*\((.*)\)", text, re.DOTALL)
+    if not m:
+        return None
+
+    body = m.group(1)
+    name_m = re.search(r"NAME\s+(\w+)", body)
+    if not name_m:
+        return None
+
+    enabled_m = re.search(r"ENABLED\s+(ON|OFF)", body)
+    default = enabled_m.group(1) if enabled_m else "OFF"
+
+    requires: list[str] = []
+    req_m = re.search(
+        r"REQUIRES\s+(.*?)(?=\n\s*(?:"
+        + "|".join(_REGISTER_KW - {"REQUIRES"})
+        + r")\b|\))",
+        body,
+        re.DOTALL,
+    )
+    if req_m:
+        requires = req_m.group(1).split()
+
+    return {
+        "name": name_m.group(1),
+        "default": default,
+        "requires": requires,
+        "root_thread": bool(re.search(r"\bROOT_THREAD\b", body)),
+        "path": path.parent.relative_to(WORKSPACE_ROOT),
+    }
+
+
+def _discover_components() -> list[dict]:
+    found: list[dict] = []
+    for d in _component_scan_dirs():
+        info = _parse_component_cmake(d / "CMakeLists.txt")
+        if info:
+            found.append(info)
+    return sorted(found, key=lambda c: c["name"])
+
+
+def _component_names() -> list[str]:
+    return [c["name"] for c in _discover_components()]
+
+
+def _load_components_conf() -> set[str]:
+    if not COMPONENTS_CONF.is_file():
+        return set()
+    enabled: set[str] = set()
+    for line in COMPONENTS_CONF.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line or "=" not in line:
+            continue
+        name, val = line.split("=", 1)
+        name = name.strip()
+        val = val.strip().upper()
+        if val in ("ON", "1", "YES", "TRUE"):
+            enabled.add(name)
+    return enabled
+
+
+def _save_components_conf(enabled: set[str]) -> None:
+    COMPONENTS_CONF.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Managed by: python3 tools/dev.py components enable/disable",
+        "",
+    ]
+    for name in sorted(enabled):
+        lines.append(f"{name}=ON")
+    lines.append("")
+    COMPONENTS_CONF.write_text("\n".join(lines))
+
+
+def _resolve_enabled_components(
+    cli_components: list[str] | None,
+    no_components: bool,
+) -> set[str]:
+    if no_components:
+        return set(cli_components or [])
+
+    enabled = _load_components_conf()
+    for name in cli_components or []:
+        enabled.add(name)
+    return enabled
+
+
+def _component_cmake_flags(enabled: set[str]) -> list[str]:
+    flags: list[str] = []
+    for name in _component_names():
+        val = "ON" if name in enabled else "OFF"
+        flags.append(f"-DULMK_COMP_{name}_ENABLED={val}")
+    return flags
+
+
+def _validate_component_names(names: list[str]) -> None:
+    known = set(_component_names())
+    for name in names:
+        if name not in known:
+            sys.exit(
+                f"error: unknown component '{name}'.\n"
+                f"Known: {', '.join(sorted(known)) or '(none)'}"
+            )
+
+
+def _run_components(args: argparse.Namespace) -> None:
+    action = args.components_action
+    comps = _discover_components()
+
+    if action == "list":
+        print(f"components ({len(comps)}):")
+        for c in comps:
+            root = " ROOT_THREAD" if c["root_thread"] else ""
+            req = f" REQUIRES={','.join(c['requires'])}" if c["requires"] else ""
+            print(f"  {c['name']:20s} default={c['default']}{root}{req}")
+            print(f"    {c['path']}")
+        return
+
+    conf = _load_components_conf()
+
+    if action == "status":
+        print(f"{'COMPONENT':<20} {'DEFAULT':<8} {'CONFIG':<8} {'ROOT':<5} REQUIRES")
+        for c in comps:
+            cfg = "ON" if c["name"] in conf else "-"
+            root = "yes" if c["root_thread"] else "-"
+            req = ",".join(c["requires"]) if c["requires"] else "-"
+            print(f"{c['name']:<20} {c['default']:<8} {cfg:<8} {root:<5} {req}")
+        if conf:
+            print(f"\nconfig: {COMPONENTS_CONF.relative_to(WORKSPACE_ROOT)}")
+        else:
+            print("\nconfig: (none — all components OFF)")
+        return
+
+    if action == "enable":
+        _validate_component_names(args.names)
+        conf |= set(args.names)
+        _save_components_conf(conf)
+        print(f"enabled: {', '.join(args.names)}")
+        print(f"saved → {COMPONENTS_CONF.relative_to(WORKSPACE_ROOT)}")
+        return
+
+    if action == "disable":
+        _validate_component_names(args.names)
+        for name in args.names:
+            conf.discard(name)
+        _save_components_conf(conf)
+        print(f"disabled: {', '.join(args.names)}")
+        print(f"saved → {COMPONENTS_CONF.relative_to(WORKSPACE_ROOT)}")
+        return
+
+    sys.exit(f"error: unknown components action '{action}'")
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +357,8 @@ def _resolve_board_path(board_arg: str | None) -> tuple[Path, str, list[str]]:
 
 
 def _build_shell(board_container: str, board: dict,
-                 clean: bool, run_qemu: bool) -> str:
+                 clean: bool, run_qemu: bool,
+                 component_flags: list[str]) -> str:
     arch = _board_arch(board)
     toolchain = _toolchain_for_arch(arch)
     build_subdir = f"ulipe-{arch}"
@@ -175,14 +378,22 @@ def _build_shell(board_container: str, board: dict,
             "",
         ]
 
-    lines += [
+    cfg = [
         "echo '--- configure ---'",
         f"cmake -S /workspace -B /build/{build_subdir} \\",
         f"    -DCMAKE_TOOLCHAIN_FILE={toolchain} \\",
         f"    -DULMK_CHIP_DIR={board_container} \\",
+    ]
+    for flag in component_flags:
+        cfg.append(f"    {flag} \\")
+    cfg += [
         "    -GNinja \\",
         "    --no-warn-unused-cli",
         "",
+    ]
+    lines.extend(cfg)
+
+    lines += [
         "echo '--- build ---'",
         f"ninja -C /build/{build_subdir}",
         "",
@@ -251,11 +462,18 @@ def _run_build(args: argparse.Namespace) -> None:
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
 
+    enabled = _resolve_enabled_components(
+        getattr(args, "components", None),
+        getattr(args, "no_components", False),
+    )
+    component_flags = _component_cmake_flags(enabled)
+
     elf = BUILD_DIR / build_subdir / "ulmk"
     if run_qemu and not args.clean and elf.is_file():
         shell_cmd = _qemu_only_shell(board, build_subdir)
     else:
-        shell_cmd = _build_shell(board_container, board, args.clean, run_qemu)
+        shell_cmd = _build_shell(
+            board_container, board, args.clean, run_qemu, component_flags)
 
     cmd = [
         "docker", "run", "--rm",
@@ -399,7 +617,15 @@ def _parse_args() -> argparse.Namespace:
     epilog = """
 examples:
   python3 tools/dev.py
+  python3 tools/dev.py --rebuild
+  python3 tools/dev.py components list
+  python3 tools/dev.py components status
+  python3 tools/dev.py components enable hello_world ping_pong
+  python3 tools/dev.py components disable ping_pong
   python3 tools/dev.py build
+  python3 tools/dev.py build --clean
+  python3 tools/dev.py build --component hello_world --component ping_pong
+  python3 tools/dev.py build --no-components
   python3 tools/dev.py build qemu
   python3 tools/dev.py build --board boards/qemu_riscv_virt
   python3 tools/dev.py build qemu --board boards/qemu_riscv_virt
@@ -411,7 +637,9 @@ examples:
   python3 tools/dev.py killall
 """
     parser = argparse.ArgumentParser(
-        description="ulmk multi-arch dev container",
+        description=(
+            "ulmk multi-arch dev container — build, components, tests, QEMU"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=epilog,
     )
@@ -453,6 +681,41 @@ examples:
         action="store_true",
         help="Remove previous build artefacts before compiling",
     )
+
+    build_p.add_argument(
+        "--component",
+        metavar="NAME",
+        dest="components",
+        action="append",
+        default=None,
+        help="Enable a component for this build (repeatable; overrides .conf)",
+    )
+    build_p.add_argument(
+        "--no-components",
+        action="store_true",
+        help="Ignore .ulmk/components.conf; only --component flags apply",
+    )
+
+    comp_p = subparsers.add_parser(
+        "components",
+        help="Discover and enable/disable kernel components",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Components live under components/ and ../ulmk_apps/.\n"
+            "All are OFF by default in the manifest; enable them explicitly.\n\n"
+            "  components list              discover registered components\n"
+            "  components status            show manifest vs local config\n"
+            "  components enable NAME ...   persist ON in .ulmk/components.conf\n"
+            "  components disable NAME ...  remove from local config"
+        ),
+    )
+    comp_sub = comp_p.add_subparsers(dest="components_action", required=True)
+    comp_sub.add_parser("list", help="List all discoverable components")
+    comp_sub.add_parser("status", help="Show default vs configured state")
+    en_p = comp_sub.add_parser("enable", help="Enable components (saved to .conf)")
+    en_p.add_argument("names", nargs="+", metavar="NAME")
+    dis_p = comp_sub.add_parser("disable", help="Disable components (saved to .conf)")
+    dis_p.add_argument("names", nargs="+", metavar="NAME")
 
     subparsers.add_parser(
         "killall",
@@ -518,6 +781,8 @@ def main() -> None:
 
     if args.command == "build":
         _run_build(args)
+    elif args.command == "components":
+        _run_components(args)
     elif args.command == "tests":
         _run_tests(args)
     else:
