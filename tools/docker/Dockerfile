@@ -1,9 +1,9 @@
 # =============================================================================
-# ulmk — TriCore development environment
+# ulmk — multi-arch development environment (TriCore + RISC-V)
 #
 # Two stages:
-#   toolchain  — GCC + CMake + Ninja  (~5 min, cacheable layer)
-#   dev        — adds QEMU TC27x + GDB  (~30 min on first build)
+#   toolchain  — tricore-elf-gcc + riscv-none-elf-gcc + CMake + Ninja
+#   dev        — QEMU TriCore (linumiz) + QEMU RISC-V (upstream apt)
 #
 # Build manually:
 #   docker build --target dev -t ulipe-microkernel:dev tools/docker/
@@ -21,7 +21,7 @@
 # -----------------------------------------------------------------------------
 FROM ubuntu:24.04 AS toolchain
 
-LABEL description="ulmk TriCore toolchain"
+LABEL description="ulmk TriCore + RISC-V toolchains"
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -54,6 +54,23 @@ ENV PATH="/opt/tricore-gcc-bin:${PATH}"
 RUN tricore-elf-gcc --version
 RUN tricore-elf-gdb --version
 
+# xPack RISC-V embedded GCC (riscv-none-elf)
+ARG RISCV_XPACK_VERSION=14.2.0-3
+ARG RISCV_XPACK_ARCHIVE=xpack-riscv-none-elf-gcc-${RISCV_XPACK_VERSION}-linux-x64.tar.gz
+
+RUN set -e && \
+    URL="https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases/download/v${RISCV_XPACK_VERSION}/${RISCV_XPACK_ARCHIVE}" && \
+    wget -q "${URL}" -O /tmp/riscv-gcc.tar.gz && \
+    tar -xf /tmp/riscv-gcc.tar.gz -C /opt && \
+    rm /tmp/riscv-gcc.tar.gz && \
+    GCC_BIN=$(find /opt -name "riscv-none-elf-gcc" -type f | head -1) && \
+    GCC_BINDIR=$(dirname "${GCC_BIN}") && \
+    ln -sfn "${GCC_BINDIR}" /opt/riscv-gcc-bin && \
+    echo "RISC-V GCC: $("${GCC_BIN}" --version | head -1)"
+
+ENV PATH="/opt/riscv-gcc-bin:${PATH}"
+RUN riscv-none-elf-gcc --version
+
 WORKDIR /workspace
 
 # -----------------------------------------------------------------------------
@@ -73,6 +90,7 @@ FROM toolchain AS dev
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        qemu-system-misc \
         libglib2.0-dev \
         libfdt-dev \
         libpixman-1-dev \
@@ -108,6 +126,7 @@ RUN set -e && \
 
 ENV PATH="/opt/qemu-tricore/bin:${PATH}"
 RUN qemu-system-tricore --version
+RUN qemu-system-riscv32 --version
 
 RUN tricore-elf-gdb --version && echo "GDB OK"
 
