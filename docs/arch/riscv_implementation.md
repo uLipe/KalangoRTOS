@@ -47,7 +47,8 @@ python3 tools/dev.py build qemu --board boards/qemu_riscv_virt
 python3 tools/dev.py tests integ --board boards/qemu_riscv_virt
 ```
 
-`csa_ctx` is TriCore-only (no hardware CSA pool on RISC-V).
+`ctx_early_tricore` is TriCore-only (hardware CSA pool). A RISC-V counterpart
+(`ctx_early_riscv`) may be added later to exercise stack-frame init without CSA.
 
 ## QEMU map (virt)
 

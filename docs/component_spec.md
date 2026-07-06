@@ -22,8 +22,9 @@
 7. [Root Thread Ownership and Component Init](#7-root-thread-ownership-and-component-init)
 8. [Component Service Pattern — IPC as Implementation Detail](#8-component-service-pattern--ipc-as-implementation-detail)
 9. [hello_world Component Design](#9-hello_world-component-design)
-10. [board_console — Board Source Service](#10-board_console--board-source-service)
-11. [Open Questions](#11-open-questions)
+10. [ping_pong Component Design](#10-ping_pong-component-design)
+11. [board_console — Board Source Service](#11-board_console--board-source-service)
+12. [Open Questions](#12-open-questions)
 
 ---
 
@@ -34,7 +35,10 @@ A **component** is an independently-developed, reusable unit of userspace code t
 Key principles:
 
 - **One image, N components.** The microkernel produces a single ELF. All components are compiled and linked into that ELF. Isolation is enforced at runtime by the MPU, not by separate binaries.
-- **Components are opt-in.** Every component declares itself as `ENABLED` or `DISABLED` in its CMake descriptor. Disabled components contribute zero code to the image.
+- **Components are opt-in.** Every component declares `ENABLED OFF` in its CMake
+  manifest (default). Enable them at configure time via `python3 tools/dev.py
+  components enable` or `dev.py build --component`. Disabled components contribute
+  zero code to the image.
 - **Only one root thread.** The kernel creates exactly one initial userspace context. Exactly one component provides the `ulmk_root_thread()` function. That component is responsible for starting all other components' service threads by calling their public init functions in order.
 - **Kernel knows nothing about components.** Component names, endpoints, and initialisation order are purely userspace policy. The kernel only sees threads, endpoints, and memory mappings.
 - **IPC is an implementation detail.** Components expose C functions in their public headers, not endpoint handles. Callers never touch IPC directly; the component's client-side library encapsulates it.
@@ -88,9 +92,9 @@ ulmk_component_register(
 | Field | Required | Notes |
 |---|---|---|
 | `NAME` | yes | Identifier used in `REQUIRES` and `-DUL_COMPONENT_NAME=<name>` |
-| `ENABLED` | yes | `OFF` → zero code, zero headers, zero linker fragment |
+| `ENABLED` | yes | Manifest default (`OFF` in repo). Overridden by `ULMK_COMP_<name>_ENABLED` cache var (`dev.py build`) |
 | `SOURCES` | yes | Paths relative to the component directory |
-| `INCLUDE_DIRS` | no | Exposed to every other enabled component |
+| `INCLUDE_DIRS` | no | `PUBLIC` on `ulmk_comp_<name>`; propagated to `REQUIRES` dependents |
 | `REQUIRES` | no | Dependency on another component name; see enforcement rules below |
 | `ROOT_THREAD` | no (flag) | Marks the component providing `ulmk_root_thread()`; exactly one must be ENABLED |
 | `LINKER_FRAGMENT` | no | Appended verbatim after kernel linker sections |
@@ -100,8 +104,30 @@ ulmk_component_register(
 | Scenario | Result |
 |---|---|
 | Component DISABLED, no one requires it | Silently excluded — no error |
-| Component A (ENABLED) requires component B (DISABLED) | Configure-time error |
+| Component A (ENABLED) requires component B (DISABLED) | Configure-time `FATAL_ERROR` in `ulmk_components_finalize()` with `dev.py` hint |
 | Component A (DISABLED) requires component B (ENABLED) | No error — A is not built |
+| Caller references `<dep>_init()` but dep DISABLED | Link error (`undefined reference`) as secondary guard |
+
+### Runtime enable (`dev.py components`)
+
+Components default to **OFF** in every `CMakeLists.txt`. The developer enables
+them explicitly:
+
+```bash
+python3 tools/dev.py components list
+python3 tools/dev.py components enable hello_world ping_pong
+python3 tools/dev.py build --board boards/qemu_riscv_virt
+python3 tools/dev.py build qemu --board boards/qemu_riscv_virt
+```
+
+Selection is stored in `.ulmk/components.conf` (gitignored). One-shot overrides:
+
+```bash
+python3 tools/dev.py build --component hello_world --component ping_pong
+python3 tools/dev.py build --no-components   # kernel-only; uses root_thread stub
+```
+
+CMake receives `-DULMK_COMP_<name>_ENABLED=ON|OFF` for every discovered component.
 
 ### Example
 
@@ -109,7 +135,8 @@ ulmk_component_register(
 # components/hello_world/CMakeLists.txt
 ulmk_component_register(
     NAME         hello_world
-    ENABLED      ON
+    ENABLED      OFF
+    REQUIRES     ping_pong
     SOURCES
         src/root_thread.c
         src/hello_world.c
@@ -159,16 +186,18 @@ scan kernel/components/     → ulmk_component_register() calls
 scan ../ulmk_apps/          → ulmk_component_register() calls  (if directory exists)
 include ${ULMK_CHIP_DIR}/board.cmake  → board sources + flags (unchanged)
 
-validate:
-  • exactly one ENABLED component has ROOT_THREAD flag
-  • all REQUIRES dependencies of ENABLED components are themselves ENABLED
+validate (ulmk_components_finalize):
+  • at most one ENABLED component has ROOT_THREAD
+  • all REQUIRES of ENABLED components are themselves ENABLED
+  • inter-component target_link_libraries for REQUIRES deps
+
+if no ENABLED component has ROOT_THREAD:
+  link stub/root_thread_stub.c (minimal ulmk_root_thread → ulmk_thread_exit)
 
 accumulate from ENABLED components:
-  • sources → added to ulmk_kernel library
-  • include dirs → added to global include path
-  • linker fragments → appended to generated linker script
-
-ulmk_generate_linker_script()   (existing mechanism, extended with component fragments)
+  • each → static library ulmk_comp_<name>
+  • include dirs → PUBLIC on that library
+  • domain_data.ld.in snippet via ulmk_add_domain()
 ```
 
 ### CMake build
@@ -180,7 +209,10 @@ link:    ulipe.elf  -T generated.ld
 
 ### dev.py as CMake frontend
 
-`dev.py build` is a thin frontend that invokes CMake configure + build inside the container. It no longer maintains a parallel source list. CMake is the single source of truth.
+`dev.py build` invokes CMake configure + Ninja inside the container. It passes
+`-DULMK_COMP_<name>_ENABLED=…` for every discovered component (from
+`.ulmk/components.conf` and/or `--component` flags). See `tools/dev.py components
+--help`.
 
 ```
 dev.py build             → cmake configure (QEMU board) + cmake build
@@ -350,28 +382,16 @@ void my_service_entry(void *arg)
 
 **Location:** `components/hello_world/`
 
-**Purpose:** Reference component. Provides `ulmk_root_thread()` and runs a task that prints a counter via the board_console public C API. Illustrative only — comments explain the patterns; the component itself is intentionally minimal.
-
-### File layout
-
-```
-components/hello_world/
-├── CMakeLists.txt
-├── include/
-│   └── hello_world.h       # hello_world_init()
-└── src/
-    ├── root_thread.c       # ulmk_root_thread(): calls board_services_init + hello_world_init
-    └── hello_world.c       # hello task: loops, calls board_console_puts
-```
-
-No `linker.ld.in` — hello_world has no private memory domain.
+**Purpose:** Reference `ROOT_THREAD` component. Starts board services, the hello
+counter task, and the `ping_pong` demo via `ping_pong_init()`.
 
 ### CMakeLists.txt
 
 ```cmake
 ulmk_component_register(
     NAME         hello_world
-    ENABLED      ON
+    ENABLED      OFF
+    REQUIRES     ping_pong
     SOURCES
         src/root_thread.c
         src/hello_world.c
@@ -380,23 +400,23 @@ ulmk_component_register(
 )
 ```
 
+Enabling `hello_world` without `ping_pong` fails at configure time.
+
 ### Sketches
 
 **root_thread.c:**
 ```c
 #include <hello_world.h>
+#include <ping_pong.h>
 #include <ulmk/microkernel.h>
-#include <board_services.h>   /* board-provided; declares board_services_init() */
+
+void board_services_init(const ulmk_boot_info_t *info);
 
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
-    /*
-     * Board services first: board_services_init() creates HW service endpoints
-     * and spawns their threads before returning. Subsequent component inits can
-     * call board service APIs immediately without spin-waiting.
-     */
     board_services_init(info);
     hello_world_init(info);
+    ping_pong_init(info);
     ulmk_thread_exit();
 }
 ```
@@ -456,7 +476,47 @@ ulmk_tid_t hello_world_init(const ulmk_boot_info_t *info)
 
 ---
 
-## 10. board_console — Board Source Service
+## 10. ping_pong Component Design
+
+**Location:** `components/ping_pong/`
+
+**Purpose:** Second built-in component. Exercises multi-component linking (separate
+`ulmk_comp_ping_pong.a` + MPU domain), synchronous IPC (`ep_call` / `ep_recv` /
+`ep_reply`), and board timer/console without board-specific headers.
+
+**Dependency:** `hello_world` declares `REQUIRES ping_pong` and calls
+`ping_pong_init()` from its root thread. Enable both for the demo image:
+
+```bash
+python3 tools/dev.py components enable hello_world ping_pong
+```
+
+### File layout
+
+```
+components/ping_pong/
+├── CMakeLists.txt
+├── include/ping_pong.h
+└── src/ping_pong.c
+```
+
+### CMakeLists.txt
+
+```cmake
+ulmk_component_register(
+    NAME         ping_pong
+    ENABLED      OFF
+    SOURCES      src/ping_pong.c
+    INCLUDE_DIRS include
+)
+```
+
+No `ROOT_THREAD`. Enabling `ping_pong` alone compiles the library but does not
+start the threads — only a component with `ROOT_THREAD` calls `ping_pong_init()`.
+
+---
+
+## 11. board_console — Board Source Service
 
 `board_console` is **not** a portable component. It is a board source compiled via `ULMK_BOARD_SOURCES` in `boards/qemu_tc3xx/board.cmake`.
 
@@ -574,6 +634,6 @@ void board_services_init(const ulmk_boot_info_t *info)
 
 ---
 
-## 11. Open Questions
+## 12. Open Questions
 
 *(No outstanding decisions. Update this section as new open points arise.)*

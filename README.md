@@ -31,8 +31,8 @@ Key properties:
 - **Synchronous IPC.**  Caller blocks until server replies.  Priority
   inheritance prevents priority inversion.
 - **Component model.**  Each feature is a component: a directory with a
-  `CMakeLists.txt` calling `ulmk_component_register()`.  The build auto-discovers
-  components in `components/` and in the optional `../ulmk_apps/` sibling.
+  `CMakeLists.txt` calling `ulmk_component_register()`.  Components default to
+  **OFF**; enable them with `python3 tools/dev.py components enable`.
 - **No weak symbols.**  Board and component sources provide strong definitions.
   A missing symbol is a link error, not a silent no-op.
 
@@ -74,18 +74,55 @@ python3 tools/dev.py --rebuild
 
 The workspace is mounted at `/workspace` inside the container.
 
-### Build (inside the container)
+### Build the hello world demo (inside the container)
+
+All components are **OFF by default**. Enable the demo stack, build, and run:
 
 ```bash
-# TriCore QEMU (default)
-python3 tools/dev.py build
+# 1. See what is available
+python3 tools/dev.py components list
 
-# RISC-V QEMU virt
+# 2. Enable hello_world (requires ping_pong — enable both)
+python3 tools/dev.py components enable hello_world ping_pong
+
+# 3. Build
 python3 tools/dev.py build --board boards/qemu_riscv_virt
 
-# Clean build
+# TriCore QEMU (default board)
+python3 tools/dev.py build
+
+# Clean rebuild
 python3 tools/dev.py build --clean
 
+# One-shot enable without saving .ulmk/components.conf
+python3 tools/dev.py build --component hello_world --component ping_pong
+
+# Kernel-only image (no components)
+python3 tools/dev.py build --no-components
+```
+
+Local component selection is stored in `.ulmk/components.conf` (gitignored).
+
+### Run on QEMU (inside the container)
+
+```bash
+python3 tools/dev.py build qemu --board boards/qemu_riscv_virt
+python3 tools/dev.py build qemu
+```
+
+Expected output (with demo components enabled):
+
+```
+ulmk: kernel entry
+...
+ulmk: switching to root thread
+ulmk: hello from userspace — tick #0
+ping_pong: round 1
+```
+
+### Build options reference
+
+```bash
 # Custom board chip dir
 python3 tools/dev.py build --board /path/to/my_board
 ```
@@ -95,28 +132,9 @@ CMake configure variables of interest:
 ```bash
 -DULMK_CHIP_DIR=boards/qemu_tc3xx           # TriCore QEMU (default)
 -DULMK_CHIP_DIR=boards/qemu_riscv_virt      # RISC-V QEMU virt
+-DULMK_COMP_hello_world_ENABLED=ON          # component override (dev.py sets these)
 -DULMK_CONFIG_MAX_THREADS=32                # TCB pool size
 -DULMK_CONFIG_DEBUG_PRINTK=1               # kernel debug prints
-```
-
-`ULMK_CHIP_DIR` selects the board; `board.cmake` sets `UL_BOARD_ARCH`, which
-`cmake/arch.cmake` uses to pick the toolchain file and `arch/<arch>/` sources.
-
-### Run on QEMU (inside the container)
-
-```bash
-python3 tools/dev.py run                              # TriCore (default)
-python3 tools/dev.py run --board boards/qemu_riscv_virt
-```
-
-Expected output:
-
-```
-ulmk: kernel entry
-[DBG] sched init done
-...
-ulmk: switching to root thread
-ulmk: hello from userspace
 ```
 
 ### Run tests (inside the container)
@@ -154,7 +172,8 @@ arch/tricore/                TriCore TC1.6.x port
 arch/riscv/                  RISC-V RV32 port
 boards/qemu_tc3xx/           TriCore QEMU CI board
 boards/qemu_riscv_virt/      RISC-V QEMU virt CI board
-components/hello_world/      reference component (ROOT_THREAD)
+components/hello_world/      reference ROOT_THREAD component (default OFF)
+components/ping_pong/        IPC ping/pong demo (default OFF)
 include/ulmk/microkernel.h     public API (all syscall wrappers)
 linker/                      arch-independent linker fragments
 stub/                        documentation-only stub templates

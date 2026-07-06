@@ -191,26 +191,46 @@ endforeach()
 
 ### 4.2 Discovery log
 
-The configure step prints a discovery log:
+With all components OFF by default:
 
 ```
--- Scanning components:
+--   [component] hello_world DISABLED
+--   [component] ping_pong DISABLED
+--   [component] tricore_asclin DISABLED
+```
+
+After `dev.py build --component hello_world --component ping_pong`:
+
+```
 --   [component] hello_world ENABLED
+--   [component] ping_pong ENABLED
 --   [component] ROOT_THREAD: hello_world
 ```
 
-### 4.3 Validation
+### 4.3 Validation and enable overrides
 
-`ulmk_components_finalize()` (called after all scans) validates:
+`ulmk_components_finalize()` validates:
 
-- At most one component declares `ROOT_THREAD`.  If more than one does, the
-  build fails with a clear error.
-- If a component's `REQUIRES` dependency is registered as `DISABLED`, the
-  build fails immediately.
+- At most one **enabled** component declares `ROOT_THREAD`.
+- Every `REQUIRES` dependency of an **enabled** component is also enabled.
+  On failure, CMake prints a hint to run `python3 tools/dev.py components enable …`.
 
-If no component declares `ROOT_THREAD`, a warning is printed and the build
-continues — the link will fail with an undefined reference to `ulmk_root_thread`,
-which is the intended diagnostic.
+If no enabled component declares `ROOT_THREAD`, `stub/root_thread_stub.c` is
+linked (`ulmk_root_thread()` calls `ulmk_thread_exit()` immediately).
+
+### 4.4 Runtime selection (`dev.py components`)
+
+| Command | Effect |
+|---------|--------|
+| `components list` | Discover all components under `components/` and `../ulmk_apps/` |
+| `components status` | Manifest default vs `.ulmk/components.conf` |
+| `components enable NAME …` | Persist ON in `.ulmk/components.conf` (gitignored) |
+| `components disable NAME …` | Remove from config |
+| `build --component NAME` | One-shot ON for this build (overrides conf) |
+| `build --no-components` | Ignore conf; only explicit `--component` flags apply |
+
+CMake cache variable per component: `-DULMK_COMP_<name>_ENABLED=ON|OFF`.
+Manifest `ENABLED OFF` is the default when the cache entry is unset on first configure.
 
 ---
 
@@ -232,15 +252,16 @@ ulmk_component_register(
 )
 ```
 
-When `ENABLED` is `ON`:
+When the cache variable `ULMK_COMP_<name>_ENABLED` is ON (via manifest default
+on first configure, or `dev.py` override):
 
-- Sources are added to the `ulmk_kernel` static library target.
-- Include directories are added as `PUBLIC` so all other targets see them.
-- If `ROOT_THREAD` is set, the component name is recorded; `ulmk_components_finalize()`
-  errors if more than one component sets this flag.
+- A static library `ulmk_comp_<name>` is created and linked into `ulmk`.
+- `INCLUDE_DIRS` are `PUBLIC` on that target.
+- `REQUIRES` deps are validated in `ulmk_components_finalize()` and linked
+  via `target_link_libraries`.
+- A per-component MPU domain snippet is generated.
 
-When `ENABLED` is `OFF`, the component is skipped entirely and emits a
-`DISABLED` log line.
+When OFF, the component emits a `DISABLED` log line and contributes nothing.
 
 ### `ulmk_components_finalize`
 
