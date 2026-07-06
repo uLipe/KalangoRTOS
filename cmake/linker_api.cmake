@@ -89,7 +89,7 @@ function(_ulmk_finalize_build kernel_target chip_dir)
         COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_SOURCE_DIR}/cmake/generate_ld.py"
                 "--chip-dir"   "${chip_dir}"
-                "--arch-dir"   "${CMAKE_SOURCE_DIR}/arch/tricore/linker"
+                "--arch-dir"   "${ULMK_ARCH_LINKER_DIR}"
                 "--kernel-dir" "${CMAKE_SOURCE_DIR}/linker/kernel"
                 "--snippets"   "${CMAKE_SOURCE_DIR}/linker/snippets"
                 "--output"     "${generated_ld}"

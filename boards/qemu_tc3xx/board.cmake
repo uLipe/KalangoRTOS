@@ -28,8 +28,11 @@ set(ULMK_BOARD_CFLAGS
     -DULMK_ARCH_MPU_NUM_CPR=4
 )
 
-# CMake-specific: propagate mcpu to C/ASM compilers and linker.
+# CMake-specific: propagate mcpu to C/ASM compilers and linker (once).
 if(DEFINED CMAKE_C_FLAGS)
+    string(REGEX REPLACE " -mcpu=[^ ]+" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+    string(REGEX REPLACE " -mcpu=[^ ]+" "" CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS}")
+    string(REGEX REPLACE " -mcpu=[^ ]+" "" CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
     string(APPEND CMAKE_C_FLAGS          " -mcpu=${ULMK_BOARD_CPU}")
     string(APPEND CMAKE_ASM_FLAGS        " -mcpu=${ULMK_BOARD_CPU}")
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -mcpu=${ULMK_BOARD_CPU}")

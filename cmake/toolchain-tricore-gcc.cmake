@@ -1,6 +1,9 @@
 # cmake/toolchain-tricore-gcc.cmake
 # TriCore ELF toolchain file (NoMore201/tricore-gcc-toolchain in Docker image).
 # Usage: cmake -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-tricore-gcc.cmake
+#        -DULMK_CHIP_DIR=boards/qemu_tc3xx
+
+include("${CMAKE_CURRENT_LIST_DIR}/board_resolve.cmake")
 
 set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_PROCESSOR tricore)

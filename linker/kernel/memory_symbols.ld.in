@@ -1,0 +1,12 @@
+/*
+ * Chip MEMORY bounds (from Layer-3 memory.ld).  Appended after SECTIONS
+ * in generated.ld — not inside SECTIONS.
+ */
+PROVIDE(_ulmk_mem_flash_base  = ORIGIN(KERNEL_FLASH));
+PROVIDE(_ulmk_mem_flash_end   = ORIGIN(KERNEL_FLASH) + LENGTH(KERNEL_FLASH));
+PROVIDE(_ulmk_mem_ram_base    = ORIGIN(KERNEL_RAM));
+PROVIDE(_ulmk_mem_ram_end     = ORIGIN(KERNEL_RAM) + LENGTH(KERNEL_RAM));
+PROVIDE(_ulmk_mem_shared_base = ORIGIN(SHARED_RAM));
+PROVIDE(_ulmk_mem_shared_end  = ORIGIN(SHARED_RAM) + LENGTH(SHARED_RAM));
+PROVIDE(_ulmk_mem_periph_base = ORIGIN(PERIPH));
+PROVIDE(_ulmk_mem_periph_end  = ORIGIN(PERIPH) + LENGTH(PERIPH));

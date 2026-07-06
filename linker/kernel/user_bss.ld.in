@@ -6,5 +6,6 @@
     .user_bss (NOLOAD) : ALIGN(8) {
         *libulmk_kernel.a:(.user_bss .user_bss.*)
         *(.user_bss .user_bss.*)
+        *(.bss .bss.* .sbss .sbss.*)
         . = ALIGN(8);
     } > KERNEL_RAM

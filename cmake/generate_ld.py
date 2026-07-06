@@ -92,8 +92,13 @@ def main():
     if flags["HAVE_BMHD"] and os.path.exists(bmhd_path):
         out.append(read_fragment(bmhd_path))
 
-    # 4a. Vectors
-    out.append(read_fragment(os.path.join(args.kernel_dir, "vectors.ld.in")))
+    # 4a. Vectors — arch-specific when present (RISC-V trap section)
+    vectors_arch = os.path.join(args.arch_dir, "vectors.ld.in")
+    vectors_kernel = os.path.join(args.kernel_dir, "vectors.ld.in")
+    if os.path.exists(vectors_arch):
+        out.append(read_fragment(vectors_arch))
+    else:
+        out.append(read_fragment(vectors_kernel))
 
     # 4b. Kernel text (libulmk_kernel.a only)
     out.append(read_fragment(os.path.join(args.kernel_dir, "kernel_text.ld.in")))
@@ -157,6 +162,10 @@ def main():
     out.append(read_fragment(os.path.join(args.kernel_dir, "user_pool.ld.in")))
 
     out.append("\n} /* SECTIONS */\n")
+
+    mem_sym = os.path.join(args.kernel_dir, "memory_symbols.ld.in")
+    if os.path.exists(mem_sym):
+        out.append(read_fragment(mem_sym))
 
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
