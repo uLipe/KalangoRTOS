@@ -737,6 +737,8 @@ void ulmk_arch_irq_src_configure(uint8_t srpn, uint8_t priority, uint8_t cpu_id)
 void ulmk_arch_irq_src_register(uint8_t srpn, uint32_t src_reg_addr)
 {
 	g_src_addr[srpn] = src_reg_addr;
+	if (src_reg_addr)
+		*(volatile uint32_t *)(uintptr_t)src_reg_addr = (uint32_t)srpn;
 }
 
 void ulmk_arch_irq_src_enable(uint8_t srpn)

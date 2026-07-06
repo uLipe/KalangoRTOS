@@ -54,6 +54,17 @@ void ulmk_kern_syscall_check_preempt(void)
 	ulmk_sched_schedule();
 }
 
+void ulmk_kern_trap_mpu_restore(void)
+{
+	ulmk_thread_t *cur = ulmk_sched_current();
+
+	if (!cur)
+		return;
+
+	ulmk_arch_mpu_switch(cur->regions, cur->region_count,
+			     cur->privilege == ULMK_PRIV_KERNEL ? 0u : 1u);
+}
+
 uint32_t ulmk_kern_trap_syscall(uint8_t tin, uint32_t args[4])
 {
 	return ulmk_syscall_router(tin, args[0], args[1], args[2], args[3]);
@@ -92,12 +103,6 @@ static void idle_thread_entry(void *arg)
 	(void)arg;
 	for (;;)
 		ulmk_arch_cpu_idle();
-}
-
-static void root_thread_entry(void *arg)
-{
-	ulmk_root_thread((const ulmk_boot_info_t *)arg);
-	ulmk_thread_exit();
 }
 
 /* =========================================================================
@@ -153,7 +158,7 @@ void ulmk_kern_main(const ulmk_boot_info_t *info)
 	ulmk_sched_enqueue(&idle_thread_g);
 
 	attr.name       = "root";
-	attr.entry      = root_thread_entry;
+	attr.entry      = (void (*)(void *))ulmk_root_thread;
 	attr.arg        = (void *)info;
 	attr.priority   = 0u;
 	attr.stack_size = sizeof(root_stack_g);

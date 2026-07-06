@@ -134,11 +134,25 @@ int notif_wait_impl(ulmk_notif_t notif_id, uint32_t mask, uint32_t *out)
 	cur->blocked_notif     = notif_id;
 	cur->notif_bits_outptr = out;
 
+	cur->state = UL_THREAD_STATE_BLOCKED;
+	ulmk_sched_dequeue(cur);
+
 	n->waiter    = cur;
 	n->wait_mask = mask;
 
-	cur->state = UL_THREAD_STATE_BLOCKED;
-	ulmk_sched_dequeue(cur);
+	matched = n->bits & mask;
+	if (matched) {
+		n->bits   &= ~matched;
+		n->waiter  = NULL;
+		cur->state = UL_THREAD_STATE_READY;
+		cur->blocked_reason = UL_BLOCKED_NONE;
+		cur->blocked_notif  = ULMK_NOTIF_INVALID;
+		ulmk_sched_enqueue(cur);
+		ulmk_arch_cpu_irq_restore(key);
+		*out = matched;
+		return 0;
+	}
+
 	ulmk_arch_cpu_irq_restore(key);
 
 	ulmk_sched_schedule();

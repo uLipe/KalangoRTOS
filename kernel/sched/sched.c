@@ -236,6 +236,17 @@ void ulmk_sched_check_preempt(void)
 	cur->state = UL_THREAD_STATE_READY;
 	sched_class->enqueue(cur);
 
+#if defined(__riscv)
+	/*
+	 * RV32 saves a 128-byte trap frame on the thread stack inside the
+	 * interrupt handler.  Switching via g_preempt_* + ctx_switch resume
+	 * loses that frame; call sched_schedule() so we return through the
+	 * trap epilogue and mret when this thread is rescheduled.
+	 */
+	ulmk_sched_schedule();
+	return;
+#endif
+
 	/* Consume next from the queue (peek_next left it there). */
 	next = sched_class->pick_next();
 

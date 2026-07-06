@@ -106,8 +106,6 @@ uint32_t ulmk_kern_irq_bind_hw(uint32_t srpn, uint32_t notif_id,
 		return (uint32_t)(int32_t)ULMK_ENOSPC;
 
 	ulmk_arch_irq_src_register((uint8_t)srpn, src_reg);
-	*(volatile uint32_t *)(uintptr_t)src_reg =
-		(uint32_t)srpn;
 	return 0u;
 }
 
@@ -150,6 +148,7 @@ uint32_t ulmk_kern_irq_disable(uint32_t srpn)
 	ulmk_arch_cpu_irq_restore(key);
 
 	ulmk_arch_irq_src_disable((uint8_t)srpn);
+	ulmk_arch_irq_src_ack((uint8_t)srpn);
 	return 0u;
 }
 
