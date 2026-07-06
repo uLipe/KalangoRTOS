@@ -136,13 +136,13 @@ static int          g_reg_count;
 
 ulmk_thread_t *ulmk_thread_by_tid(ulmk_tid_t tid)
 {
-	int i;
+	ulmk_thread_t *th = (ulmk_thread_t *)tid;
 
-	for (i = 0; i < g_reg_count; i++) {
-		if (g_reg[i]->tid == tid)
-			return g_reg[i];
-	}
-	return NULL;
+	if (tid == ULMK_TID_INVALID || !th)
+		return NULL;
+	if (th->state == UL_THREAD_STATE_DEAD)
+		return NULL;
+	return th;
 }
 
 /* ── Helpers ───────────────────────────────────────────────────────────── */
@@ -154,13 +154,13 @@ static void reset_counters(void)
 	g_dequeue_count  = 0;
 }
 
-static ulmk_thread_t *make_thread(ulmk_tid_t tid, uint8_t prio)
+static ulmk_thread_t *make_thread(uint8_t prio)
 {
 	ulmk_thread_t *t;
 
 	t = &g_tpool[g_tpool_idx++];
 	memset(t, 0, sizeof(*t));
-	t->tid            = tid;
+	t->tid            = (ulmk_tid_t)(uintptr_t)t;
 	t->priority       = prio;
 	t->saved_prio     = prio;
 	t->state          = UL_THREAD_STATE_READY;
@@ -235,7 +235,7 @@ static void test_ep_call_invalid_ep(void)
 	ulmk_msg_t msg = {0};
 
 	reset_pools();
-	g_current = make_thread(0, 10);
+	g_current = make_thread(10);
 
 	ASSERT(ep_call_impl(999, &msg) == -ULMK_EINVAL);
 	ASSERT(g_schedule_count == 0);
@@ -245,7 +245,7 @@ static void test_ep_call_null_msg(void)
 {
 	reset_pools();
 	ulmk_kern_ep_create();
-	g_current = make_thread(1, 10);
+	g_current = make_thread(10);
 
 	ASSERT(ep_call_impl(0, NULL) == -ULMK_EINVAL);
 }
@@ -262,8 +262,8 @@ static void test_ep_call_fast_path_server_waiting(void)
 	ulmk_kern_ep_create();
 	ep = ulmk_ep_by_id(0);
 
-	server = make_thread(10, 20);
-	caller = make_thread(11, 5);
+	server = make_thread(20);
+	caller = make_thread(5);
 
 	server->state          = UL_THREAD_STATE_BLOCKED;
 	server->blocked_reason = UL_BLOCKED_IPC_RECV;
@@ -293,7 +293,7 @@ static void test_ep_call_slow_path_no_server(void)
 	reset_pools();
 	ulmk_kern_ep_create();
 	ep     = ulmk_ep_by_id(0);
-	caller = make_thread(20, 10);
+	caller = make_thread(10);
 
 	g_current = caller;
 	ep_call_impl(0, &msg);
@@ -312,7 +312,7 @@ static void test_ep_recv_invalid_ep(void)
 	ulmk_msg_t msg = {0};
 
 	reset_pools();
-	g_current = make_thread(30, 10);
+	g_current = make_thread(10);
 
 	ASSERT(ep_recv_impl(999, &msg, NULL) == -ULMK_EINVAL);
 }
@@ -321,7 +321,7 @@ static void test_ep_recv_null_msg(void)
 {
 	reset_pools();
 	ulmk_kern_ep_create();
-	g_current = make_thread(31, 10);
+	g_current = make_thread(10);
 
 	ASSERT(ep_recv_impl(0, NULL, NULL) == -ULMK_EINVAL);
 }
@@ -338,8 +338,8 @@ static void test_ep_recv_fast_path_caller_waiting(void)
 	ulmk_kern_ep_create();
 	ep = ulmk_ep_by_id(0);
 
-	caller = make_thread(40, 5);
-	server = make_thread(41, 20);
+	caller = make_thread(5);
+	server = make_thread(20);
 
 	caller->state          = UL_THREAD_STATE_BLOCKED;
 	caller->blocked_reason = UL_BLOCKED_IPC_CALL;
@@ -367,7 +367,7 @@ static void test_ep_recv_slow_path_no_caller(void)
 	ulmk_kern_ep_create();
 	ep = ulmk_ep_by_id(0);
 
-	server    = make_thread(50, 20);
+	server    = make_thread(20);
 	g_current = server;
 	ep_recv_impl(0, &msg_out, NULL);
 
@@ -385,7 +385,7 @@ static void test_ep_reply_invalid_tid(void)
 	ulmk_msg_t reply = {0};
 
 	reset_pools();
-	g_current = make_thread(60, 10);
+	g_current = make_thread(10);
 
 	ASSERT(ep_reply_impl(ULMK_TID_INVALID, &reply) == -ULMK_EINVAL);
 }
@@ -396,8 +396,8 @@ static void test_ep_reply_non_blocked_caller(void)
 	ulmk_thread_t *not_blocked;
 
 	reset_pools();
-	not_blocked = make_thread(61, 10);
-	g_current   = make_thread(62, 10);
+	not_blocked = make_thread(10);
+	g_current   = make_thread(10);
 
 	ASSERT(ep_reply_impl(not_blocked->tid, &reply) == -ULMK_EINVAL);
 }
@@ -409,8 +409,8 @@ static void test_ep_reply_wakes_caller_restores_prio(void)
 	ulmk_thread_t *caller;
 
 	reset_pools();
-	server = make_thread(70, 20);
-	caller = make_thread(71, 5);
+	server = make_thread(20);
+	caller = make_thread(5);
 
 	server->saved_prio     = 20;
 	server->priority       = 5;
@@ -433,7 +433,7 @@ static void test_ep_reply_wakes_caller_restores_prio(void)
 static void test_ep_reply_recv_null_args(void)
 {
 	reset_pools();
-	g_current = make_thread(80, 10);
+	g_current = make_thread(10);
 	ulmk_kern_ep_create();
 
 	ASSERT(ep_reply_recv_impl(0, ULMK_TID_INVALID, NULL, NULL, NULL) == -ULMK_EINVAL);
@@ -451,8 +451,8 @@ static void test_ep_reply_recv_skip_reply_on_invalid_tid(void)
 	ulmk_kern_ep_create();
 	ep = ulmk_ep_by_id(0);
 
-	caller = make_thread(90, 5);
-	server = make_thread(91, 20);
+	caller = make_thread(5);
+	server = make_thread(20);
 
 	caller->state          = UL_THREAD_STATE_BLOCKED;
 	caller->blocked_reason = UL_BLOCKED_IPC_CALL;
@@ -472,7 +472,7 @@ static void test_ep_reply_recv_skip_reply_on_invalid_tid(void)
 static void test_ep_grant_invalid_ep(void)
 {
 	reset_pools();
-	g_current = make_thread(100, 10);
+	g_current = make_thread(10);
 
 	ASSERT(ep_grant_impl(999, g_current->tid) == -ULMK_EINVAL);
 }
@@ -491,7 +491,7 @@ static void test_ep_grant_valid(void)
 
 	reset_pools();
 	ulmk_kern_ep_create();
-	t = make_thread(110, 10);
+	t = make_thread(10);
 
 	ASSERT(ep_grant_impl(0, t->tid) == 0);
 }
@@ -546,7 +546,7 @@ static void test_notif_signal_no_waiter_accumulates(void)
 
 static void test_notif_signal_wakes_waiter(void)
 {
-	ulmk_thread_t    *waiter = make_thread(120, 10);
+	ulmk_thread_t    *waiter = make_thread(10);
 	ulmk_notif_obj_t *n;
 
 	reset_pools();
@@ -586,7 +586,7 @@ static void test_notif_wait_null_out(void)
 {
 	reset_pools();
 	ulmk_kern_notif_create();
-	g_current = make_thread(130, 10);
+	g_current = make_thread(10);
 
 	ASSERT(notif_wait_impl(0, 0x1, NULL) == -ULMK_EINVAL);
 }
@@ -601,7 +601,7 @@ static void test_notif_wait_fast_path(void)
 	n = ulmk_notif_by_id(0);
 	n->bits = 0x6;
 
-	g_current = make_thread(131, 10);
+	g_current = make_thread(10);
 	notif_wait_impl(0, 0x4, &bits);
 
 	ASSERT(bits == 0x4);
@@ -619,7 +619,7 @@ static void test_notif_wait_slow_path(void)
 	ulmk_kern_notif_create();
 	n = ulmk_notif_by_id(0);
 
-	waiter    = make_thread(132, 10);
+	waiter    = make_thread(10);
 	g_current = waiter;
 
 	notif_wait_impl(0, 0x1, &bits);
@@ -679,8 +679,8 @@ static void test_prio_inherit_boost(void)
 	ulmk_kern_ep_create();
 	ep = ulmk_ep_by_id(0);
 
-	caller = make_thread(140, 2);
-	server = make_thread(141, 50);
+	caller = make_thread(2);
+	server = make_thread(50);
 
 	server->state          = UL_THREAD_STATE_BLOCKED;
 	server->blocked_reason = UL_BLOCKED_IPC_RECV;
@@ -701,8 +701,8 @@ static void test_prio_inherit_restore_on_reply(void)
 	ulmk_thread_t *caller;
 
 	reset_pools();
-	server = make_thread(150, 50);
-	caller = make_thread(151, 2);
+	server = make_thread(50);
+	caller = make_thread(2);
 
 	server->saved_prio     = 50;
 	server->priority       = 2;
@@ -726,7 +726,7 @@ static void test_kill_removes_from_recv_queue(void)
 	ulmk_kern_ep_create();
 	ep = ulmk_ep_by_id(0);
 
-	srv = make_thread(160, 10);
+	srv = make_thread(10);
 	srv->state          = UL_THREAD_STATE_BLOCKED;
 	srv->blocked_reason = UL_BLOCKED_IPC_RECV;
 	srv->blocked_ep     = 0;

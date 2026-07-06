@@ -88,7 +88,7 @@ static void supervisor_entry(void *arg)
 
 		for (j = 0; j < THREADS_PER_WAVE; j++) {
 			tid = ulmk_thread_create(&attr);
-			if (tid >= 0)
+			if (tid != ULMK_TID_INVALID)
 				spawned++;
 		}
 

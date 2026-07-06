@@ -46,7 +46,7 @@ typedef struct ulmk_thread {
 	uint8_t          state;
 	uint8_t          blocked_reason;
 	ulmk_privilege_t   privilege;
-	ulmk_tid_t         tid;
+	ulmk_tid_t         tid;	/* opaque handle: (uintptr_t)this */
 	ulmk_ep_t          blocked_ep;      /* ep blocked on; for cleanup on kill */
 	ulmk_notif_t       blocked_notif;   /* notif blocked on; recv_or_notif */
 	sys_dnode_t        sched_node;      /* run-queue linkage */

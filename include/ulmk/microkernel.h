@@ -47,11 +47,11 @@ typedef enum {
  * Opaque handles
  * ========================================================================= */
 
-typedef int32_t   ulmk_tid_t;
+typedef uintptr_t ulmk_tid_t;
 typedef uintptr_t ulmk_ep_t;
 typedef uintptr_t ulmk_notif_t;
 
-#define ULMK_TID_INVALID		((ulmk_tid_t)-1)
+#define ULMK_TID_INVALID		((ulmk_tid_t)0)
 #define ULMK_EP_INVALID		((ulmk_ep_t)0)
 #define ULMK_NOTIF_INVALID	((ulmk_notif_t)0)
 

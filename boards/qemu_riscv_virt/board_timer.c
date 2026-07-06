@@ -159,7 +159,7 @@ ulmk_tid_t board_timer_start(const ulmk_boot_info_t *info)
 	attr.privilege  = ULMK_PRIV_DRIVER;
 
 	tid = ulmk_thread_create(&attr);
-	if ((int32_t)tid < 0)
+	if (tid == ULMK_TID_INVALID)
 		return ULMK_TID_INVALID;
 
 	ulmk_cap_grant(tid, ULMK_CAP_MAP_PERIPH);

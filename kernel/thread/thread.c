@@ -19,16 +19,14 @@
 #include <kernel/include/list.h>
 
 /*
- * Thread registry: singly-linked list of ALL allocated TCBs (including
- * static idle/root threads).  ulmk_thread_by_tid() walks this list.
- * Protected by the invariant that TCBs are never moved.
- *
- * Static threads (idle, root) are registered at boot via ulmk_thread_init().
- * Dynamic threads append themselves at creation and remove themselves on exit.
+ * Thread registry: all allocated TCBs (static + dynamic).
+ * ulmk_tid_t is an opaque handle (TCB pointer); lookup is O(1) via cast.
  */
 static sys_dlist_t UL_KERNEL_BSS tcb_registry;
 static bool        UL_KERNEL_BSS tcb_registry_inited;
+#ifdef THREAD_UNIT_TEST
 static ulmk_tid_t  UL_KERNEL_BSS tid_counter;
+#endif
 
 static void tcb_registry_ensure_init(void)
 {
@@ -60,7 +58,11 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 	th->state       = UL_THREAD_STATE_READY;
 	th->blocked_reason = UL_BLOCKED_NONE;
 	th->privilege   = attr->privilege;
-	th->tid         = tid_counter++;
+#ifdef THREAD_UNIT_TEST
+	th->tid         = ++tid_counter;
+#else
+	th->tid         = (ulmk_tid_t)(uintptr_t)th;
+#endif
 	th->blocked_ep  = ULMK_EP_INVALID;
 	th->blocked_notif = ULMK_NOTIF_INVALID;
 	th->ipc_sender  = ULMK_TID_INVALID;
@@ -100,6 +102,7 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 
 ulmk_thread_t *ulmk_thread_by_tid(ulmk_tid_t tid)
 {
+#ifdef THREAD_UNIT_TEST
 	ulmk_thread_t *th;
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&tcb_registry, th, reg_node) {
@@ -107,6 +110,17 @@ ulmk_thread_t *ulmk_thread_by_tid(ulmk_tid_t tid)
 			return th;
 	}
 	return NULL;
+#else
+	ulmk_thread_t *th = (ulmk_thread_t *)tid;
+
+	if (tid == ULMK_TID_INVALID || !th)
+		return NULL;
+	if (th->state == UL_THREAD_STATE_DEAD)
+		return NULL;
+	if (!sys_dnode_is_linked(&th->reg_node))
+		return NULL;
+	return th;
+#endif
 }
 
 void ulmk_thread_set_state(ulmk_thread_t *th, uint8_t state)
@@ -153,7 +167,11 @@ uint32_t ulmk_kern_thread_self(void)
 {
 	ulmk_thread_t *t = ulmk_sched_current();
 
-	return t ? (uint32_t)t->tid : (uint32_t)(int32_t)ULMK_TID_INVALID;
+#ifdef THREAD_UNIT_TEST
+	return t ? (uint32_t)t->tid : (uint32_t)ULMK_TID_INVALID;
+#else
+	return t ? (uint32_t)(uintptr_t)t : (uint32_t)ULMK_TID_INVALID;
+#endif
 }
 
 uint32_t ulmk_kern_yield(void)
@@ -247,7 +265,11 @@ uint32_t ulmk_kern_thread_spawn(uint32_t attr_ptr)
 	}
 
 	ulmk_sched_enqueue(th);
+#ifdef THREAD_UNIT_TEST
 	return (uint32_t)th->tid;
+#else
+	return (uint32_t)(uintptr_t)th;
+#endif
 }
 
 uint32_t ulmk_kern_get_thread_heap(uint32_t info_ptr)

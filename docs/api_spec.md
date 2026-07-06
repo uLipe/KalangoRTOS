@@ -60,11 +60,11 @@ the duration of the syscall.
 ## 2. Types and Constants
 
 ```c
-typedef int32_t   ulmk_tid_t;      /* thread ID — raw pointer to TCB */
+typedef uintptr_t ulmk_tid_t;      /* opaque TCB handle (kernel pointer cast) */
 typedef uintptr_t ulmk_ep_t;       /* IPC endpoint handle — raw pointer */
 typedef uintptr_t ulmk_notif_t;    /* notification object handle — raw pointer */
 
-#define ULMK_TID_INVALID    ((ulmk_tid_t)-1)
+#define ULMK_TID_INVALID    ((ulmk_tid_t)0)
 #define ULMK_EP_INVALID     ((ulmk_ep_t)0)
 #define ULMK_NOTIF_INVALID  ((ulmk_notif_t)0)
 ```

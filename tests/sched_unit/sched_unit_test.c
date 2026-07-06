@@ -72,10 +72,10 @@ static void sched_reset(void)
 	ulmk_sched_set_class(&ulmk_bitmap_rt_class);
 }
 
-static void make_thread(ulmk_thread_t *t, ulmk_tid_t tid, uint8_t prio)
+static void make_thread(ulmk_thread_t *t, uint8_t prio)
 {
 	memset(t, 0, sizeof(*t));
-	t->tid      = tid;
+	t->tid      = (ulmk_tid_t)(uintptr_t)t;
 	t->priority = prio;
 	t->state    = UL_THREAD_STATE_READY;
 	sys_dnode_init(&t->sched_node);
@@ -100,7 +100,7 @@ static void test_single_enqueue(void)
 
 	printf("\n[test_single_enqueue]\n");
 	sched_reset();
-	make_thread(&t, 1, 5);
+	make_thread(&t, 5);
 	ulmk_sched_enqueue(&t);
 	CHECK(ulmk_sched_peek_next() == &t, "single thread picked");
 	CHECK(t.state == UL_THREAD_STATE_READY, "enqueue sets READY");
@@ -112,9 +112,9 @@ static void test_priority_order(void)
 
 	printf("\n[test_priority_order]\n");
 	sched_reset();
-	make_thread(&lo,  1, 10);
-	make_thread(&hi,  2,  1);   /* highest (lowest number) */
-	make_thread(&mid, 3,  5);
+	make_thread(&lo,  10);
+	make_thread(&hi,  1);
+	make_thread(&mid, 5);
 
 	ulmk_sched_enqueue(&lo);
 	ulmk_sched_enqueue(&hi);
@@ -129,9 +129,9 @@ static void test_fifo_within_priority(void)
 
 	printf("\n[test_fifo_within_priority]\n");
 	sched_reset();
-	make_thread(&a, 1, 3);
-	make_thread(&b, 2, 3);
-	make_thread(&c, 3, 3);
+	make_thread(&a, 3);
+	make_thread(&b, 3);
+	make_thread(&c, 3);
 
 	ulmk_sched_enqueue(&a);
 	ulmk_sched_enqueue(&b);
@@ -147,8 +147,8 @@ static void test_dequeue(void)
 
 	printf("\n[test_dequeue]\n");
 	sched_reset();
-	make_thread(&a, 1, 1);
-	make_thread(&b, 2, 2);
+	make_thread(&a, 1);
+	make_thread(&b, 2);
 
 	ulmk_sched_enqueue(&a);
 	ulmk_sched_enqueue(&b);
@@ -164,8 +164,8 @@ static void test_dequeue_not_enqueued(void)
 
 	printf("\n[test_dequeue_not_enqueued]\n");
 	sched_reset();
-	make_thread(&a, 1, 2);
-	make_thread(&b, 2, 3);
+	make_thread(&a, 2);
+	make_thread(&b, 3);
 
 	ulmk_sched_enqueue(&b);
 	ulmk_sched_dequeue(&a); /* a never enqueued — must not corrupt */
@@ -179,8 +179,8 @@ static void test_yield_reorder(void)
 
 	printf("\n[test_yield_reorder]\n");
 	sched_reset();
-	make_thread(&a, 1, 5);
-	make_thread(&b, 2, 5);
+	make_thread(&a, 5);
+	make_thread(&b, 5);
 
 	ulmk_sched_enqueue(&a);
 	ulmk_sched_enqueue(&b);
@@ -198,8 +198,8 @@ static void test_sched_start(void)
 
 	printf("\n[test_sched_start]\n");
 	sched_reset();
-	make_thread(&a,    1,   3);
-	make_thread(&idle, 255, 255);
+	make_thread(&a,    3);
+	make_thread(&idle, 255);
 
 	ulmk_sched_enqueue(&idle);
 	ulmk_sched_enqueue(&a);
@@ -217,8 +217,8 @@ static void test_schedule_to_idle_on_empty(void)
 
 	printf("\n[test_schedule_to_idle_on_empty]\n");
 	sched_reset();
-	make_thread(&a,    1,   3);
-	make_thread(&idle, 255, 255);
+	make_thread(&a,    3);
+	make_thread(&idle, 255);
 
 	ulmk_sched_enqueue(&idle);
 	ulmk_sched_enqueue(&a);
@@ -241,8 +241,8 @@ static void test_self_switch_guard(void)
 
 	printf("\n[test_self_switch_guard]\n");
 	sched_reset();
-	make_thread(&a,    1,   5);
-	make_thread(&idle, 255, 255);
+	make_thread(&a,    5);
+	make_thread(&idle, 255);
 
 	ulmk_sched_enqueue(&idle);
 	ulmk_sched_enqueue(&a);
