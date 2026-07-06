@@ -223,9 +223,11 @@ Release any arch-managed resources associated with `ctx` (e.g., saved-context
 frames from a hardware pool).  Called when a thread is killed.  Must be safe to
 call from any context with interrupts disabled.
 
-On TriCore the implementation splices the full CSA chain onto FCX in **O(1)**
-using `csa_tail`, refreshed whenever `pcxi` is saved via
-`ulmk_arch_ctx_commit_pcxi()` (context switch and ISR preempt).
+On TriCore `ulmk_arch_ctx_switch` and ISR preempt only swap `pcxi` — **O(1)**.
+Assembly calls `ulmk_arch_ctx_post_save()` after storing `pcxi` (one CSA link
+read + `dsync`; not a chain walk).  `ulmk_arch_ctx_free()` walks the saved CSA
+chain to the terminal frame and splices the whole list onto FCX — **O(chain
+depth)**, cold path only (same model as Zephyr `z_tricore_reclaim_csa`).
 
 ---
 
@@ -542,11 +544,14 @@ port (`arch/tricore/`).  It is **not** part of the generic contract.
 ```c
 typedef struct {
 	uint32_t pcxi;      /* CSA chain head (PCXI link word) */
-	uint32_t csa_tail;  /* terminal upper frame — O(1) ctx_free splice */
 } ulmk_arch_ctx_t;
 ```
 
 `pcxi` is the PCXI register value encoding a two-frame CSA chain:
+
+After every context save (cooperative switch or ISR preempt), assembly stores
+`pcxi` then calls `ulmk_arch_ctx_post_save()` — an O(1) sync (head link read +
+`dsync`).  Thread destroy walks the chain in `ulmk_arch_ctx_free()` (cold O(d)).
 
 ```
 pcxi → lower-context CSA (UL=0, saved by SVLCX)

@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-typedef struct { uint32_t pcxi; uint32_t csa_tail; } ulmk_arch_ctx_t;
+typedef struct { uint32_t pcxi; } ulmk_arch_ctx_t;
 
 /* IRQ control — no-op stubs for single-threaded host tests */
 typedef uint32_t ulmk_arch_irq_key_t;
