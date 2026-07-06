@@ -165,7 +165,7 @@ uint32_t ulmk_kern_yield(void)
 		ulmk_sched_dequeue(cur);
 		ulmk_sched_enqueue(cur);
 	}
-	ulmk_sched_schedule();
+	ulmk_sched_resched();
 	return 0;
 }
 
@@ -184,7 +184,7 @@ uint32_t ulmk_kern_exit(void)
 		ulmk_sched_dequeue(cur);
 		ulmk_sched_set_dead_for_cleanup(cur);
 	}
-	ulmk_sched_schedule();
+	ulmk_sched_resched();
 	for (;;)
 		;
 }
@@ -292,7 +292,7 @@ uint32_t ulmk_kern_thread_kill(uint32_t tid)
 	} else {
 		/* Self-kill: defer cleanup to reaper. */
 		ulmk_sched_set_dead_for_cleanup(th);
-		ulmk_sched_schedule();
+		ulmk_sched_resched();
 	}
 
 	return 0;
@@ -311,7 +311,7 @@ uint32_t ulmk_kern_thread_suspend(uint32_t tid)
 	ulmk_sched_dequeue(th);
 
 	if (th == ulmk_sched_current())
-		ulmk_sched_schedule();
+		ulmk_sched_resched();
 
 	return 0;
 }

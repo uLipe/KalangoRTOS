@@ -14,7 +14,7 @@
  * The test would then time out and be reported as FAIL.
  *
  * With the fix, CSA frames and stack memory are reclaimed by the deferred
- * reaper in ulmk_sched_schedule().  All WAVES * THREADS_PER_WAVE threads
+ * reaper in ulmk_sched_resched().  All WAVES * THREADS_PER_WAVE threads
  * complete successfully and the supervisor prints "resource_leak: PASS".
  *
  * Numbers:

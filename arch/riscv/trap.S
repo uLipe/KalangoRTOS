@@ -34,12 +34,7 @@
 	.equ TF_MEPC, 108
 	.equ TF_MSTATUS, 112
 
-	.equ CTX_SIZE, 64
-	.equ CTX_S0, 4
-
 	.extern _ulmk_trap_dispatch
-	.extern g_preempt_old_ctx
-	.extern g_preempt_new_ctx
 	.extern g_trap_sp
 
 	.section .text.trap, "ax", @progbits
@@ -85,30 +80,6 @@ _trap_handler:
 
 	mv      a0, sp
 	call    _ulmk_trap_dispatch
-
-	la      t0, g_preempt_new_ctx
-	lw      t1, 0(t0)
-	beqz    t1, .Ltrap_restore
-
-	la      t0, g_preempt_new_ctx
-	sw      zero, 0(t0)
-
-	lw      sp, 0(t1)
-	lw      ra, 0(sp)
-	lw      s0, CTX_S0(sp)
-	lw      s1, 8(sp)
-	lw      s2, 12(sp)
-	lw      s3, 16(sp)
-	lw      s4, 20(sp)
-	lw      s5, 24(sp)
-	lw      s6, 28(sp)
-	lw      s7, 32(sp)
-	lw      s8, 36(sp)
-	lw      s9, 40(sp)
-	lw      s10, 44(sp)
-	lw      s11, 48(sp)
-	addi    sp, sp, CTX_SIZE
-	ret
 
 .Ltrap_restore:
 	lw      ra, TF_RA(sp)

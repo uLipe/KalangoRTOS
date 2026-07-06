@@ -20,8 +20,8 @@ REPLACEMENTS = [
     ("ul_kernel_trap_recoverable",    "ulmk_kern_trap_recoverable"),
     ("ul_kernel_trap_panic",          "ulmk_kern_trap_panic"),
     ("ul_kernel_irq_dispatch",        "ulmk_kern_irq_dispatch"),
-    ("ul_kernel_irq_check_preempt",   "ulmk_kern_irq_check_preempt"),
-    ("ul_kernel_syscall_check_preempt","ulmk_kern_syscall_check_preempt"),
+    ("ul_kernel_irq_check_preempt",   "ulmk_kern_sched_dispatch"),
+    ("ul_kernel_syscall_check_preempt","ulmk_kern_sched_dispatch"),
     ("ul_kernel_tick",                "ulmk_kern_tick"),
     ("ul_kernel_main",                "ulmk_kern_main"),
 

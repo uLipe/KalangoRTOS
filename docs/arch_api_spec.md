@@ -68,7 +68,7 @@ Violations:
 - `kernel/` must **never** include arch implementation headers directly.
 - `arch/` must **never** include `kernel/` internal headers.
 - Arch code must not encode scheduling policy (it calls `ulmk_kern_irq_dispatch()`
-  and `ulmk_kern_irq_check_preempt()` from generic ISR stubs).
+  and `ulmk_kern_sched_dispatch()` from generic ISR stubs).
 - Kernel code must not contain ISA-specific instructions or register names.
 
 ---
@@ -466,24 +466,27 @@ void ulmk_kern_irq_dispatch(uint8_t srpn);
 Route hardware interrupt `srpn` to its bound notification object.  Called from
 the generic ISR stub before returning from the interrupt.
 
-### `ulmk_kern_irq_check_preempt`
+### `ulmk_kern_sched_dispatch`
 
 ```c
-void ulmk_kern_irq_check_preempt(void);
+void ulmk_kern_sched_dispatch(bool from_isr);
 ```
 
-Check if the just-dispatched IRQ woke a higher-priority thread and arm the
-preemption handoff.  Called after `ulmk_kern_irq_dispatch`.
+Check whether a higher-priority thread became ready during the trap handler
+and yield the CPU before returning to the interrupted context.
 
-### `ulmk_kern_syscall_check_preempt`
+- `from_isr == true` — called after `ulmk_kern_irq_dispatch()` on ISR exit.
+  TriCore may arm a deferred asm switch; RISC-V performs `ctx_switch` in C.
+- `from_isr == false` — called after `ulmk_kern_trap_syscall()` before
+  restoring the syscall caller.
 
-```c
-void ulmk_kern_syscall_check_preempt(void);
-```
+**Scheduling contract:**
 
-Check if a completed syscall woke a higher-priority thread and yield the CPU
-before returning to userspace.  Called from the syscall entry path after the
-router returns.
+| Action | API |
+|--------|-----|
+| Wake a thread (IPC, notif, spawn) | `ulmk_sched_enqueue()` only |
+| Voluntary block / yield / exit | `ulmk_sched_resched()` |
+| Trap exit preemption | `ulmk_kern_sched_dispatch(from_isr)` |
 
 ### `ulmk_kern_trap_syscall`
 
@@ -646,9 +649,9 @@ the `time` CSR (inaccessible from U-mode).
 
 ### Preemption from interrupt
 
-RISC-V saves a 128-byte trap frame on the thread stack.  ISR preemption calls
-`ulmk_sched_schedule()` from C (not the `g_preempt_*` asm handoff used on
-TriCore) so the trap epilogue can `mret` correctly when the interrupted thread
-resumes.
+RISC-V saves a 128-byte trap frame on the thread stack.  ISR preemption uses
+`ulmk_sched_trap_dispatch(true)` → `ulmk_arch_sched_switch()` with
+`ULMK_SCHED_SWITCH_COOP` so the switch returns through the trap epilogue on
+`mret`.  TriCore arms `g_preempt_*` via `ULMK_SCHED_SWITCH_PREEMPT_ISR`.
 
 See `docs/arch/riscv_implementation.md` for the full RISC-V porting guide.

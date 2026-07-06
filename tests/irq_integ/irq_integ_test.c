@@ -201,7 +201,7 @@ static void trigger_entry(void *arg)
 	for (i = 0; i < ITER_COUNT; i++) {
 		irq_sw_trigger();
 		/*
-		 * ISR fires → ulmk_kern_irq_check_preempt() → server preempts
+		 * ISR fires → ulmk_kern_sched_dispatch(true) → server preempts
 		 * trigger immediately on ISR exit.  Server processes, then
 		 * signals BIT_SRV_RDY and blocks on next wait → trigger resumes.
 		 */

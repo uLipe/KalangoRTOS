@@ -228,7 +228,7 @@ static void test_schedule_to_idle_on_empty(void)
 	/* a exits: dequeue and schedule → idle is the only remaining thread */
 	a.state = UL_THREAD_STATE_DEAD;
 	ulmk_sched_dequeue(&a);
-	ulmk_sched_schedule();
+	ulmk_sched_resched();
 
 	CHECK(switch_count == 1,         "schedule with no work → one switch");
 	CHECK(last_to == &idle.ctx,      "switch to idle thread");
@@ -253,7 +253,7 @@ static void test_self_switch_guard(void)
 	a.state = UL_THREAD_STATE_READY;
 	ulmk_sched_dequeue(&a);
 	ulmk_sched_enqueue(&a);
-	ulmk_sched_schedule();
+	ulmk_sched_resched();
 
 	CHECK(switch_count == 0,
 	      "from==to guard skips switch when only one thread");

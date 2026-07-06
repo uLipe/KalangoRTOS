@@ -3,7 +3,7 @@
  * Board services — boards/qemu_riscv_virt/board_services.c
  *
  * Single IPC server thread for console and timer.  Two separate ep_recv
- * waiters interact badly with RV32 IRQ preemption (see sched_check_preempt).
+ * waiters interact badly with RV32 IRQ preemption (see ulmk_kern_sched_dispatch).
  */
 
 #include <stdint.h>

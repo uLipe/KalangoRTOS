@@ -155,7 +155,7 @@ int notif_wait_impl(ulmk_notif_t notif_id, uint32_t mask, uint32_t *out)
 
 	ulmk_arch_cpu_irq_restore(key);
 
-	ulmk_sched_schedule();
+	ulmk_sched_resched();
 
 	/* Re-fetch cur: local var may be stale after context switch. */
 	cur = ulmk_sched_current();

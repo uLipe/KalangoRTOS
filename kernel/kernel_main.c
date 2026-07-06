@@ -26,32 +26,9 @@ extern uint8_t _ulmk_user_pool_end[];
  * Arch callbacks — invoked from the arch layer (ISR/trap stubs)
  * ========================================================================= */
 
-void ulmk_kern_irq_check_preempt(void)
+void ulmk_kern_sched_dispatch(bool from_isr)
 {
-	ulmk_sched_check_preempt();
-}
-
-/*
- * ulmk_kern_syscall_check_preempt — called at the end of every syscall,
- * before restoring the caller's context.
- *
- * If a higher-priority thread became ready during the syscall (e.g. a
- * notification was delivered, a thread was spawned), the caller is
- * re-enqueued as READY and ulmk_sched_schedule() switches to the new thread.
- * Execution resumes here when the caller is eventually rescheduled, then
- * returns normally to ulmk_arch_syscall_entry() and thence to userspace.
- */
-void ulmk_kern_syscall_check_preempt(void)
-{
-	ulmk_thread_t *cur  = ulmk_sched_current();
-	ulmk_thread_t *next = ulmk_sched_peek_next();
-
-	if (!cur || !next || next == cur || next->priority >= cur->priority)
-		return;
-
-	cur->state = UL_THREAD_STATE_READY;
-	ulmk_sched_enqueue(cur);
-	ulmk_sched_schedule();
+	ulmk_sched_trap_dispatch(from_isr);
 }
 
 void ulmk_kern_trap_mpu_restore(void)
@@ -80,7 +57,7 @@ void ulmk_kern_trap_recoverable(void)
 		cur->state = UL_THREAD_STATE_DEAD;
 		ulmk_sched_dequeue(cur);
 		ulmk_sched_set_dead_for_cleanup(cur);
-		ulmk_sched_schedule();
+		ulmk_sched_resched();
 	}
 
 	for (;;)

@@ -54,7 +54,7 @@ extern void riscv_plic_dispatch(void);
 
 void _arch_generic_isr_handler(void)
 {
-	ulmk_kern_irq_check_preempt();
+	ulmk_kern_sched_dispatch(true);
 }
 
 void riscv_irq_init(void)

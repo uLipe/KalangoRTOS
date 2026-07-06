@@ -273,6 +273,30 @@ void ulmk_arch_ctx_free(ulmk_arch_ctx_t *ctx)
 	}
 }
 
+/*
+ * ISR preemption handoff — consumed by _arch_generic_preempt_isr in vectors.S
+ * after the C handler returns.
+ */
+ulmk_arch_ctx_t *g_preempt_old_ctx;
+ulmk_arch_ctx_t *g_preempt_new_ctx;
+
+bool ulmk_arch_sched_isr_preempt_deferred(void)
+{
+	return true;
+}
+
+void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
+			    unsigned int flags)
+{
+	if (flags == ULMK_SCHED_SWITCH_PREEMPT_ISR) {
+		g_preempt_old_ctx = from;
+		g_preempt_new_ctx = (ulmk_arch_ctx_t *)to;
+		return;
+	}
+
+	ulmk_arch_ctx_switch(from, to);
+}
+
 /* =========================================================================
  * MPU helpers — MTCR requires constant CSFR address so each slot is an
  * explicit case.  ISYNC is issued once after a batch of writes.
@@ -819,7 +843,7 @@ void _arch_generic_isr_handler(void)
 	 * If the dispatch woke a higher-priority thread, arm the preemption
 	 * handoff so _arch_generic_preempt_isr can switch context on exit.
 	 */
-	ulmk_kern_irq_check_preempt();
+	ulmk_kern_sched_dispatch(true);
 }
 
 /* =========================================================================
@@ -931,7 +955,7 @@ void ulmk_arch_syscall_entry(void)
 	 * point CCPN has been restored to 0 by the context-switch RFE and
 	 * interrupts are enabled, so the return path is unprotected but brief.
 	 */
-	ulmk_kern_syscall_check_preempt();
+	ulmk_kern_sched_dispatch(false);
 
 	__asm__ volatile("mov %%d2, %0" : : "d"(ret));
 }

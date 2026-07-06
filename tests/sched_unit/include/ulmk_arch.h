@@ -47,4 +47,21 @@ void ulmk_arch_ctx_free(ulmk_arch_ctx_t *ctx);
 void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 			uint8_t prs);
 
+#define ULMK_SCHED_SWITCH_COOP		0u
+#define ULMK_SCHED_SWITCH_PREEMPT_ISR	1u
+
+static inline bool ulmk_arch_sched_isr_preempt_deferred(void)
+{
+	return false;
+}
+
+static inline void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from,
+					  const ulmk_arch_ctx_t *to,
+					  unsigned int flags)
+{
+	(void)flags;
+
+	ulmk_arch_ctx_switch(from, (ulmk_arch_ctx_t *)to);
+}
+
 #endif /* ULMK_ARCH_H */

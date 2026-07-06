@@ -171,10 +171,8 @@ uint32_t ulmk_kern_irq_ack(uint32_t srpn)
  * ISR dispatch — called from the arch generic ISR handler.
  *
  * Runs in ISR context: global interrupts disabled, on the dedicated ISR stack.
- * Does not call ulmk_sched_schedule() directly.  After this returns,
- * _arch_generic_isr_handler calls ulmk_kern_irq_check_preempt(), which
- * sets g_preempt_old/new_ctx if a higher-priority thread was woken.
- * The _arch_generic_preempt_isr stub then performs the context switch.
+ * Does not reschedule directly.  After this returns, the arch ISR stub calls
+ * ulmk_kern_sched_dispatch(true), which may arm a deferred switch.
  * ========================================================================= */
 
 void ulmk_kern_irq_dispatch(uint8_t srpn)

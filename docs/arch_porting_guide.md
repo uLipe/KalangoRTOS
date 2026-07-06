@@ -235,7 +235,7 @@ Provide handlers for:
 2. **Syscall entry** — read syscall number and arguments, call
    `ulmk_arch_syscall_entry()` which calls `ulmk_kern_trap_syscall()`.
 3. **Generic hardware ISR stub** — read interrupt number (SRPN), call
-   `ulmk_kern_irq_dispatch(srpn)` then `ulmk_kern_irq_check_preempt()`.
+   `ulmk_kern_irq_dispatch(srpn)` then `ulmk_kern_sched_dispatch(true)`.
 
 Each ISR stub must save the context required by the ABI and restore it before
 returning.  On architectures with hardware-assisted context save (TriCore,
@@ -492,7 +492,7 @@ full kernel with their own source list.  To run them for the new arch:
 ### Preemption and IRQ dispatch
 
 - Generic ISR stubs must call `ulmk_kern_irq_dispatch()` then
-  `ulmk_kern_irq_check_preempt()` **before** restoring context when a
+  `ulmk_kern_sched_dispatch(true)` **before** restoring context when a
   notification wakeup may have readied a higher-priority thread.
 - There is no kernel tick timer.  Board services bind device IRQs (e.g. STM0
   compare-match) via `ulmk_irq_bind_hw()` and implement sleep/timekeeping in

@@ -168,7 +168,7 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
 	ulmk_sched_dequeue(cur);
-	ulmk_sched_schedule();
+	ulmk_sched_resched();
 
 	/* Re-fetch cur: local var may be stale after context switch. */
 	cur = ulmk_sched_current();
@@ -215,7 +215,7 @@ int ep_recv_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, ulmk_tid_t *sender)
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
 	ulmk_sched_dequeue(cur);
-	ulmk_sched_schedule();
+	ulmk_sched_resched();
 
 	cur = ulmk_sched_current();
 	if (!cur)
@@ -337,7 +337,7 @@ int ep_recv_or_notif_impl(ulmk_ep_t ep_id, ulmk_notif_t notif_id,
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
 	ulmk_sched_dequeue(cur);
-	ulmk_sched_schedule();
+	ulmk_sched_resched();
 
 	/* Re-fetch cur: local var may be stale after context switch. */
 	cur = ulmk_sched_current();

@@ -87,6 +87,13 @@ void ulmk_arch_ctx_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to);
 
 void ulmk_arch_ctx_free(ulmk_arch_ctx_t *ctx);
 
+#define ULMK_SCHED_SWITCH_COOP		0u
+#define ULMK_SCHED_SWITCH_PREEMPT_ISR	1u
+
+bool ulmk_arch_sched_isr_preempt_deferred(void);
+void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
+			    unsigned int flags);
+
 /* =========================================================================
  * MPU (arch_api_spec.md §7)
  * ========================================================================= */
@@ -210,18 +217,10 @@ void ulmk_printk_char_out(char c);
 void ulmk_kern_irq_dispatch(uint8_t srpn);
 
 /*
- * ulmk_kern_irq_check_preempt — check if the just-dispatched IRQ woke a
- * higher-priority thread and arm the preemption handoff if so.
- * Called from _arch_generic_isr_handler after ulmk_kern_irq_dispatch.
+ * ulmk_kern_sched_dispatch — run trap-exit preemption after IRQ or syscall.
+ * @from_isr: true when called from an ISR epilogue, false from syscall return.
  */
-void ulmk_kern_irq_check_preempt(void);
-
-/*
- * ulmk_kern_syscall_check_preempt — check if the syscall woke a higher-
- * priority thread and yield the CPU to it before returning to userspace.
- * Called from ulmk_arch_syscall_entry() after the syscall handler returns.
- */
-void ulmk_kern_syscall_check_preempt(void);
+void ulmk_kern_sched_dispatch(bool from_isr);
 
 /*
  * ulmk_kern_trap_syscall — dispatch a SYSCALL trap (class 6).

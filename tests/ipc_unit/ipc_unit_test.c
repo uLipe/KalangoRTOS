@@ -6,7 +6,7 @@
  * Compiles both modules against stub implementations of the scheduler,
  * thread registry, and arch layer.  No QEMU or hardware required.
  *
- * Since ulmk_sched_schedule() is a no-op here, blocking paths return
+ * Since ulmk_sched_resched() is a no-op here, blocking paths return
  * immediately without switching context.  Tests verify state machine
  * transitions (BLOCKED_IPC_CALL, BLOCKED_IPC_RECV, queues, etc.) rather
  * than actual rendezvous execution.  Full rendezvous is covered by the
@@ -123,7 +123,7 @@ static int          g_dequeue_count;
 ulmk_thread_t *ulmk_sched_current(void)   { return g_current; }
 void ulmk_sched_enqueue(ulmk_thread_t *t) { t->state = UL_THREAD_STATE_READY; g_enqueue_count++; }
 void ulmk_sched_dequeue(ulmk_thread_t *t) { (void)t; g_dequeue_count++; }
-void ulmk_sched_schedule(void)          { g_schedule_count++; }
+void ulmk_sched_resched(void)           { g_schedule_count++; }
 
 /* ── Thread registry stub ──────────────────────────────────────────────── */
 

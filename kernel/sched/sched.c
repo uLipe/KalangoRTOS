@@ -24,12 +24,12 @@ static ulmk_thread_t            * UL_KERNEL_BSS sched_current;
  * hardware context chain is live in the arch context register.  We cannot
  * walk and free that chain until after the context switch hands control to
  * the next thread.  ulmk_sched_set_dead_for_cleanup() stores the dying thread
- * here; ulmk_sched_schedule() frees the context chain and stack at the start
+ * here; ulmk_sched_resched() frees the context chain and stack at the start
  * of its next invocation, at which point the dead thread's context pointer
  * is saved in its ctx and is safe to walk.
  *
  * Only one slot is needed: a thread can exit at most once, and the next
- * call to ulmk_sched_schedule() always drains the slot before any new exit
+ * call to ulmk_sched_resched() always drains the slot before any new exit
  * can enqueue another dying thread.
  */
 static ulmk_thread_t * UL_KERNEL_BSS g_sched_dead;
@@ -41,19 +41,6 @@ static uint8_t sched_thread_prs(const ulmk_thread_t *t)
 	return 1u;
 }
 
-/*
- * Preemption handoff pointers: written by ulmk_sched_check_preempt() and consumed by ISR assembly stubs in the arch
- * layer.  The stub reads them after the C handler returns, before restoring
- * the interrupted thread's context.
- * Setting g_preempt_new_ctx != NULL signals: "perform a preemptive switch".
- */
-ulmk_arch_ctx_t * UL_KERNEL_BSS g_preempt_old_ctx;
-ulmk_arch_ctx_t * UL_KERNEL_BSS g_preempt_new_ctx;
-
-/*
- * Saved at ulmk_sched_start() to provide a valid "from" context for the
- * initial switch out of the startup frame.  Written once; never loaded.
- */
 static ulmk_arch_ctx_t UL_KERNEL_BSS startup_ctx;
 
 /*
@@ -115,7 +102,7 @@ void ulmk_sched_start(void)
 }
 
 /*
- * ulmk_sched_schedule — switch to the highest-priority ready thread.
+ * ulmk_sched_resched — switch to the highest-priority ready thread.
  *
  * The running thread must have already set its own state to BLOCKED/DEAD
  * (and dequeued itself) before calling, OR set it to READY (remaining in
@@ -124,7 +111,7 @@ void ulmk_sched_start(void)
  * With the idle thread permanently in the queue, pick_next() always
  * returns a valid thread, so there is no idle-context fallback path.
  */
-void ulmk_sched_schedule(void)
+void ulmk_sched_resched(void)
 {
 	ulmk_thread_t      *prev = sched_current;
 	ulmk_thread_t      *next;
@@ -137,7 +124,7 @@ void ulmk_sched_schedule(void)
 	 *
 	 * The guard `g_sched_dead != prev` is critical: when a thread calls
 	 * ulmk_kern_exit() it sets g_sched_dead = self and then immediately
-	 * calls ulmk_sched_schedule().  At that point the thread's context chain
+	 * calls ulmk_sched_resched().  At that point the thread's context chain
 	 * is still live — ulmk_arch_ctx_switch() is about to save the current
 	 * lower context into a free frame and record the resulting context
 	 * pointer into g_sched_dead->ctx.  Freeing the chain before that save
@@ -167,6 +154,14 @@ void ulmk_sched_schedule(void)
 			     sched_thread_prs(next));
 
 	if (from == to) {
+		/*
+		 * trap_dispatch enqueued @prev before pick_next(); if the head
+		 * did not change we must not leave a RUNNING thread linked.
+		 */
+		if (prev && sys_dnode_is_linked(&prev->sched_node)) {
+			sched_class->dequeue(prev);
+			prev->state = UL_THREAD_STATE_RUNNING;
+		}
 		ulmk_arch_cpu_irq_enable();
 		return;
 	}
@@ -210,19 +205,47 @@ ulmk_thread_t *ulmk_sched_peek_next(void)
 }
 
 /*
- * ulmk_sched_check_preempt — arm a preemptive switch from ISR context.
- *
- * Called after a generic ISR delivers a notification and may have woken
- * a higher-priority thread.  If the run-queue head has strictly higher
- * priority than the current thread, re-enqueues cur as READY, removes
- * next from the queue, and arms g_preempt_old/new_ctx so the ISR stub
- * (_arch_generic_preempt_isr) performs the switch on exit.
+ * ulmk_sched_trap_dispatch — trap/ISR exit scheduling.
  */
-void ulmk_sched_check_preempt(void)
+void ulmk_sched_trap_dispatch(bool from_isr)
 {
-	ulmk_thread_t *cur = sched_current;
+	ulmk_thread_t *cur;
 	ulmk_thread_t *next;
 
+	if (from_isr) {
+		cur = sched_current;
+
+		if (!cur || !sched_class)
+			return;
+		if (cur->state != UL_THREAD_STATE_RUNNING)
+			return;
+
+		next = sched_class->peek_next();
+		if (!next || next == cur || next->priority >= cur->priority)
+			return;
+
+		cur->state = UL_THREAD_STATE_READY;
+		if (sys_dnode_is_linked(&cur->sched_node))
+			sched_class->dequeue(cur);
+		sched_class->enqueue(cur);
+
+		if (ulmk_arch_sched_isr_preempt_deferred()) {
+			next = sched_class->pick_next();
+
+			sched_current = next;
+			next->state   = UL_THREAD_STATE_RUNNING;
+			ulmk_arch_mpu_switch(next->regions, next->region_count,
+					     sched_thread_prs(next));
+			ulmk_arch_sched_switch(&cur->ctx, &next->ctx,
+					       ULMK_SCHED_SWITCH_PREEMPT_ISR);
+			return;
+		}
+
+		ulmk_sched_resched();
+		return;
+	}
+
+	cur = sched_current;
 	if (!cur || !sched_class)
 		return;
 	if (cur->state != UL_THREAD_STATE_RUNNING)
@@ -232,28 +255,16 @@ void ulmk_sched_check_preempt(void)
 	if (!next || next == cur || next->priority >= cur->priority)
 		return;
 
-	/* Put cur back in the queue before handing the CPU to next. */
+	if (sys_dnode_is_linked(&cur->sched_node))
+		sched_class->dequeue(cur);
 	cur->state = UL_THREAD_STATE_READY;
 	sched_class->enqueue(cur);
 
-#if defined(__riscv)
-	/*
-	 * RV32 saves a 128-byte trap frame on the thread stack inside the
-	 * interrupt handler.  Switching via g_preempt_* + ctx_switch resume
-	 * loses that frame; call sched_schedule() so we return through the
-	 * trap epilogue and mret when this thread is rescheduled.
-	 */
-	ulmk_sched_schedule();
-	return;
-#endif
-
-	/* Consume next from the queue (peek_next left it there). */
 	next = sched_class->pick_next();
 
-	sched_current         = next;
-	next->state           = UL_THREAD_STATE_RUNNING;
+	sched_current = next;
+	next->state   = UL_THREAD_STATE_RUNNING;
 	ulmk_arch_mpu_switch(next->regions, next->region_count,
 			     sched_thread_prs(next));
-	g_preempt_old_ctx = &cur->ctx;
-	g_preempt_new_ctx = &next->ctx;
+	ulmk_arch_sched_switch(&cur->ctx, &next->ctx, 0);
 }

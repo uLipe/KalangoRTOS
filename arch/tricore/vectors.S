@@ -170,7 +170,7 @@ _ulmk_int_table:
  *
  * Jumped to by every SRPN=2..255 vector slot.  The SRPN is read from
  * ICR.CCPN inside _arch_generic_isr_handler, which also calls
- * ulmk_kern_irq_check_preempt() to potentially set g_preempt_old/new_ctx.
+ * ulmk_kern_sched_dispatch() to potentially set g_preempt_old/new_ctx.
  *
  * If g_preempt_new_ctx is set on return from the C handler, perform the
  * preemptive context switch identically to _arch_tick_preempt_isr.

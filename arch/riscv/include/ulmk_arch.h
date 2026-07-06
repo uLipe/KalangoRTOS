@@ -50,6 +50,13 @@ void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,
 void ulmk_arch_ctx_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to);
 void ulmk_arch_ctx_free(ulmk_arch_ctx_t *ctx);
 
+#define ULMK_SCHED_SWITCH_COOP		0u
+#define ULMK_SCHED_SWITCH_PREEMPT_ISR	1u
+
+bool ulmk_arch_sched_isr_preempt_deferred(void);
+void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
+			    unsigned int flags);
+
 void ulmk_arch_mpu_init(void);
 void ulmk_arch_mpu_enable(void);
 void ulmk_arch_mpu_disable(void);
@@ -83,8 +90,7 @@ void ulmk_arch_trap_dump(uint8_t trap_class, uint8_t tin);
 void ulmk_printk_char_out(char c);
 
 void ulmk_kern_irq_dispatch(uint8_t srpn);
-void ulmk_kern_irq_check_preempt(void);
-void ulmk_kern_syscall_check_preempt(void);
+void ulmk_kern_sched_dispatch(bool from_isr);
 uint32_t ulmk_kern_trap_syscall(uint8_t tin, uint32_t args[4]);
 void ulmk_kern_trap_recoverable(void);
 void ulmk_kern_trap_panic(void);

@@ -107,7 +107,7 @@ void ulmk_sched_enqueue(ulmk_thread_t *t)
 }
 
 void ulmk_sched_dequeue(ulmk_thread_t *t)         { (void)t; g_dequeue_count++; }
-void ulmk_sched_schedule(void)                  { g_schedule_count++; }
+void ulmk_sched_resched(void)                   { g_schedule_count++; }
 void ulmk_sched_set_dead_for_cleanup(ulmk_thread_t *t) { (void)t; }
 
 /* ── IPC stubs ─────────────────────────────────────────────────────────────── */
@@ -438,8 +438,8 @@ static void test_exit(void)
 	g_current = th;
 
 	/*
-	 * ulmk_kern_exit() calls ulmk_sched_schedule() then spins forever.
-	 * We stub ulmk_sched_schedule to be a no-op, so execution returns
+	 * ulmk_kern_exit() calls ulmk_sched_resched() then spins forever.
+	 * We stub ulmk_sched_resched to be a no-op, so execution returns
 	 * to the for(;;) loop. We can't call it directly — just verify that
 	 * the dead-state and dequeue happened before schedule is called.
 	 *
@@ -449,7 +449,7 @@ static void test_exit(void)
 
 	/*
 	 * ulmk_kern_exit never returns in production, but in tests the stub
-	 * ulmk_sched_schedule is a no-op and execution falls into for(;;).
+	 * ulmk_sched_resched is a no-op and execution falls into for(;;).
 	 * We cannot call it here — verify the pre-conditions instead by
 	 * directly exercising the dequeue + state-set path via kill.
 	 *
