@@ -1,0 +1,5 @@
+/* linker/riscv/prologue.ld.in — Layer 2 RISC-V */
+
+OUTPUT_FORMAT("elf32-littleriscv")
+OUTPUT_ARCH(riscv)
+ENTRY(_start)

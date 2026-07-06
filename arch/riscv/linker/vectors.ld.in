@@ -1,0 +1,11 @@
+/* linker/riscv/vectors.ld.in — startup + trap handler symbols */
+
+    .startup : {
+        KEEP(*(.text._start))
+        _ulmk_kernel_exec_start = .;
+    } > KERNEL_FLASH
+
+    .trap : ALIGN(4) {
+        KEEP(*(.text.trap))
+        _ulmk_trap_entry = .;
+    } > KERNEL_FLASH

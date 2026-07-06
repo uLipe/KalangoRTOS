@@ -1,0 +1,146 @@
+/* SPDX-License-Identifier: MIT */
+/*
+ * RISC-V trap entry — arch/riscv/trap.S
+ */
+
+	.equ TF_SIZE, 128
+	.equ TF_RA, 0
+	.equ TF_SP, 4
+	.equ TF_GP, 8
+	.equ TF_TP, 12
+	.equ TF_T0, 16
+	.equ TF_T1, 20
+	.equ TF_T2, 24
+	.equ TF_S0, 28
+	.equ TF_S1, 32
+	.equ TF_A0, 36
+	.equ TF_A1, 40
+	.equ TF_A2, 44
+	.equ TF_A3, 48
+	.equ TF_A4, 52
+	.equ TF_A5, 56
+	.equ TF_A6, 60
+	.equ TF_A7, 64
+	.equ TF_S2, 68
+	.equ TF_S3, 72
+	.equ TF_S4, 76
+	.equ TF_S5, 80
+	.equ TF_S6, 84
+	.equ TF_S7, 88
+	.equ TF_S8, 92
+	.equ TF_S9, 96
+	.equ TF_S10, 100
+	.equ TF_S11, 104
+	.equ TF_MEPC, 108
+	.equ TF_MSTATUS, 112
+
+	.equ CTX_SIZE, 64
+	.equ CTX_S0, 4
+
+	.extern _ulmk_trap_dispatch
+	.extern g_preempt_old_ctx
+	.extern g_preempt_new_ctx
+	.extern g_trap_sp
+
+	.section .text.trap, "ax", @progbits
+	.global _trap_handler
+	.type _trap_handler, @function
+_trap_handler:
+	addi    sp, sp, -TF_SIZE
+	sw      ra, TF_RA(sp)
+	sw      gp, TF_GP(sp)
+	sw      tp, TF_TP(sp)
+	sw      t0, TF_T0(sp)
+	sw      t1, TF_T1(sp)
+	sw      t2, TF_T2(sp)
+	sw      s0, TF_S0(sp)
+	sw      s1, TF_S1(sp)
+	sw      a0, TF_A0(sp)
+	sw      a1, TF_A1(sp)
+	sw      a2, TF_A2(sp)
+	sw      a3, TF_A3(sp)
+	sw      a4, TF_A4(sp)
+	sw      a5, TF_A5(sp)
+	sw      a6, TF_A6(sp)
+	sw      a7, TF_A7(sp)
+	sw      s2, TF_S2(sp)
+	sw      s3, TF_S3(sp)
+	sw      s4, TF_S4(sp)
+	sw      s5, TF_S5(sp)
+	sw      s6, TF_S6(sp)
+	sw      s7, TF_S7(sp)
+	sw      s8, TF_S8(sp)
+	sw      s9, TF_S9(sp)
+	sw      s10, TF_S10(sp)
+	sw      s11, TF_S11(sp)
+	csrr    t0, mepc
+	sw      t0, TF_MEPC(sp)
+	csrr    t0, mstatus
+	sw      t0, TF_MSTATUS(sp)
+	addi    t0, sp, TF_SIZE
+	sw      t0, TF_SP(sp)
+
+	la      t0, g_trap_sp
+	sw      sp, 0(t0)
+
+	mv      a0, sp
+	call    _ulmk_trap_dispatch
+
+	la      t0, g_preempt_new_ctx
+	lw      t1, 0(t0)
+	beqz    t1, .Ltrap_restore
+
+	la      t0, g_preempt_new_ctx
+	sw      zero, 0(t0)
+
+	lw      sp, 0(t1)
+	lw      ra, 0(sp)
+	lw      s0, CTX_S0(sp)
+	lw      s1, 8(sp)
+	lw      s2, 12(sp)
+	lw      s3, 16(sp)
+	lw      s4, 20(sp)
+	lw      s5, 24(sp)
+	lw      s6, 28(sp)
+	lw      s7, 32(sp)
+	lw      s8, 36(sp)
+	lw      s9, 40(sp)
+	lw      s10, 44(sp)
+	lw      s11, 48(sp)
+	addi    sp, sp, CTX_SIZE
+	ret
+
+.Ltrap_restore:
+	lw      ra, TF_RA(sp)
+	lw      gp, TF_GP(sp)
+	lw      tp, TF_TP(sp)
+	lw      t0, TF_T0(sp)
+	lw      t1, TF_T1(sp)
+	lw      t2, TF_T2(sp)
+	lw      s0, TF_S0(sp)
+	lw      s1, TF_S1(sp)
+	lw      a0, TF_A0(sp)
+	lw      a1, TF_A1(sp)
+	lw      a2, TF_A2(sp)
+	lw      a3, TF_A3(sp)
+	lw      a4, TF_A4(sp)
+	lw      a5, TF_A5(sp)
+	lw      a6, TF_A6(sp)
+	lw      a7, TF_A7(sp)
+	lw      s2, TF_S2(sp)
+	lw      s3, TF_S3(sp)
+	lw      s4, TF_S4(sp)
+	lw      s5, TF_S5(sp)
+	lw      s6, TF_S6(sp)
+	lw      s7, TF_S7(sp)
+	lw      s8, TF_S8(sp)
+	lw      s9, TF_S9(sp)
+	lw      s10, TF_S10(sp)
+	lw      s11, TF_S11(sp)
+	lw      t0, TF_MEPC(sp)
+	csrw    mepc, t0
+	lw      t0, TF_MSTATUS(sp)
+	csrw    mstatus, t0
+	addi    sp, sp, TF_SIZE
+	mret
+	.size _trap_handler, . - _trap_handler
