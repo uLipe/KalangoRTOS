@@ -22,11 +22,32 @@
 #include <stdint.h>
 #include "../test_support.h"
 #include <ulmk/microkernel.h>
+#include <arch_config.h>
 
-/* SRPN 10 → QEMU IR slot 0xC2 (0xF0038308), distinct from STM0 SR0. */
+/* SRPN 10 — arch-specific binding source (see irq_sw_trigger). */
 #define UL_IRQ_TEST_SRPN	10u
-#define UL_IRQ_TEST_SRC	0xF0038308u
+#if defined(__riscv)
+#if ULMK_ARCH_HAVE_CLIC
+#define UL_IRQ_TEST_SRC		ULMK_ARCH_CLIC_INT_REG(UL_IRQ_TEST_CLIC_IRQ)
+#elif ULMK_ARCH_HAVE_CLINT
+#define UL_IRQ_TEST_SRC		ULMK_ARCH_CLINT_MSIP0
+#elif ULMK_ARCH_HAVE_PLIC
+#ifndef UL_IRQ_TEST_PLIC_IRQ
+#define UL_IRQ_TEST_PLIC_IRQ	12u
+#endif
+#define UL_IRQ_TEST_SRC		ULMK_ARCH_PLIC_SRC(UL_IRQ_TEST_PLIC_IRQ)
+#define UL_IRQ_TEST_PLIC_PEND	(ULMK_ARCH_PLIC_PENDING_BASE + \
+				 ((UL_IRQ_TEST_PLIC_IRQ / 32u) * 4u))
+#endif
+#else
+#define UL_IRQ_TEST_SRC		0xF0038308u
+#endif
 #define SRC_SETR_BIT		(1u << 26)
+#if defined(__riscv) && ULMK_ARCH_HAVE_CLIC
+#ifndef UL_IRQ_TEST_CLIC_IRQ
+#define UL_IRQ_TEST_CLIC_IRQ	12u
+#endif
+#endif
 #define IRQ_BIT			(1u << 0)
 #define BIT_SRV_RDY		(1u << 1)	/* server → trigger: step ready */
 #define BIT_TRG_ACK		(1u << 2)	/* trigger → server: step done  */
@@ -138,9 +159,20 @@ static uint8_t trigger_stack[1024] __attribute__((aligned(8)));
 
 static void irq_sw_trigger(void)
 {
+#if defined(__riscv)
+#if ULMK_ARCH_HAVE_CLIC
+	*(volatile uint8_t *)(uintptr_t)UL_IRQ_TEST_SRC = 1u;
+#elif ULMK_ARCH_HAVE_CLINT
+	*(volatile uint32_t *)(uintptr_t)UL_IRQ_TEST_SRC = 1u;
+#elif ULMK_ARCH_HAVE_PLIC
+	*(volatile uint32_t *)(uintptr_t)UL_IRQ_TEST_PLIC_PEND =
+		1u << (UL_IRQ_TEST_PLIC_IRQ & 31u);
+#endif
+#else
 	volatile uint32_t *src = (volatile uint32_t *)(uintptr_t)UL_IRQ_TEST_SRC;
 
 	*src |= SRC_SETR_BIT;
+#endif
 }
 
 static void trigger_entry(void *arg)
@@ -150,6 +182,7 @@ static void trigger_entry(void *arg)
 
 	(void)arg;
 
+#if !defined(__riscv)
 	if (ulmk_mem_map((void *)TC27X_SRC_BASE, TC27X_SRC_SIZE,
 		       ULMK_PERM_READ | ULMK_PERM_WRITE, ULMK_MMAP_PERIPH)
 	    != (void *)TC27X_SRC_BASE) {
@@ -157,6 +190,7 @@ static void trigger_entry(void *arg)
 		g_test_result = 0;
 		ulmk_thread_exit();
 	}
+#endif
 
 	/* Wait for server to bind and enable before firing. */
 	bits = 0;

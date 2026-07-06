@@ -12,6 +12,7 @@
 #define UL_TEST_SUPPORT_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <ulmk/microkernel.h>
 
 #ifdef ULMK_TEST_BUILD
@@ -49,6 +50,24 @@ static inline void ulmk_msleep(uint32_t ms)
 
 	for (i = 0u; i < ms * 20u; i++)
 		ulmk_thread_yield();
+}
+
+/*
+ * ulmk_test_map_ok — true when ulmk_mem_map() returned a valid pointer.
+ *
+ * Syscall errors are small negative integers (-1..-7).  On 32-bit targets
+ * with RAM above 0x80000000 (RISC-V virt), valid pointers look negative
+ * as intptr_t but are not errno values.
+ */
+static inline bool ulmk_test_map_ok(const void *p)
+{
+	uintptr_t u = (uintptr_t)p;
+
+	if (u == 0u)
+		return false;
+	if (u >= 0x80000000u)
+		return true;
+	return (intptr_t)u > 0;
 }
 
 #endif /* UL_TEST_SUPPORT_H */

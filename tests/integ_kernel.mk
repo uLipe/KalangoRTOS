@@ -6,11 +6,11 @@ INTEG_KERNEL_LIB ?= libtest_kernel.a
 
 INTEG_KERNEL_EXTRA_SRCS ?=
 
+# ARCH_KERNEL_SRCS must be set by tests/arch/$(ARCH).mk before include.
+INTEG_KERNEL_STUB ?= $(ROOT)/stub/board_init_stub.c
+
 INTEG_KERNEL_SRCS ?= \
-	$(ROOT)/arch/tricore/startup.S \
-	$(ROOT)/arch/tricore/arch.c \
-	$(ROOT)/arch/tricore/ctx_switch.S \
-	$(ROOT)/arch/tricore/vectors.S \
+	$(ARCH_KERNEL_SRCS) \
 	$(ROOT)/kernel/kernel_main.c \
 	$(ROOT)/kernel/printk/ulmk_printk.c \
 	$(ROOT)/kernel/sched/sched.c \
@@ -23,8 +23,7 @@ INTEG_KERNEL_SRCS ?= \
 	$(ROOT)/kernel/ipc/ep.c \
 	$(ROOT)/kernel/notif/notif.c \
 	$(ROOT)/kernel/syscall/syscall_router.c \
-	$(ROOT)/stub/board_init_stub.c \
-	$(ROOT)/boards/qemu_tc3xx/qemu_printk_hook.c \
+	$(INTEG_KERNEL_STUB) \
 	$(INTEG_KERNEL_EXTRA_SRCS)
 
 INTEG_KERNEL_OBJS := $(patsubst $(ROOT)/%,integ_kernel/%,$(INTEG_KERNEL_SRCS))
@@ -36,7 +35,7 @@ $(INTEG_KERNEL_LIB): $(INTEG_KERNEL_OBJS)
 
 integ_kernel/%.o: $(ROOT)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(INTEG_KERNEL_EXTRA_CFLAGS) -c -o $@ $<
 
 integ_kernel/%.o: $(ROOT)/%.S
 	@mkdir -p $(dir $@)

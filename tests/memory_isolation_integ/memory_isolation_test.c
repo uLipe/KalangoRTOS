@@ -43,7 +43,7 @@ static void anon_thread_entry(void *arg)
 	(void)arg;
 
 	base = ulmk_mem_map(NULL, 128u, ULMK_PERM_READ | ULMK_PERM_WRITE, ULMK_MMAP_ANON);
-	if ((intptr_t)base <= 0) {
+	if (!ulmk_test_map_ok(base)) {
 		ulmk_printk("mem_iso: anon alloc FAIL\n");
 		g_anon_result = 0;
 		ulmk_thread_exit();
@@ -86,7 +86,7 @@ static void grant_a_entry(void *arg)
 	(void)arg;
 
 	base = ulmk_mem_map(NULL, 64u, ULMK_PERM_READ | ULMK_PERM_WRITE, ULMK_MMAP_ANON);
-	if ((intptr_t)base <= 0) {
+	if (!ulmk_test_map_ok(base)) {
 		ulmk_printk("mem_iso: grant-A alloc FAIL\n");
 		g_grant_result = 0;
 		ulmk_thread_exit();
@@ -154,7 +154,7 @@ static void fault_victim_entry(void *arg)
 	(void)arg;
 
 	base = ulmk_mem_map(NULL, 64u, ULMK_PERM_READ | ULMK_PERM_WRITE, ULMK_MMAP_ANON);
-	if ((intptr_t)base <= 0) {
+	if (!ulmk_test_map_ok(base)) {
 		ulmk_printk("mem_iso: fault-victim alloc FAIL\n");
 		ulmk_thread_exit();
 	}

@@ -57,7 +57,7 @@ static void supervisor_entry(void *arg)
 	attr.entry      = ctx_worker;
 	attr.arg        = NULL;
 	attr.priority   = CTX_WORKER_PRIO;
-	attr.stack_size = 512;
+	attr.stack_size = 2048;
 	attr.privilege  = ULMK_PRIV_DRIVER;
 
 	for (i = 0; i < CTX_WORKERS; i++)
@@ -89,16 +89,12 @@ static void supervisor_entry(void *arg)
 	ulmk_sim_exit(0);
 }
 
-extern void atomic_integ_phase1(void);
-
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
 	ulmk_thread_attr_t attr = {0};
 	ulmk_tid_t	 tid;
 
 	(void)info;
-
-	atomic_integ_phase1();
 
 	attr.name       = "sup";
 	attr.entry      = supervisor_entry;
