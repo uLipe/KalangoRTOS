@@ -599,3 +599,56 @@ support different chip families without arch-code changes.
 
 For the full TriCore hardware reference see `docs/microkernel_book_tricore.md`
 and `docs/tricore_guide_pt.md`.
+
+---
+
+## 14. RISC-V RV32 Reference Implementation Notes
+
+This section documents implementation decisions specific to the RISC-V RV32 port
+(`arch/riscv/`).  It is **not** part of the generic contract.
+
+### Files
+
+| File | Implements |
+|------|-----------|
+| `arch.c` | CPU idle (WFI), PMP (`ulmk_arch_mpu_*`), syscall/trap dispatch, atomics |
+| `ctx_switch.S` | Software save/restore of callee-saved registers (+ optional FPU) |
+| `trap.S` | Machine trap entry, interrupt/exception demux, preempt resume |
+| `startup.S` | `_start` — stack, `.data`/`.bss`, `mtvec`, boot chain |
+| `irq.c` | IRQ glue to `ulmk_arch_irq_src_*` |
+| `irq_clint.c` | MSIP / MTIP (CLINT) backend |
+| `irq_plic.c` | PLIC claim/complete backend |
+
+### Privilege and syscalls
+
+- Kernel runs in **M-mode**; user threads run in **U-mode** (`mstatus.MPP=0`).
+- Syscalls use `ecall`; number in `a7`, args in `a0`–`a3`, return in `a0`.
+- Drivers (`ULMK_PRIV_DRIVER`) enter U-mode via `_ulmk_thread_trampoline_u` + `mret`.
+
+### PMP layout
+
+Static slots (NAPOT): kernel exec, kernel RAM, user text, user RAM, MMIO.
+Dynamic slots (`ULMK_ARCH_PMP_USER_BASE`+): per-thread regions from
+`ulmk_arch_mpu_switch()`.  `boards/*/memory.ld` must export
+`_ulmk_mem_*` symbols for region bounds.
+
+On trap entry the port switches to the kernel PMP layout, then restores the
+current thread layout before `mret`.
+
+### IRQ backends
+
+`board.cmake` sets `ULMK_ARCH_HAVE_CLINT` / `ULMK_ARCH_HAVE_PLIC`.
+SoC base addresses (`CLINT`, `PLIC`, UART) are **board** constants passed via
+`-DULMK_BOARD_*` — not in `arch_config.h`.
+
+Timer drivers must use **MMIO** (`ulmk_mem_map` with `ULMK_MMAP_PERIPH`), not
+the `time` CSR (inaccessible from U-mode).
+
+### Preemption from interrupt
+
+RISC-V saves a 128-byte trap frame on the thread stack.  ISR preemption calls
+`ulmk_sched_schedule()` from C (not the `g_preempt_*` asm handoff used on
+TriCore) so the trap epilogue can `mret` correctly when the interrupted thread
+resumes.
+
+See `docs/arch/riscv_implementation.md` for the full RISC-V porting guide.

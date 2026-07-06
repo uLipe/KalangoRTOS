@@ -1,9 +1,10 @@
 # ulmk
 
-A small, seL4-inspired microkernel for automotive-grade embedded systems,
-targeting AURIX TriCore TC2xx/TC3xx and other exotic architectures.  Isolation is enforced by the hardware MPU
-at thread granularity; policy lives entirely in userspace.  Single ELF output,
-O(1) bitmap scheduler, synchronous IPC with priority inheritance.
+A small, seL4-inspired microkernel for automotive-grade embedded systems.
+Primary targets: **AURIX TriCore TC2xx/TC3xx** (QEMU CI) and **RISC-V RV32IMAC**
+(QEMU `virt` CI).  Isolation is enforced by the hardware MPU/PMP at thread
+granularity; policy lives entirely in userspace.  Single ELF output, O(1) bitmap
+scheduler, synchronous IPC with priority inheritance.
 
 ---
 
@@ -55,11 +56,11 @@ See `docs/application_development_guide.md` for a complete walkthrough.
 ### Requirements
 
 - Linux host (Ubuntu 22.04 or newer recommended)
-- Docker (for the dev container — TriCore toolchain + QEMU AURIX fork)
+- Docker (for the dev container — cross-toolchains + QEMU)
 - Python 3.8+
 
-The TriCore GCC cross-compiler and the QEMU AURIX fork are only available
-inside the dev container.  Do **not** try to compile or run tests on the host.
+Toolchains and QEMU are only available inside the dev container.  Do **not**
+try to compile or run target tests on the host.
 
 ### Enter the dev container
 
@@ -76,8 +77,11 @@ The workspace is mounted at `/workspace` inside the container.
 ### Build (inside the container)
 
 ```bash
-# Build for QEMU (default board)
+# TriCore QEMU (default)
 python3 tools/dev.py build
+
+# RISC-V QEMU virt
+python3 tools/dev.py build --board boards/qemu_riscv_virt
 
 # Clean build
 python3 tools/dev.py build --clean
@@ -89,15 +93,20 @@ python3 tools/dev.py build --board /path/to/my_board
 CMake configure variables of interest:
 
 ```bash
--DULMK_CHIP_DIR=boards/qemu_tc3xx           # board selection (default)
+-DULMK_CHIP_DIR=boards/qemu_tc3xx           # TriCore QEMU (default)
+-DULMK_CHIP_DIR=boards/qemu_riscv_virt      # RISC-V QEMU virt
 -DULMK_CONFIG_MAX_THREADS=32                # TCB pool size
--DULMK_CONFIG_DEBUG_PRINTK=1                 # kernel debug prints
+-DULMK_CONFIG_DEBUG_PRINTK=1               # kernel debug prints
 ```
+
+`ULMK_CHIP_DIR` selects the board; `board.cmake` sets `UL_BOARD_ARCH`, which
+`cmake/arch.cmake` uses to pick the toolchain file and `arch/<arch>/` sources.
 
 ### Run on QEMU (inside the container)
 
 ```bash
-python3 tools/dev.py run
+python3 tools/dev.py run                              # TriCore (default)
+python3 tools/dev.py run --board boards/qemu_riscv_virt
 ```
 
 Expected output:
@@ -110,20 +119,21 @@ ulmk: switching to root thread
 ulmk: hello from userspace
 ```
 
-### Run integration tests (inside the container)
+### Run tests (inside the container)
 
 ```bash
-cd /workspace/tests/boot          && make clean && make gen_config && make run
-cd /workspace/tests/ctx_switch    && make clean && make gen_config && make run
-cd /workspace/tests/sleep_integ   && make clean && make gen_config && make run
-cd /workspace/tests/sched_integ   && make clean && make gen_config && make run
-cd /workspace/tests/ipc_integ     && make clean && make gen_config && make run
-cd /workspace/tests/thread_lifecycle_integ && make clean && make gen_config && make run
-cd /workspace/tests/resource_leak_integ    && make clean && make gen_config && make run
-cd /workspace/tests/preempt_integ && make clean && make gen_config && make run
+# Unit tests (host, no QEMU)
+python3 tools/dev.py tests unit
+
+# Integration tests — TriCore (default)
+python3 tools/dev.py tests integ
+
+# Integration tests — RISC-V
+python3 tools/dev.py tests integ --board boards/qemu_riscv_virt
 ```
 
-All 8 tests must pass before submitting a patch.
+Individual integration tests also support `ARCH=tricore` or `ARCH=riscv` via
+`tests/integ_common.mk` (see any `tests/*/Makefile`).
 
 ---
 
@@ -132,14 +142,18 @@ All 8 tests must pass before submitting a patch.
 ```
 CMakeLists.txt               top-level build orchestrator
 cmake/
+  arch.cmake                   ULMK_ARCH selection from board.cmake
   toolchain-tricore-gcc.cmake
+  toolchain-riscv-gcc.cmake
   component_api.cmake          ulmk_component_register, ulmk_components_finalize
-  config.cmake                 6 kernel configuration symbols
+  config.cmake                 kernel configuration symbols
   linker_api.cmake             ulmk_generate_linker_script
   generate_ld.py               assembles the generated linker script
 kernel/                      platform-independent kernel
 arch/tricore/                TriCore TC1.6.x port
-boards/qemu_tc3xx/           QEMU AURIX TC397B board (CI platform)
+arch/riscv/                  RISC-V RV32 port
+boards/qemu_tc3xx/           TriCore QEMU CI board
+boards/qemu_riscv_virt/      RISC-V QEMU virt CI board
 components/hello_world/      reference component (ROOT_THREAD)
 include/ulmk/microkernel.h     public API (all syscall wrappers)
 linker/                      arch-independent linker fragments
@@ -162,6 +176,7 @@ docs/                        specifications and guides
 | [linker\_spec](docs/linker_spec.md) | Three-layer linker script model |
 | [application\_development\_guide](docs/application_development_guide.md) | How to build an application for custom hardware |
 | [arch\_porting\_guide](docs/arch_porting_guide.md) | How to add a new architecture |
+| [riscv\_implementation](docs/arch/riscv_implementation.md) | RISC-V RV32 port details |
 
 ---
 

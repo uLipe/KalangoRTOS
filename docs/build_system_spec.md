@@ -310,9 +310,18 @@ Boot sequence (inside the ELF):
 ## 7. Chip Parameterisation
 
 ```bash
-cmake -B build -DULMK_CHIP_DIR=boards/qemu_tc3xx          # QEMU (default)
-cmake -B build -DULMK_CHIP_DIR=/path/to/my_board           # real hardware
+cmake -B build -DULMK_CHIP_DIR=boards/qemu_tc3xx          # TriCore QEMU (default)
+cmake -B build -DULMK_CHIP_DIR=boards/qemu_riscv_virt     # RISC-V QEMU virt
+cmake -B build -DULMK_CHIP_DIR=/path/to/my_board          # real hardware
 ```
+
+`cmake/arch.cmake` reads `UL_BOARD_ARCH` from `${ULMK_CHIP_DIR}/board.cmake`
+(via `cmake/board_resolve.cmake`) and sets:
+
+| `UL_BOARD_ARCH` | Toolchain file | Arch sources |
+|-----------------|----------------|--------------|
+| `tricore` | `cmake/toolchain-tricore-gcc.cmake` | `arch/tricore/` |
+| `riscv` | `cmake/toolchain-riscv-gcc.cmake` | `arch/riscv/` |
 
 `ULMK_CHIP_DIR` must point to a directory containing:
 
@@ -331,7 +340,8 @@ Full chip input contract: `docs/linker_spec.md §9`.
 Each board directory must contain a `board.cmake` with:
 
 ```cmake
-set(ULMK_BOARD_CPU   "tc39xx")           # passed to -mcpu=
+set(UL_BOARD_ARCH "tricore")   # or "riscv"
+set(ULMK_BOARD_CPU   "tc39xx")           # TriCore: passed to -mcpu=
 set(ULMK_BOARD_CFLAGS "-DULMK_ARCH_QEMU_VIRT_CONSOLE=1 …")
 set(ULMK_BOARD_SOURCES
     qemu_console.c
@@ -339,6 +349,10 @@ set(ULMK_BOARD_SOURCES
     board_services.c
 )
 ```
+
+RISC-V boards additionally pass arch constants in `ULMK_BOARD_CFLAGS`, e.g.
+`ULMK_ARCH_HAVE_CLINT`, `ULMK_BOARD_CLINT_BASE`, `ULMK_ARCH_PMP_NUM`, and
+`-march=rv32imac_zicsr_zifencei`.
 
 `ULMK_BOARD_SOURCES` paths are relative to `${ULMK_CHIP_DIR}`.  They are added to
 `ulmk_kernel` and must provide at minimum:
