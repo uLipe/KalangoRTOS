@@ -144,6 +144,7 @@ _trap_class7:
  * ------------------------------------------------------------------------ */
 
     .extern _arch_generic_isr_handler
+    .extern ulmk_arch_ctx_commit_pcxi
 
     .section .int_table, "ax"
     .align  8   /* 256-byte aligned BIV base */
@@ -177,6 +178,7 @@ _ulmk_int_table:
  * ------------------------------------------------------------------------ */
 
     .extern _arch_generic_isr_handler
+    .extern ulmk_arch_ctx_commit_pcxi
 
     .global _arch_generic_preempt_isr
     .type   _arch_generic_preempt_isr, @function
@@ -212,6 +214,8 @@ _arch_generic_preempt_isr:
 
     mfcr    %d0, 0xFE00
     st.w    [%a15] 0, %d0
+    mov.aa  %a4, %a15
+    call    ulmk_arch_ctx_commit_pcxi
 
     ld.w    %d0, [%a14] 0
     dsync

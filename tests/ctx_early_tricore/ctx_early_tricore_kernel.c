@@ -40,6 +40,15 @@ void csa_ctx_run_early(void)
 		ulmk_printk("ctx_early_tricore: early arg pass — OK\n");
 	else
 		ulmk_printk("ctx_early_tricore: early arg pass — FAIL\n");
+
+	ulmk_arch_ctx_free(&g_ctx_worker);
+	ulmk_arch_ctx_init(&g_ctx_worker,
+			    worker_fn,
+			    EXPECTED_ARG,
+			    (uintptr_t)(g_worker_stack + sizeof(g_worker_stack)),
+			    ULMK_PRIV_KERNEL);
+	ulmk_arch_ctx_switch(&g_ctx_root, &g_ctx_worker);
+	ulmk_arch_ctx_free(&g_ctx_worker);
 }
 
 int csa_ctx_early_passed(void)

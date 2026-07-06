@@ -224,53 +224,85 @@ void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,
 	lower_csa[1] = (uint32_t)(uintptr_t)_ulmk_thread_trampoline;
 	lower_csa[8] = (uint32_t)(uintptr_t)arg;	/* A4: pointer arg */
 
-	ctx->pcxi = lower_link;
+	ctx->pcxi     = lower_link;
+	ctx->csa_tail = upper_link;
+}
+
+static uint32_t csa_chain_tail_link(uint32_t head_link)
+{
+	uint32_t link = head_link;
+	uint32_t next;
+
+	while (link != 0u) {
+		next = csa_link_to_addr(link)[0] & 0x7FFFFu;
+		if (next == 0u)
+			return link;
+		link = next;
+	}
+	return 0u;
 }
 
 /*
- * Free the saved CSA chain back to FCX.
- * Called when a thread is destroyed.  The chain must not be active
- * (i.e. the thread must be in DEAD state before this is called).
+ * Refresh csa_tail after pcxi is stored (ctx_switch / ISR preempt).
+ * Walk is O(chain depth); ctx_free() splices in O(1) using the result.
+ */
+void ulmk_arch_ctx_commit_pcxi(ulmk_arch_ctx_t *ctx)
+{
+	if (!ctx || ctx->pcxi == 0u) {
+		if (ctx)
+			ctx->csa_tail = 0u;
+		return;
+	}
+
+	ctx->csa_tail = csa_chain_tail_link(ctx->pcxi);
+}
+
+#ifndef NDEBUG
+static void csa_chain_verify_tail(uint32_t head_link, uint32_t tail_link)
+{
+	if (csa_chain_tail_link(head_link) != tail_link)
+		ulmk_arch_cpu_halt();
+}
+#endif
+
+/*
+ * Return the saved CSA chain to FCX in O(1).
  *
- * Walks the PCXI chain starting at ctx->pcxi.  Each frame's word 0 is the
- * link to the next frame in the chain (with UL/PIE metadata in bits[20:19]).
- * csa_link_to_addr() strips those bits, so the walk is uniform for upper and
- * lower context frames.
+ * CSA chains grow only at the head (PCXI); csa_tail tracks the terminal
+ * upper frame (refreshed on every ctx_switch / ISR preempt via commit_pcxi).
+ * Splice: tail[0] = FCX, FCX = head.
  *
- * Each frame is prepended to the FCX free list.  Interrupts must be disabled
- * by the caller or the entire operation must be atomic w.r.t. the ISR (both
- * csa_alloc in the ISR and this function touch FCX).  On a single-core system
- * this is safe because the timer ISR only touches FCX via hardware.
+ * Called when a thread is destroyed — the chain must not be live on CPU.
+ * Caller must hold interrupts off or run with no concurrent FCX access.
  */
 void ulmk_arch_ctx_free(ulmk_arch_ctx_t *ctx)
 {
-	uint32_t link;
-	uint32_t next_link;
-	uint32_t *frame;
-	uint32_t fcx;
-	uint32_t frame_link;
+	uint32_t  head_link;
+	uint32_t *tail_frame;
+	uint32_t  fcx;
 
-	if (!ctx)
+	if (!ctx || ctx->pcxi == 0u)
 		return;
 
-	link = ctx->pcxi;
+#ifndef NDEBUG
+	if (ctx->csa_tail != 0u)
+		csa_chain_verify_tail(ctx->pcxi, ctx->csa_tail);
+#endif
+
+	head_link = ctx->pcxi;
 	ctx->pcxi = 0u;
 
-	while (link != 0u) {
-		frame     = csa_link_to_addr(link);
-		next_link = frame[0];
+	if (ctx->csa_tail == 0u)
+		return;
 
-		/* Prepend this frame to the FCX free list. */
-		__asm__ volatile("mfcr %0, 0xFE38" : "=d"(fcx));
-		frame[0] = fcx;
-		frame_link = addr_to_csa_link(frame);
-		__asm__ volatile("dsync" ::: "memory");
-		__asm__ volatile("mtcr 0xFE38, %0" :: "d"(frame_link));
-		__asm__ volatile("isync" ::: "memory");
+	tail_frame = csa_link_to_addr(ctx->csa_tail);
+	ctx->csa_tail = 0u;
 
-		/* Strip UL (bit 20) and PIE (bit 19) to get the address link. */
-		link = next_link & 0x7FFFFu;
-	}
+	__asm__ volatile("mfcr %0, 0xFE38" : "=d"(fcx));
+	tail_frame[0] = fcx;
+	__asm__ volatile("dsync" ::: "memory");
+	__asm__ volatile("mtcr 0xFE38, %0" :: "d"(head_link));
+	__asm__ volatile("isync" ::: "memory");
 }
 
 /*

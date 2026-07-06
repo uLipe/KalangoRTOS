@@ -35,11 +35,14 @@
  * two-frame chain so that the first RSLCX+RFE starts the thread at its
  * entry point via the arch trampoline.
  *
- * Must be the first field so that ulmk_thread_t.pcxi is accessible at a
- * fixed offset (required by the assembly context-switch path).
+ * pcxi must be the first field (assembly context-switch path).  csa_tail
+ * is the link word of the terminal upper CSA frame; refreshed by
+ * ulmk_arch_ctx_commit_pcxi() on every context save so ctx_free() can
+ * splice the whole chain onto FCX in O(1).
  */
 typedef struct {
 	uint32_t pcxi;
+	uint32_t csa_tail;
 } ulmk_arch_ctx_t;
 
 /* Saved interrupt state (ICR register value on TriCore). */
@@ -78,6 +81,8 @@ uint32_t          ulmk_arch_cpu_clz(uint32_t val);
  * ========================================================================= */
 
 void ulmk_arch_csa_pool_init(uintptr_t pool_base, size_t pool_size);
+
+void ulmk_arch_ctx_commit_pcxi(ulmk_arch_ctx_t *ctx);
 
 void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,
 		      void (*entry)(void *arg), void *arg,

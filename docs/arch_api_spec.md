@@ -223,6 +223,10 @@ Release any arch-managed resources associated with `ctx` (e.g., saved-context
 frames from a hardware pool).  Called when a thread is killed.  Must be safe to
 call from any context with interrupts disabled.
 
+On TriCore the implementation splices the full CSA chain onto FCX in **O(1)**
+using `csa_tail`, refreshed whenever `pcxi` is saved via
+`ulmk_arch_ctx_commit_pcxi()` (context switch and ISR preempt).
+
 ---
 
 ## 6. MPU — Memory Protection Unit
@@ -536,7 +540,10 @@ port (`arch/tricore/`).  It is **not** part of the generic contract.
 ### `ulmk_arch_ctx_t` on TriCore
 
 ```c
-typedef struct { uint32_t pcxi; } ulmk_arch_ctx_t;
+typedef struct {
+	uint32_t pcxi;      /* CSA chain head (PCXI link word) */
+	uint32_t csa_tail;  /* terminal upper frame — O(1) ctx_free splice */
+} ulmk_arch_ctx_t;
 ```
 
 `pcxi` is the PCXI register value encoding a two-frame CSA chain:

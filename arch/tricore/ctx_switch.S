@@ -56,6 +56,7 @@
  */
 
     .extern ulmk_arch_cpu_halt
+    .extern ulmk_arch_ctx_commit_pcxi
 
 /* ---------------------------------------------------------------------------
  * ulmk_arch_ctx_switch
@@ -79,6 +80,7 @@ ulmk_arch_ctx_switch:
     svlcx                        /* save lower context → new CSA frame     */
     mfcr    %d0, 0xFE00          /* d0 = PCXI: head of "from" CSA chain    */
     st.w    [%a4] 0, %d0         /* from->pcxi = PCXI                      */
+    call    ulmk_arch_ctx_commit_pcxi /* a4 = from; refresh csa_tail       */
     ld.w    %d0, [%a5] 0         /* d0 = to->pcxi                          */
     dsync                        /* ensure CSA writes visible before MTCR  */
     mtcr    0xFE00, %d0          /* PCXI = to->pcxi                        */
