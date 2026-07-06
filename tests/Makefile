@@ -7,7 +7,7 @@ UNIT_TESTS := \
 
 INTEG_TESTS := \
     boot \
-    csa_ctx \
+    ctx_early_tricore \
     ctx_switch \
     atomic_integ \
     ipc_integ \

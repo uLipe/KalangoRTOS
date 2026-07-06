@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * CSA context test — kernel-side portion (runs before MPU enable).
- * tests/csa_ctx/csa_ctx_kernel.c
+ * TriCore CSA early context test — kernel-side (runs before MPU enable).
  */
 
 #include <stdint.h>
@@ -11,7 +10,7 @@
 
 #define EXPECTED_ARG	((void *)0xC0FFEE42u)
 
-static volatile uintptr_t g_csa_early_result;
+static volatile uintptr_t g_ctx_early_result;
 
 static ulmk_arch_ctx_t g_ctx_root;
 static ulmk_arch_ctx_t g_ctx_worker;
@@ -19,7 +18,7 @@ static uint8_t g_worker_stack[2048] __attribute__((aligned(8)));
 
 static void worker_fn(void *arg)
 {
-	g_csa_early_result = (uintptr_t)arg;
+	g_ctx_early_result = (uintptr_t)arg;
 	ulmk_arch_ctx_switch(&g_ctx_worker, &g_ctx_root);
 	for (;;)
 		;
@@ -27,7 +26,7 @@ static void worker_fn(void *arg)
 
 void csa_ctx_run_early(void)
 {
-	g_csa_early_result = 0u;
+	g_ctx_early_result = 0u;
 
 	ulmk_arch_ctx_init(&g_ctx_worker,
 			 worker_fn,
@@ -37,13 +36,13 @@ void csa_ctx_run_early(void)
 
 	ulmk_arch_ctx_switch(&g_ctx_root, &g_ctx_worker);
 
-	if (g_csa_early_result == (uintptr_t)EXPECTED_ARG)
-		ulmk_printk("csa_ctx_test: early arg pass — OK\n");
+	if (g_ctx_early_result == (uintptr_t)EXPECTED_ARG)
+		ulmk_printk("ctx_early_tricore: early arg pass — OK\n");
 	else
-		ulmk_printk("csa_ctx_test: early arg pass — FAIL\n");
+		ulmk_printk("ctx_early_tricore: early arg pass — FAIL\n");
 }
 
 int csa_ctx_early_passed(void)
 {
-	return g_csa_early_result == (uintptr_t)EXPECTED_ARG;
+	return g_ctx_early_result == (uintptr_t)EXPECTED_ARG;
 }
