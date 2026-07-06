@@ -41,3 +41,4 @@ __pycache__/
 **/CTestTestfile.cmake
 
 .cursor/
+.ulmk/

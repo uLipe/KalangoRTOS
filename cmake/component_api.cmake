@@ -4,7 +4,7 @@
 
 # Internal accumulators — do not use directly.
 set(_ULMK_COMPONENTS       "" CACHE INTERNAL "")
-set(_ULMK_ROOT_THREAD_COMP "" CACHE INTERNAL "")
+set(_ULMK_ALL_COMPONENTS   "" CACHE INTERNAL "")
 
 # ---------------------------------------------------------------------------
 # ulmk_component_register
@@ -15,11 +15,8 @@ set(_ULMK_ROOT_THREAD_COMP "" CACHE INTERNAL "")
 # (ulmk_comp_<name>) so that its code and data land in dedicated linker
 # sections, isolated from the kernel archive (libulmk_kernel.a).
 #
-# The component library is compiled with:
-#   -DULMK_MODULE_NAME=<name>  so ULMK_PRIVATE places data in the right domain
-#
-# A data domain (domain_data.ld.in snippet) is automatically registered for
-# every enabled component via ulmk_add_domain().
+# ENABLED in the manifest is the default when no ULMK_COMP_<name>_ENABLED cache
+# entry exists.  dev.py passes -DULMK_COMP_<name>_ENABLED=ON|OFF to override.
 # ---------------------------------------------------------------------------
 function(ulmk_component_register)
     cmake_parse_arguments(
@@ -38,20 +35,41 @@ function(ulmk_component_register)
             "ulmk_component_register: ENABLED is required (component: ${ARG_NAME})")
     endif()
 
-    if(NOT ARG_ENABLED)
+    set(_cache_var "ULMK_COMP_${ARG_NAME}_ENABLED")
+    if(NOT DEFINED ${_cache_var})
+        if(ARG_ENABLED)
+            set(${_cache_var} ON CACHE BOOL "Enable component ${ARG_NAME}")
+        else()
+            set(${_cache_var} OFF CACHE BOOL "Enable component ${ARG_NAME}")
+        endif()
+    endif()
+
+    set(tmp "${_ULMK_ALL_COMPONENTS}")
+    if(NOT "${ARG_NAME}" IN_LIST tmp)
+        list(APPEND tmp "${ARG_NAME}")
+        set(_ULMK_ALL_COMPONENTS "${tmp}" CACHE INTERNAL "")
+    endif()
+
+    if(ARG_REQUIRES)
+        set_property(GLOBAL PROPERTY "ULMK_COMP_${ARG_NAME}_REQUIRES"
+                     "${ARG_REQUIRES}")
+    endif()
+
+    if(ARG_ROOT_THREAD)
+        set_property(GLOBAL PROPERTY "ULMK_COMP_${ARG_NAME}_ROOT_THREAD" 1)
+    endif()
+
+    if(ARG_ENABLED)
+        set_property(GLOBAL PROPERTY "ULMK_COMP_${ARG_NAME}_MANIFEST" 1)
+    else()
+        set_property(GLOBAL PROPERTY "ULMK_COMP_${ARG_NAME}_MANIFEST" 0)
+    endif()
+
+    if(NOT ${${_cache_var}})
         message(STATUS "  [component] ${ARG_NAME} DISABLED")
         set_property(GLOBAL PROPERTY "ULMK_COMP_${ARG_NAME}_ENABLED" 0)
         return()
     endif()
-
-    # REQUIRES: error if any dependency was explicitly registered as DISABLED.
-    foreach(_dep IN LISTS ARG_REQUIRES)
-        get_property(_dep_state GLOBAL PROPERTY "ULMK_COMP_${_dep}_ENABLED")
-        if(DEFINED _dep_state AND "${_dep_state}" STREQUAL "0")
-            message(FATAL_ERROR
-                "Component '${ARG_NAME}' requires '${_dep}' which is DISABLED")
-        endif()
-    endforeach()
 
     message(STATUS "  [component] ${ARG_NAME} ENABLED")
     set_property(GLOBAL PROPERTY "ULMK_COMP_${ARG_NAME}_ENABLED" 1)
@@ -59,7 +77,6 @@ function(ulmk_component_register)
     list(APPEND tmp "${ARG_NAME}")
     set(_ULMK_COMPONENTS "${tmp}" CACHE INTERNAL "")
 
-    # Create a dedicated static library for this component.
     set(_tgt "ulmk_comp_${ARG_NAME}")
     add_library("${_tgt}" STATIC)
 
@@ -68,58 +85,92 @@ function(ulmk_component_register)
     endforeach()
 
     foreach(_dir IN LISTS ARG_INCLUDE_DIRS)
-        target_include_directories("${_tgt}" PRIVATE
+        target_include_directories("${_tgt}" PUBLIC
             "${CMAKE_CURRENT_SOURCE_DIR}/${_dir}")
     endforeach()
 
-    # Inherit public include dirs from the kernel (include/, arch/, generated/).
-    # PRIVATE linkage: include dirs propagate to this target's compilation only;
-    # no circular dependency is created at archive level.
     target_link_libraries("${_tgt}" PRIVATE ulmk_kernel)
 
-    # Compile-time defines: module name (for ULMK_PRIVATE) and app name (for
-    # UL_APP_TEXT / section routing in the linker script).
     target_compile_definitions("${_tgt}" PRIVATE
         ULMK_MODULE_NAME=${ARG_NAME}
         ULMK_APP_NAME=${ARG_NAME})
 
-    # Propagate board-specific compile flags (e.g. -DULMK_ARCH_QEMU_VIRT_CONSOLE).
     if(DEFINED ULMK_BOARD_CFLAGS)
         target_compile_options("${_tgt}" PRIVATE ${ULMK_BOARD_CFLAGS})
     endif()
 
-    # Auto-register a data domain so generate_ld.py emits a domain_data snippet.
     ulmk_add_domain("${ARG_NAME}" REGION KERNEL_RAM)
-
-    if(ARG_ROOT_THREAD)
-        if(NOT "${_ULMK_ROOT_THREAD_COMP}" STREQUAL "")
-            message(FATAL_ERROR
-                "Multiple components declare ROOT_THREAD: "
-                "${_ULMK_ROOT_THREAD_COMP} and ${ARG_NAME}")
-        endif()
-        set(_ULMK_ROOT_THREAD_COMP "${ARG_NAME}" CACHE INTERNAL "")
-    endif()
 
     if(DEFINED ARG_LINKER_FRAGMENT)
         message(STATUS
             "  [component] ${ARG_NAME}: linker fragment ${ARG_LINKER_FRAGMENT}")
-        # Linker fragment accumulation — future use.
     endif()
 endfunction()
 
 # ---------------------------------------------------------------------------
 # ulmk_components_finalize
 #
-# Call after all component scans to validate the ROOT_THREAD invariant
-# and print a summary.  Called from the top-level CMakeLists.txt.
+# Validates REQUIRES / ROOT_THREAD among enabled components and wires
+# inter-component library dependencies.
 # ---------------------------------------------------------------------------
 function(ulmk_components_finalize)
-    if("${_ULMK_ROOT_THREAD_COMP}" STREQUAL "")
+    set(_root_thread_comp "")
+
+    foreach(_name IN LISTS _ULMK_ALL_COMPONENTS)
+        get_property(_enabled GLOBAL PROPERTY "ULMK_COMP_${_name}_ENABLED")
+        if(NOT _enabled)
+            continue()
+        endif()
+
+        get_property(_requires GLOBAL PROPERTY "ULMK_COMP_${_name}_REQUIRES")
+        if(_requires)
+            foreach(_dep IN LISTS _requires)
+                get_property(_dep_known GLOBAL PROPERTY
+                             "ULMK_COMP_${_dep}_MANIFEST" SET)
+                if(NOT _dep_known)
+                    message(FATAL_ERROR
+                        "Component '${_name}' requires unknown component "
+                        "'${_dep}'.")
+                endif()
+
+                get_property(_dep_en GLOBAL PROPERTY
+                             "ULMK_COMP_${_dep}_ENABLED")
+                if(NOT _dep_en)
+                    message(FATAL_ERROR
+                        "Component '${_name}' requires '${_dep}', but "
+                        "'${_dep}' is DISABLED.\n"
+                        "  Enable it:  python3 tools/dev.py components "
+                        "enable ${_dep}\n"
+                        "  Or build:   python3 tools/dev.py build "
+                        "--component ${_dep}\n"
+                        "  Or remove REQUIRES / ${_dep}_init() from "
+                        "${_name}.")
+                endif()
+
+                target_link_libraries("ulmk_comp_${_name}" PRIVATE
+                                      "ulmk_comp_${_dep}")
+            endforeach()
+        endif()
+
+        get_property(_rt GLOBAL PROPERTY "ULMK_COMP_${_name}_ROOT_THREAD")
+        if(_rt)
+            if(NOT "${_root_thread_comp}" STREQUAL "")
+                message(FATAL_ERROR
+                    "Multiple enabled components declare ROOT_THREAD: "
+                    "${_root_thread_comp} and ${_name}")
+            endif()
+            set(_root_thread_comp "${_name}")
+        endif()
+    endforeach()
+
+    if("${_root_thread_comp}" STREQUAL "")
         message(STATUS
-            "  [component] No ROOT_THREAD component found — "
+            "  [component] No ROOT_THREAD component enabled — "
             "stub/root_thread_stub.c will be used")
     else()
         message(STATUS
-            "  [component] ROOT_THREAD: ${_ULMK_ROOT_THREAD_COMP}")
+            "  [component] ROOT_THREAD: ${_root_thread_comp}")
     endif()
+
+    set(_ULMK_ROOT_THREAD_COMP "${_root_thread_comp}" CACHE INTERNAL "")
 endfunction()

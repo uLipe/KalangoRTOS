@@ -9,7 +9,8 @@
  *   1. board_services_init() — starts board hardware services (console, etc.)
  *      and returns with every service endpoint ready.
  *   2. hello_world_init()    — spawns the hello task.
- *   3. ulmk_thread_exit()      — root thread terminates; scheduler takes over.
+ *   3. ping_pong_init()      — spawns ping/pong IPC demo threads.
+ *   4. ulmk_thread_exit()    — root thread terminates; scheduler takes over.
  *
  * board_services_init() is resolved at link time: the board provides a strong
  * definition; stub/board_services_stub.c provides a weak no-op fallback.
@@ -17,6 +18,7 @@
 
 #include <ulmk/microkernel.h>
 #include <hello_world.h>
+#include <ping_pong.h>
 
 /* Resolved at link time by the board's board_services.c (strong) or
  * stub/board_services_stub.c (weak no-op). */
@@ -26,5 +28,6 @@ void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
 	board_services_init(info);
 	hello_world_init(info);
+	ping_pong_init(info);
 	ulmk_thread_exit();
 }

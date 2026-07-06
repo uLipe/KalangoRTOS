@@ -8,8 +8,8 @@
  *   - board_console_putc() / board_console_puts() are the public C API of
  *     the board_console service (defined in boards/<board>/board_console.h).
  *   - All output goes through IPC; no direct MMIO access from this component.
- *   - The formatter below is self-contained — no dependency on libc or any
- *     kernel service beyond board_console and the timer syscall.
+ *   - hello runs at priority 10; ping at 11 (must differ — equal priority on
+ *     TriCore with a shared board-timer client triggers a scheduling bug).
  */
 
 #include <stdint.h>

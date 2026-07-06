@@ -124,9 +124,15 @@ ulmk_components_finalize()
 # Kernel executable (kernel + arch startup + apps)
 # ---------------------------------------------------------------------------
 
-add_executable(ulmk
+set(_ulmk_exe_sources
     ${ULMK_ARCH_EXE_SOURCES}
     ${_ULMK_BOARD_SRCS})
+
+if("${_ULMK_ROOT_THREAD_COMP}" STREQUAL "")
+    list(APPEND _ulmk_exe_sources "${CMAKE_SOURCE_DIR}/stub/root_thread_stub.c")
+endif()
+
+add_executable(ulmk ${_ulmk_exe_sources})
 
 target_include_directories(ulmk PRIVATE
     "${CMAKE_SOURCE_DIR}"

@@ -1,6 +1,7 @@
 ulmk_component_register(
     NAME         hello_world
-    ENABLED      ON
+    ENABLED      OFF
+    REQUIRES     ping_pong
     SOURCES
         src/root_thread.c
         src/hello_world.c
