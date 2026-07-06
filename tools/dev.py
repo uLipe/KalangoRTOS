@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
 """
-Launch an interactive development shell inside the ulmk container.
-
-The workspace root is mounted at /workspace inside the container.
-Exiting the shell (Ctrl-D or `exit`) stops and removes the container.
+ulmk development container and build/test driver.
 
 Usage:
-    python3 tools/dev.py                        # build image if missing, then enter
-    python3 tools/dev.py --rebuild              # force image rebuild, then enter
+    python3 tools/dev.py                        # enter interactive shell
+    python3 tools/dev.py --rebuild              # rebuild image, then enter
 
-    python3 tools/dev.py build                  # build kernel (default QEMU board)
-    python3 tools/dev.py build --board PATH     # build with custom board
+    python3 tools/dev.py build                  # build kernel (default board)
+    python3 tools/dev.py build --board PATH     # build for a specific board
     python3 tools/dev.py build --clean          # clean rebuild
-    python3 tools/dev.py build qemu             # build + run in QEMU
+    python3 tools/dev.py build qemu             # build (if needed) and run in QEMU
 
     python3 tools/dev.py tests unit             # run all unit tests
     python3 tools/dev.py tests integ            # run all integration tests
-    python3 tools/dev.py tests hello            # hello_world production e2e smoke test
     python3 tools/dev.py tests unit  --test NAME
     python3 tools/dev.py tests integ --test NAME
     python3 tools/dev.py tests unit  --list
     python3 tools/dev.py tests integ --list
+    python3 tools/dev.py tests integ --board boards/qemu_riscv_virt
 
-    python3 tools/dev.py killall                # kill every running dev container
+    python3 tools/dev.py killall                # stop all running dev containers
 """
 
 from __future__ import annotations
@@ -42,8 +39,14 @@ TESTS_DIR      = WORKSPACE_ROOT / "tests"
 BUILD_DIR      = WORKSPACE_ROOT.parent / "build"
 
 DEFAULT_BOARD  = "boards/qemu_tc3xx"
+DEFAULT_BOARD_RISCV = "boards/qemu_riscv_virt"
 
-TEST_TIMEOUT = 120  # maximum wall-clock seconds for a single `make run`
+TEST_TIMEOUT = 120
+
+ARCH_TRICORE_ONLY_TESTS = frozenset({"csa_ctx"})
+
+QEMU_TRICORE = "/opt/qemu-tricore/bin/qemu-system-tricore"
+QEMU_RISCV   = "qemu-system-riscv32"
 
 
 # ---------------------------------------------------------------------------
@@ -101,12 +104,7 @@ def _run_container() -> None:
 # ---------------------------------------------------------------------------
 
 def _parse_board_cmake(board_dir: Path) -> dict:
-    """
-    Extract UL_BOARD_* variables from board.cmake.
-    Handles single-value and multi-value set() calls (multiline included).
-    Returns a dict mapping variable name → str (single) or list[str] (multi).
-    Used only to read UL_BOARD_QEMU_MACHINE for the QEMU launch step.
-    """
+    """Extract UL_BOARD_* variables from board.cmake."""
     cmake_file = board_dir / "board.cmake"
     if not cmake_file.exists():
         sys.exit(f"error: board.cmake not found in {board_dir}")
@@ -115,67 +113,132 @@ def _parse_board_cmake(board_dir: Path) -> dict:
     board: dict = {}
     for m in re.finditer(r'set\(\s*(\w+)\s+(.*?)\)', text, re.DOTALL):
         var = m.group(1)
-        raw = re.sub(r'#[^\n]*', '', m.group(2))   # strip inline comments
-        values = raw.split()
+        raw = re.sub(r'#[^\n]*', '', m.group(2))
+        values = [v.strip('"') for v in raw.split()]
         board[var] = values[0] if len(values) == 1 else values
     return board
 
 
-def _build_shell(board_container: str, qemu_machine: str,
+def _board_arch(board: dict) -> str:
+    arch = board.get("UL_BOARD_ARCH", "tricore")
+    if isinstance(arch, list):
+        arch = arch[0] if arch else "tricore"
+    return arch
+
+
+def _toolchain_for_arch(arch: str) -> str:
+    return f"/workspace/cmake/toolchain-{arch}-gcc.cmake"
+
+
+def _qemu_binary(arch: str) -> str:
+    if arch == "riscv":
+        return QEMU_RISCV
+    return QEMU_TRICORE
+
+
+def _resolve_board_path(board_arg: str | None) -> tuple[Path, str, list[str]]:
+    if board_arg:
+        board_host = Path(board_arg).resolve()
+        if not board_host.is_dir():
+            sys.exit(f"error: board directory not found: {board_arg}")
+        if board_host.is_relative_to(WORKSPACE_ROOT):
+            board_container = f"/workspace/{board_host.relative_to(WORKSPACE_ROOT)}"
+            extra_mounts: list[str] = []
+        else:
+            board_container = "/board"
+            extra_mounts = ["--volume", f"{board_host}:/board:ro"]
+    else:
+        board_host = WORKSPACE_ROOT / DEFAULT_BOARD
+        board_container = f"/workspace/{DEFAULT_BOARD}"
+        extra_mounts = []
+    return board_host, board_container, extra_mounts
+
+
+def _build_shell(board_container: str, board: dict,
                  clean: bool, run_qemu: bool) -> str:
-    """
-    Produce the bash script that runs inside the Docker container.
-    Delegates the full compile+link flow to CMake + Ninja.
-    """
-    lines: list[str] = ["set -e", ""]
+    arch = _board_arch(board)
+    toolchain = _toolchain_for_arch(arch)
+    build_subdir = f"ulipe-{arch}"
+    qemu = _qemu_binary(arch)
+
+    lines: list[str] = [
+        "set -e",
+        f'export PATH="/opt/qemu-tricore/bin:/opt/tricore-gcc-bin:'
+        f'/opt/riscv-gcc-bin:${{PATH}}"',
+        "",
+    ]
 
     if clean:
         lines += [
             "echo '--- clean ---'",
-            "rm -rf /build/ulipe",
+            f"rm -rf /build/{build_subdir}",
             "",
         ]
 
     lines += [
         "echo '--- configure ---'",
-        "cmake -S /workspace -B /build/ulipe \\",
-        "    -DCMAKE_TOOLCHAIN_FILE=/workspace/cmake/toolchain-tricore-gcc.cmake \\",
+        f"cmake -S /workspace -B /build/{build_subdir} \\",
+        f"    -DCMAKE_TOOLCHAIN_FILE={toolchain} \\",
         f"    -DULMK_CHIP_DIR={board_container} \\",
         "    -GNinja \\",
         "    --no-warn-unused-cli",
         "",
         "echo '--- build ---'",
-        "ninja -C /build/ulipe",
+        f"ninja -C /build/{build_subdir}",
         "",
-        "echo 'Build OK → /build/ulipe/ulmk'",
+        f"echo 'Build OK → /build/{build_subdir}/ulmk'",
     ]
 
     if run_qemu:
+        machine = board.get("UL_BOARD_QEMU_MACHINE", "")
+        if isinstance(machine, list):
+            machine = machine[0] if machine else ""
+        extra = board.get("UL_BOARD_QEMU_EXTRA", "")
+        if isinstance(extra, list):
+            extra_args = " ".join(extra)
+        else:
+            extra_args = str(extra) if extra else ""
         lines += [
             "",
             "echo '--- running in QEMU (Ctrl-C to stop) ---'",
-            f"qemu-system-tricore -machine {qemu_machine} \\",
-            "    -kernel /build/ulipe/ulmk -nographic",
+            f"{qemu} -machine {machine} {extra_args} \\",
+            f"    -kernel /build/{build_subdir}/ulmk -nographic",
         ]
 
     return "\n".join(lines)
 
 
+def _qemu_only_shell(board: dict, build_subdir: str) -> str:
+    """Run an already-built kernel in QEMU without reconfiguring."""
+    arch = _board_arch(board)
+    qemu = _qemu_binary(arch)
+    machine = board.get("UL_BOARD_QEMU_MACHINE", "")
+    if isinstance(machine, list):
+        machine = machine[0] if machine else ""
+    extra = board.get("UL_BOARD_QEMU_EXTRA", "")
+    if isinstance(extra, list):
+        extra_args = " ".join(extra)
+    else:
+        extra_args = str(extra) if extra else ""
+
+    return "\n".join([
+        "set -e",
+        f'export PATH="/opt/qemu-tricore/bin:/opt/tricore-gcc-bin:'
+        f'/opt/riscv-gcc-bin:${{PATH}}"',
+        f"test -f /build/{build_subdir}/ulmk",
+        "echo '--- running in QEMU (Ctrl-C to stop) ---'",
+        f"{qemu} -machine {machine} {extra_args} \\",
+        f"    -kernel /build/{build_subdir}/ulmk -nographic",
+    ])
+
+
 def _run_build(args: argparse.Namespace) -> None:
     run_qemu = (args.action == "qemu")
 
-    if args.board:
-        board_host = Path(args.board).resolve()
-        if not board_host.is_dir():
-            sys.exit(f"error: board directory not found: {args.board}")
-        board_container = "/board"
-        extra_mounts: list[str] = ["--volume", f"{board_host}:/board:ro"]
-    else:
-        board_host      = WORKSPACE_ROOT / DEFAULT_BOARD
-        board_container = f"/workspace/{DEFAULT_BOARD}"
-        extra_mounts    = []
-
+    board_host, board_container, extra_mounts = _resolve_board_path(args.board)
     board = _parse_board_cmake(board_host)
+    arch = _board_arch(board)
+    build_subdir = f"ulipe-{arch}"
 
     qemu_machine = board.get("UL_BOARD_QEMU_MACHINE", "")
     if isinstance(qemu_machine, list):
@@ -186,10 +249,13 @@ def _run_build(args: argparse.Namespace) -> None:
             "(UL_BOARD_QEMU_MACHINE not set in board.cmake)"
         )
 
-    cmake_build = BUILD_DIR / "ulipe"
-    cmake_build.mkdir(parents=True, exist_ok=True)
+    BUILD_DIR.mkdir(parents=True, exist_ok=True)
 
-    shell_cmd = _build_shell(board_container, qemu_machine, args.clean, run_qemu)
+    elf = BUILD_DIR / build_subdir / "ulmk"
+    if run_qemu and not args.clean and elf.is_file():
+        shell_cmd = _qemu_only_shell(board, build_subdir)
+    else:
+        shell_cmd = _build_shell(board_container, board, args.clean, run_qemu)
 
     cmd = [
         "docker", "run", "--rm",
@@ -197,11 +263,11 @@ def _run_build(args: argparse.Namespace) -> None:
         "--volume", f"{BUILD_DIR}:/build",
     ] + extra_mounts
 
-    if run_qemu:
+    if run_qemu and sys.stdout.isatty():
         cmd += ["--interactive", "--tty"]
 
     cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
-    os.execvp("docker", cmd)
+    subprocess.run(cmd, check=True)
 
 
 # ---------------------------------------------------------------------------
@@ -240,31 +306,32 @@ def _discover_tests(kind: str) -> list[str]:
     return result
 
 
-def _has_gen_config(test_name: str) -> bool:
-    mf = TESTS_DIR / test_name / "Makefile"
-    return "gen_config" in mf.read_text()
-
-
-def _run_one_shell(kind: str, name: str) -> str:
+def _run_one_shell(kind: str, name: str, arch: str) -> str:
     steps = [
-        f"echo '=== {name} ==='",
+        f"echo '=== {name} (ARCH={arch}) ==='",
         f"cd /workspace/tests/{name}",
         "make clean -s 2>/dev/null || true",
     ]
-    if kind == "integ" and _has_gen_config(name):
+    if kind == "integ":
         steps.append("make gen_config -s")
     steps.append("rm -rf integ_kernel libtest_kernel.a 2>/dev/null || true")
     steps += [
-        "make -s",
-        f"timeout --kill-after=5 {TEST_TIMEOUT} make run",
+        f"make -s ARCH={arch}",
+        f"timeout --kill-after=5 {TEST_TIMEOUT} make run ARCH={arch}",
     ]
     return " && ".join(steps)
 
 
-def _run_all_shell(kind: str, tests: list[str]) -> str:
+def _filter_integ_tests(tests: list[str], arch: str) -> list[str]:
+    if arch == "tricore":
+        return tests
+    return [t for t in tests if t not in ARCH_TRICORE_ONLY_TESTS]
+
+
+def _run_all_shell(kind: str, tests: list[str], arch: str) -> str:
     lines = ["FAILED=''"]
     for name in tests:
-        snippet = _run_one_shell(kind, name)
+        snippet = _run_one_shell(kind, name, arch)
         lines.append(
             f"if ( {snippet} ); then :; "
             f"else FAILED=\"$FAILED {name}\"; fi"
@@ -279,52 +346,46 @@ def _run_all_shell(kind: str, tests: list[str]) -> str:
     return " ; ".join(lines)
 
 
-def _run_hello() -> None:
-    _killall()
-    BUILD_DIR.mkdir(parents=True, exist_ok=True)
-    shell_cmd = "make -C /workspace/tests/hello_e2e run"
-    cmd = _base_docker_cmd(interactive=False)
-    cmd += ["--volume", f"{BUILD_DIR}:/build"]
-    cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
-    os.execvp("docker", cmd)
-
-
 def _run_tests(args: argparse.Namespace) -> None:
     kind      = args.kind
     test_name = args.test
 
     _killall()
 
-    if kind == "hello":
-        print("Running hello_world e2e smoke test…")
-        _run_hello()
-        return
+    board_host, _, _ = _resolve_board_path(getattr(args, "board", None))
+    arch = _board_arch(_parse_board_cmake(board_host))
 
     if args.list:
         tests = _discover_tests(kind)
-        print(f"{kind} tests ({len(tests)}):")
+        if kind == "integ":
+            tests = _filter_integ_tests(tests, arch)
+        print(f"{kind} tests ({len(tests)}) [ARCH={arch}]:")
         for name in tests:
             print(f"  {name}")
         return
 
     if test_name:
         available = _discover_tests(kind)
+        if kind == "integ":
+            available = _filter_integ_tests(available, arch)
         if test_name not in available:
             sys.exit(
                 f"error: unknown {kind} test '{test_name}'.\n"
                 f"Available: {', '.join(available)}"
             )
-        print(f"Running {kind} test: {test_name}")
-        shell_cmd = _run_one_shell(kind, test_name)
+        print(f"Running {kind} test: {test_name} (ARCH={arch})")
+        shell_cmd = _run_one_shell(kind, test_name, arch)
         cmd = _base_docker_cmd(interactive=False)
         cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
         os.execvp("docker", cmd)
     else:
         tests = _discover_tests(kind)
+        if kind == "integ":
+            tests = _filter_integ_tests(tests, arch)
         if not tests:
             sys.exit(f"No {kind} tests found under {TESTS_DIR}")
-        print(f"Running {len(tests)} {kind} test(s): {', '.join(tests)}")
-        shell_cmd = _run_all_shell(kind, tests)
+        print(f"Running {len(tests)} {kind} test(s) [ARCH={arch}]: {', '.join(tests)}")
+        shell_cmd = _run_all_shell(kind, tests, arch)
         cmd = _base_docker_cmd(interactive=False)
         cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
         os.execvp("docker", cmd)
@@ -335,22 +396,44 @@ def _run_tests(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 def _parse_args() -> argparse.Namespace:
+    epilog = """
+examples:
+  python3 tools/dev.py
+  python3 tools/dev.py build
+  python3 tools/dev.py build qemu
+  python3 tools/dev.py build --board boards/qemu_riscv_virt
+  python3 tools/dev.py build qemu --board boards/qemu_riscv_virt
+  python3 tools/dev.py tests unit
+  python3 tools/dev.py tests integ
+  python3 tools/dev.py tests integ --board boards/qemu_riscv_virt
+  python3 tools/dev.py tests integ --test sleep_integ
+  python3 tools/dev.py tests integ --list
+  python3 tools/dev.py killall
+"""
     parser = argparse.ArgumentParser(
-        description="ulmk TriCore dev container",
+        description="ulmk multi-arch dev container",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=epilog,
     )
     parser.add_argument(
         "--rebuild",
         action="store_true",
-        help="Force a full Docker image rebuild before entering",
+        help="Force a full Docker image rebuild before entering the shell",
     )
 
     subparsers = parser.add_subparsers(dest="command")
 
-    # ── build ────────────────────────────────────────────────────────────────
     build_p = subparsers.add_parser(
         "build",
         help="Build the kernel ELF for a target board",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Compile the kernel with CMake/Ninja.\n\n"
+            "  build       configure + compile\n"
+            "  build qemu  compile (if needed) then launch QEMU\n"
+            "              uses /opt/qemu-tricore/bin on TriCore and\n"
+            "              qemu-system-riscv32 on RISC-V"
+        ),
     )
     build_p.add_argument(
         "action",
@@ -363,7 +446,7 @@ def _parse_args() -> argparse.Namespace:
         "--board",
         metavar="PATH",
         default=None,
-        help="Path to board directory with board.cmake (default: boards/qemu_tc3xx)",
+        help="Board directory with board.cmake (default: boards/qemu_tc3xx)",
     )
     build_p.add_argument(
         "--clean",
@@ -371,21 +454,34 @@ def _parse_args() -> argparse.Namespace:
         help="Remove previous build artefacts before compiling",
     )
 
-    # ── killall ──────────────────────────────────────────────────────────────
     subparsers.add_parser(
         "killall",
         help="Kill all running dev containers (useful when QEMU hangs)",
     )
 
-    # ── tests ────────────────────────────────────────────────────────────────
     tests_p = subparsers.add_parser(
         "tests",
         help="Build and run tests inside the container",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Run unit or integration tests inside the dev container.\n\n"
+            "  tests unit              host-compiled Unity tests\n"
+            "  tests integ             QEMU integration tests\n"
+            "  tests integ --list      show available suites\n"
+            "  tests integ --test NAME run one suite\n"
+            "  tests integ --board PATH  select architecture via board"
+        ),
     )
     tests_p.add_argument(
         "kind",
-        choices=["unit", "integ", "hello"],
-        help="Test suite type (hello = production hello_world e2e)",
+        choices=["unit", "integ"],
+        help="Test suite type",
+    )
+    tests_p.add_argument(
+        "--board",
+        metavar="PATH",
+        default=None,
+        help="Board for integ tests (default: boards/qemu_tc3xx)",
     )
     tests_p.add_argument(
         "--test",

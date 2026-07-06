@@ -140,12 +140,11 @@ jobs:
       - name: Run integration tests
         run: python3 tools/dev.py tests integ
 
-  # ── hello_world production build + QEMU tick smoke test ───────────────────
-  hello-e2e:
-    name: Hello world e2e
+  # ── RISC-V: build ─────────────────────────────────────────────────────────
+  build-riscv:
+    name: Build kernel (RISC-V)
     needs: docker-image
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     permissions:
       contents: read
       packages: read
@@ -165,5 +164,33 @@ jobs:
           docker pull "$IMG"
           docker tag  "$IMG" ulipe-microkernel:dev
 
-      - name: Run hello e2e
-        run: python3 tools/dev.py tests hello
+      - name: Build kernel (qemu_riscv_virt)
+        run: python3 tools/dev.py build --board boards/qemu_riscv_virt
+
+  # ── RISC-V: integration tests ─────────────────────────────────────────────
+  integ-tests-riscv:
+    name: Integration tests (RISC-V)
+    needs: docker-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: |
+          IMG="${{ needs.docker-image.outputs.image }}:sha-${{ github.sha }}"
+          docker pull "$IMG"
+          docker tag  "$IMG" ulipe-microkernel:dev
+
+      - name: Run integration tests
+        run: python3 tools/dev.py tests integ --board boards/qemu_riscv_virt
