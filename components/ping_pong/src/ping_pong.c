@@ -2,7 +2,18 @@
 /*
  * ping_pong — two-thread IPC round-trip demo.
  *
- * ping sleeps 1 s, calls pong via synchronous IPC; pong replies immediately.
+ * The synchronous IPC hand-off is used to serialise board-timer access: at any
+ * instant exactly one of the two threads is runnable (the other is blocked in
+ * ep_call/ep_recv), so only one client ever drives the single board-timer
+ * server.  This substitutes for a mutex, which the OS does not provide yet.
+ *
+ * One round:
+ *   ping sleeps 1 s          (ping owns the timer; pong blocked in ep_recv)
+ *   ping -> pong (ep_call)   (ping blocks waiting for the reply)
+ *   pong sleeps 1 s          (pong owns the timer; ping blocked in ep_call)
+ *   pong -> ping (ep_reply)  (pong loops back to ep_recv and blocks)
+ *   ping sleeps 1 s          (ping owns the timer again) then repeats
+ *
  * Board-agnostic: console and timer via board service C API (link-time).
  */
 
@@ -48,6 +59,10 @@ static void pong_entry(void *arg)
 
 	for (;;) {
 		ulmk_ep_recv(g_ep, &msg, &sender);
+
+		/* pong owns the timer here: ping is blocked in ep_call(). */
+		board_timer_sleep_us(PING_PERIOD_US);
+
 		reply.label     = PING_PONG_LABEL;
 		reply.words[0]  = msg.words[0];
 		ulmk_ep_reply(sender, &reply);
@@ -62,15 +77,19 @@ static void ping_entry(void *arg)
 	(void)arg;
 
 	for (;;) {
+		/* ping owns the timer here: pong is blocked in ep_recv(). */
 		board_timer_sleep_us(PING_PERIOD_US);
 
 		msg.label    = PING_PONG_LABEL;
 		msg.words[0] = seq++;
-		ulmk_ep_call(g_ep, &msg);
+		ulmk_ep_call(g_ep, &msg);	/* hand the timer to pong */
 
 		board_console_puts("ping_pong: round ");
 		print_uint32(seq);
 		board_console_putc('\n');
+
+		/* ping owns the timer again before repeating the cycle. */
+		board_timer_sleep_us(PING_PERIOD_US);
 	}
 }
 

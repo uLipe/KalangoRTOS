@@ -8,8 +8,12 @@
  *   - board_console_putc() / board_console_puts() are the public C API of
  *     the board_console service (defined in boards/<board>/board_console.h).
  *   - All output goes through IPC; no direct MMIO access from this component.
- *   - hello runs at priority 10; ping at 11 (must differ — equal priority on
- *     TriCore with a shared board-timer client triggers a scheduling bug).
+ *
+ * The task prints a single greeting and exits.  It deliberately does not use
+ * the board timer: with no OS-level mutex yet, only one thread may drive the
+ * single board-timer server at a time, so the periodic behaviour lives in the
+ * ping_pong demo where synchronous IPC serialises timer access (see
+ * components/ping_pong/src/ping_pong.c).
  */
 
 #include <stdint.h>
@@ -17,39 +21,17 @@
 #include <ulmk/linker.h>
 #include <hello_world.h>
 
-/* board_console_putc and board_console_puts are resolved at link time from
- * the board sources.  Forward-declared here to avoid a board-specific include
- * inside a portable component. */
-void board_console_putc(char c);
+/* board_console_puts is resolved at link time from the board sources.
+ * Forward-declared here to avoid a board-specific include inside a portable
+ * component. */
 void board_console_puts(const char *s);
-void board_timer_sleep_us(uint32_t us);
-
-static void print_uint32(uint32_t v)
-{
-	char buf[11];
-	int  i = (int)sizeof(buf) - 1;
-
-	buf[i] = '\0';
-	do {
-		buf[--i] = (char)('0' + (int)(v % 10u));
-		v /= 10u;
-	} while (v && i > 0);
-	board_console_puts(&buf[i]);
-}
 
 static void hello_entry(void *arg)
 {
-	uint32_t n = 0;
-
 	(void)arg;
 
-	for (;;) {
-		board_console_puts("ulmk: hello from userspace — tick #");
-		print_uint32(n++);
-		board_console_putc('\n');
-
-		board_timer_sleep_us(100000u);
-	}
+	board_console_puts("ulmk: hello from userspace — hello world!\n");
+	ulmk_thread_exit();
 }
 
 ulmk_tid_t hello_world_init(const ulmk_boot_info_t *info)
