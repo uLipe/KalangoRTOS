@@ -148,9 +148,12 @@ ulmk_components_finalize()
 # Kernel executable (kernel + arch startup + apps)
 # ---------------------------------------------------------------------------
 
+# user_entry.c is linked into the image (not libulmk_kernel.a) so it lands in
+# the userspace text region, executable by threads at every privilege.
 set(_ulmk_exe_sources
     ${ULMK_ARCH_EXE_SOURCES}
-    ${_ULMK_BOARD_SRCS})
+    ${_ULMK_BOARD_SRCS}
+    ${CMAKE_SOURCE_DIR}/kernel/init/user_entry.c)
 
 if("${_ULMK_ROOT_THREAD_COMP}" STREQUAL "")
     list(APPEND _ulmk_exe_sources "${CMAKE_SOURCE_DIR}/stub/root_thread_stub.c")

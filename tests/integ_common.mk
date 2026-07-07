@@ -31,6 +31,10 @@ endif
 
 TEST_SRCS += $(TEST_EXTRA_SRCS)
 
+# Common userspace thread entry — compiled as a test object (outside
+# libtest_kernel.a) so it lands in .user_text, executable by user threads.
+TEST_SRCS += $(ROOT)/kernel/init/user_entry.c
+
 CFLAGS := \
 	$(ARCH_CFLAGS) \
 	-ffreestanding \

@@ -52,11 +52,16 @@
  *   A14 = entry function (upper_csa[10] via RFE)
  *   A4  = arg pointer    (lower_csa[8] via RSLCX)
  *
- * TriCore ABI: pointer args in A4-A7.  A4 is ready; just call via A14.
+ * The trampoline JUMPS (JI, no CALL) to the common userspace entry
+ * ulmk_user_thread_entry(entry, arg): A4 = entry, A5 = arg (TriCore ABI
+ * pointer args A4-A7).  Jumping keeps the CSA chain depth identical to a
+ * direct entry call; that shim runs the entry and, if it returns, issues
+ * ulmk_thread_exit() so the thread is reaped cleanly.
  */
 
     .extern ulmk_arch_cpu_halt
     .extern ulmk_arch_ctx_post_save
+    .extern ulmk_user_thread_entry
 
 /* ---------------------------------------------------------------------------
  * ulmk_arch_ctx_switch
@@ -115,8 +120,10 @@ ulmk_arch_ctx_switch:
     .type   _ulmk_thread_trampoline, @function
 
 _ulmk_thread_trampoline:
-    calli   %a14                 /* entry(arg): A14=entry fn, A4=arg ptr   */
-    call    ulmk_arch_cpu_halt
-    j       .
+    mov.aa  %a5, %a4             /* a5 = arg  (2nd param)                  */
+    mov.aa  %a4, %a14            /* a4 = entry (1st param)                 */
+    movh.a  %a15, hi:ulmk_user_thread_entry
+    lea     %a15, [%a15] lo:ulmk_user_thread_entry
+    ji      %a15                 /* jump: ulmk_user_thread_entry(entry,arg)*/
 
     .size _ulmk_thread_trampoline, . - _ulmk_thread_trampoline

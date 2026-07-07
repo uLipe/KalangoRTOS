@@ -4,7 +4,7 @@
  */
 
 	.extern ulmk_arch_cpu_halt
-	.extern ulmk_thread_exit
+	.extern ulmk_user_thread_entry
 
 	.equ CTX_SIZE, 64
 	.equ CTX_S0, 4
@@ -57,9 +57,9 @@ ulmk_arch_ctx_switch:
 	.global _ulmk_thread_trampoline_m
 	.type _ulmk_thread_trampoline_m, @function
 _ulmk_thread_trampoline_m:
-	mv      a0, s1
-	jalr    s0
-	jal     ulmk_arch_cpu_halt
+	mv      a0, s0                  /* entry — 1st arg to common entry */
+	mv      a1, s1                  /* arg   — 2nd arg to common entry */
+	tail    ulmk_user_thread_entry  /* jump: common entry never returns */
 	.size _ulmk_thread_trampoline_m, . - _ulmk_thread_trampoline_m
 
 	.global _ulmk_thread_trampoline_u
@@ -67,7 +67,9 @@ _ulmk_thread_trampoline_m:
 _ulmk_thread_trampoline_u:
 	li      t0, MSTATUS_MPIE | MSTATUS_MPP_U
 	csrw    mstatus, t0
-	mv      a0, s1
-	csrw    mepc, s0
+	mv      a0, s0                  /* entry — 1st arg to common entry */
+	mv      a1, s1                  /* arg   — 2nd arg to common entry */
+	la      t0, ulmk_user_thread_entry
+	csrw    mepc, t0
 	mret
 	.size _ulmk_thread_trampoline_u, . - _ulmk_thread_trampoline_u

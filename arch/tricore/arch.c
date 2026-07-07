@@ -474,6 +474,7 @@ void ulmk_arch_mpu_init(void)
 	uintptr_t uram_hi;
 	uint32_t  prs1_cpre;
 	uint32_t  prs1_cpxe;
+	uint32_t  prs0_cpr;
 
 	extern uint8_t _ulmk_kernel_exec_start[];
 	extern uint8_t _ulmk_kernel_exec_end[];
@@ -550,13 +551,21 @@ void ulmk_arch_mpu_init(void)
 
 	/*
 	 * PRS 0 (kernel): all static DPR slots + kernel CPR execute.
-	 * DPR 0 already covers the full address space.
+	 * DPR 0 already covers the full address space.  The kernel also needs
+	 * execute over the userspace CPR: the thread trampoline and the common
+	 * userspace entry live in user text, and kernel-privileged threads
+	 * (e.g. idle) start there too.  Granting the trusted kernel execute of
+	 * user text keeps isolation intact (PRS 1 still cannot reach CPR 0).
 	 */
+	prs0_cpr = (1u << ULMK_ARCH_MPU_CPR_KERNEL);
+	if (utext_hi > utext_lo)
+		prs0_cpr |= (1u << ULMK_ARCH_MPU_CPR_USER);
+
 	mpu_write_enables(0u,
 			  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
 			  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
-			  (1u << ULMK_ARCH_MPU_CPR_KERNEL),
-			  (1u << ULMK_ARCH_MPU_CPR_KERNEL));
+			  prs0_cpr,
+			  prs0_cpr);
 
 	/*
 	 * PRS 1 (userspace): user RAM + MMIO/flash read; execute only user CPR.
@@ -615,11 +624,16 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 	utext_hi = (uintptr_t)_ulmk_user_text_end;
 
 	if (prs == 0u) {
+		uint32_t prs0_cpr = (1u << ULMK_ARCH_MPU_CPR_KERNEL);
+
+		if (utext_hi > utext_lo)
+			prs0_cpr |= (1u << ULMK_ARCH_MPU_CPR_USER);
+
 		mpu_write_enables(0u,
 				  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
 				  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
-				  (1u << ULMK_ARCH_MPU_CPR_KERNEL),
-				  (1u << ULMK_ARCH_MPU_CPR_KERNEL));
+				  prs0_cpr,
+				  prs0_cpr);
 		return;
 	}
 
