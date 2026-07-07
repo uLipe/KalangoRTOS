@@ -8,6 +8,9 @@
 # Build directories — matched recursively anywhere in the tree
 **/build/
 
+# SDK consumer e2e test output (built SDK tree + linked app)
+tests/**/_out/
+
 # Unit test binaries (host-compiled)
 tests/*_unit/*_unit_test
 
