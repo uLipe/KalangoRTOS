@@ -6,11 +6,16 @@ INTEG_KERNEL_LIB ?= libtest_kernel.a
 
 INTEG_KERNEL_EXTRA_SRCS ?=
 
+# init.c copies .data / zeroes .bss before the C runtime is up — prevent GCC
+# from turning those loops into memcpy/memset calls.
+INTEG_KERNEL_EXTRA_CFLAGS += -fno-tree-loop-distribute-patterns
+
 # ARCH_KERNEL_SRCS must be set by tests/arch/$(ARCH).mk before include.
 INTEG_KERNEL_STUB ?= $(ROOT)/stub/board_init_stub.c
 
 INTEG_KERNEL_SRCS ?= \
 	$(ARCH_KERNEL_SRCS) \
+	$(ROOT)/kernel/init/init.c \
 	$(ROOT)/kernel/kernel_main.c \
 	$(ROOT)/kernel/printk/ulmk_printk.c \
 	$(ROOT)/kernel/sched/sched.c \

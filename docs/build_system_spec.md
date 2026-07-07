@@ -504,11 +504,12 @@ of truth for what gets compiled.
 ```
 WITHOUT external bootloader (common case):
   power-on / reset vector
-       └─ _start → ulmk_board_init() → .data/.bss → ulmk_arch_init() → ulmk_kern_main()
+       └─ _start (asm prologue) → ulmk_kern_start()
+              → ulmk_board_init() → .data/.bss → ulmk_arch_init() → ulmk_kern_main()
 
 WITH external bootloader (when needed):
   ROM / Stage-0 (PLL, clocks already done)
-       └─ jump to _start → ulmk_board_init() [no-op] → … → ulmk_kern_main()
+       └─ jump to _start → ulmk_kern_start() → ulmk_board_init() [no-op] → … → ulmk_kern_main()
 ```
 
 For QEMU: `-kernel` loads to `0x80000000` and starts there, not at the ELF

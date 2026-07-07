@@ -79,6 +79,13 @@ uint32_t ulmk_arch_atomic_cas(volatile uint32_t *ptr,
 			    uint32_t expected, uint32_t desired);
 uint32_t ulmk_arch_atomic_add(volatile uint32_t *ptr, uint32_t val);
 
+/*
+ * ulmk_kern_start - common C runtime bring-up (kernel/init/init.c); no return.
+ * Entered from startup.S after the CPU prologue (stack) with interrupts off;
+ * relocates .data, clears BSS, then calls board_init/arch_init/kern_main.
+ */
+void ulmk_kern_start(void);
+
 __attribute__((weak)) void ulmk_board_init(void);
 
 void ulmk_arch_init(ulmk_boot_info_t *info);

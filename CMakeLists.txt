@@ -75,6 +75,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
 # ---------------------------------------------------------------------------
 
 add_library(ulmk_kernel STATIC
+    kernel/init/init.c
     kernel/kernel_main.c
     kernel/syscall/syscall_router.c
     kernel/printk/ulmk_printk.c
@@ -105,6 +106,11 @@ target_include_directories(ulmk_kernel PRIVATE
 target_compile_definitions(ulmk_kernel PRIVATE ULMK_KERNEL_BUILD=1)
 
 target_compile_options(ulmk_kernel PRIVATE -fno-data-sections)
+
+# init.c runs before .data/.bss are initialised — keep GCC from lowering its
+# copy/zero loops into memcpy/memset calls.
+set_source_files_properties(kernel/init/init.c PROPERTIES
+    COMPILE_OPTIONS "-fno-tree-loop-distribute-patterns")
 
 if(DEFINED ULMK_BOARD_CFLAGS)
     target_compile_options(ulmk_kernel PRIVATE ${ULMK_BOARD_CFLAGS})

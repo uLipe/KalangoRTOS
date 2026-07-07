@@ -6,7 +6,7 @@
  *
  * Provides the two mandatory board entry points for the QEMU TC3xx target:
  *
- *   ulmk_board_init()        — called from startup.S before .data copy;
+ *   ulmk_board_init()        — called from ulmk_kern_start() before .data copy;
  *                            no globals, no kernel API allowed.
  *
  *   board_services_init()  — called from ulmk_root_thread() after the

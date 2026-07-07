@@ -38,6 +38,9 @@
 	.extern g_trap_sp
 
 	.section .text.trap, "ax", @progbits
+	/* mtvec (direct mode) requires the trap base to be 4-byte aligned;
+	 * with RVC the linker may otherwise place this at a 2-byte boundary. */
+	.balign 4
 	.global _trap_handler
 	.type _trap_handler, @function
 _trap_handler:

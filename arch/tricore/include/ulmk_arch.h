@@ -156,15 +156,25 @@ uint32_t ulmk_arch_atomic_add(volatile uint32_t *ptr, uint32_t val);
  * ========================================================================= */
 
 /*
+ * ulmk_kern_start - common C runtime bring-up; does not return
+ * Entered from startup.S once the CPU-mandatory prologue (stack, and on
+ * TriCore the CSA free list + small-data anchors) is done, with interrupts
+ * disabled.  Relocates .data, clears BSS, then calls ulmk_board_init(),
+ * ulmk_arch_init() and ulmk_kern_main().  Lives in kernel/init/init.c.
+ */
+void ulmk_kern_start(void);
+
+/*
  * ulmk_board_init - optional board-level hardware setup (weak no-op stub)
- * Called by startup.S before .data copy.  User overrides with strong symbol.
+ * Called by ulmk_kern_start() before .data copy.  User overrides with a
+ * strong symbol.
  */
 __attribute__((weak)) void ulmk_board_init(void);
 
 /*
  * ulmk_arch_init - one-time CPU and peripheral initialisation
- * Called by startup.S after ulmk_board_init() and after .data/.bss init.
- * Fills @info and returns; control passes to ulmk_kern_main().
+ * Called by ulmk_kern_start() after ulmk_board_init() and after .data/.bss
+ * init.  Fills @info and returns; control passes to ulmk_kern_main().
  */
 void ulmk_arch_init(ulmk_boot_info_t *info);
 
@@ -247,7 +257,7 @@ void ulmk_kern_trap_panic(void);
 
 /*
  * ulmk_kern_main - platform-independent kernel entry; does not return
- * Called by startup.S after ulmk_arch_init().
+ * Called by ulmk_kern_start() after ulmk_arch_init().
  */
 void ulmk_kern_main(const ulmk_boot_info_t *info);
 

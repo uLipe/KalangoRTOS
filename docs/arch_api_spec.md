@@ -43,7 +43,7 @@ arch/
 └── <arch>/      one subdirectory per supported ISA
     ├── arch.c           main implementation
     ├── ctx_switch.S     context switch (assembly)
-    ├── startup.S        _start, stack, memory init
+    ├── startup.S        _start — CPU prologue only, jumps to ulmk_kern_start
     ├── vectors.S        trap/ISR entry stubs
     └── include/
         ├── ulmk_arch.h        arch contract header (types + prototypes)
@@ -398,7 +398,7 @@ Atomically add `val` to `*ptr`.  Return the value **before** the add.
 void ulmk_arch_init(ulmk_boot_info_t *info);
 ```
 
-One-time CPU and peripheral initialisation.  Called from `startup.S` / `_start`
+One-time CPU and peripheral initialisation.  Called from `ulmk_kern_start()`
 after `ulmk_board_init()`, `.data` copy, and `.bss` zero.  Fills `*info` and
 returns; control passes to `ulmk_kern_main()`.
 
@@ -419,7 +419,8 @@ Mandatory sequence:
 void ulmk_board_init(void);
 ```
 
-Board-level early hardware setup.  Called from `_start` **before** `.data` copy.
+Board-level early hardware setup.  Called from `ulmk_kern_start()` **before**
+`.data` copy.
 
 Constraints:
 - No initialised global variables available.
@@ -436,9 +437,25 @@ no early init this is an empty function.
 void ulmk_kern_main(const ulmk_boot_info_t *info);
 ```
 
-Platform-independent kernel entry.  Called by `_start` after `ulmk_arch_init()`.
-Does not return.  Declared here so `startup.S` can call it without depending on
-internal kernel headers.  Must never be called from user code.
+Platform-independent kernel entry.  Called by `ulmk_kern_start()` after
+`ulmk_arch_init()`.  Does not return.  Declared here so the boot chain can call
+it without depending on internal kernel headers.  Must never be called from user
+code.
+
+### `ulmk_kern_start`
+
+```c
+void ulmk_kern_start(void);
+```
+
+Common C runtime bring-up, shared by every port and implemented once in
+`kernel/init/init.c`.  `startup.S` jumps here after the CPU-mandatory prologue
+(interrupts disabled, stack set; on TriCore the CSA free list and small-data
+anchors too).  It relocates `.data`, clears `.bss`, then calls `ulmk_board_init()`,
+`ulmk_arch_init()` and `ulmk_kern_main()`.  Does not return.
+
+A new port's `startup.S` therefore implements **only** the prologue and jumps to
+`ulmk_kern_start` — the data/bss relocation is never re-implemented per arch.
 
 ---
 
@@ -536,7 +553,7 @@ port (`arch/tricore/`).  It is **not** part of the generic contract.
 |------|-----------|
 | `arch.c` | CPU control, MPU (DPR/CPR), IRQ (SRC), tick (STM0), syscall entry, trap entry |
 | `ctx_switch.S` | `ulmk_arch_ctx_switch` — SVLCX/RSLCX/PCXI swap |
-| `startup.S` | `_start` — stack, CSA pool, BTV/BIV, `.data`/`.bss`, calls `ulmk_board_init` → `ulmk_arch_init` → `ulmk_kern_main` |
+| `startup.S` | `_start` — CPU prologue only (interrupts off, stack, CSA pool, small-data), jumps to `ulmk_kern_start` |
 | `vectors.S` | Trap handlers, generic ISR stubs, syscall entry stub |
 
 ### `ulmk_arch_ctx_t` on TriCore
@@ -630,7 +647,7 @@ This section documents implementation decisions specific to the RISC-V RV32 port
 | `arch.c` | CPU idle (WFI), PMP (`ulmk_arch_mpu_*`), syscall/trap dispatch, atomics |
 | `ctx_switch.S` | Software save/restore of callee-saved registers (+ optional FPU) |
 | `trap.S` | Machine trap entry, interrupt/exception demux, preempt resume |
-| `startup.S` | `_start` — stack, `.data`/`.bss`, `mtvec`, boot chain |
+| `startup.S` | `_start` — CPU prologue only (clear MIE, stack), jumps to `ulmk_kern_start` |
 | `irq.c` | IRQ glue to `ulmk_arch_irq_src_*` |
 | `irq_clint.c` | MSIP / MTIP (CLINT) backend |
 | `irq_plic.c` | PLIC claim/complete backend |

@@ -9,7 +9,7 @@
  * needed).  NOT compiled into the CMake kernel build — the board provides
  * ulmk_board_init() there (see boards/<board>/board_services.c).
  *
- * Called from startup.S before .data copy; no globals, no kernel API.
+ * Called from ulmk_kern_start() before .data copy; no globals, no kernel API.
  */
 
 void ulmk_board_init(void)
