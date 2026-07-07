@@ -14,15 +14,15 @@
 
 #include <stdint.h>
 #include <ulmk/microkernel.h>
-#include <arch_config.h>
+#include "board_config.h"
 #include "board_timer.h"
 
 #ifndef BOARD_TIMER_STM0_BASE
-#define BOARD_TIMER_STM0_BASE	ULMK_ARCH_STM0_BASE
+#define BOARD_TIMER_STM0_BASE	ULMK_BOARD_STM0_BASE
 #endif
 
 #ifndef BOARD_TIMER_SRC_STM0_SR0
-#define BOARD_TIMER_SRC_STM0_SR0	ULMK_ARCH_SRC_STM0_SR0
+#define BOARD_TIMER_SRC_STM0_SR0	ULMK_BOARD_SRC_STM0_SR0
 #endif
 
 #ifndef BOARD_TIMER_HW_CLOCK_HZ

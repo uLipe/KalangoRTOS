@@ -3,32 +3,12 @@
 # Board descriptor for the QEMU AURIX TC3xx emulation target.
 # boards/qemu_tc3xx/board.cmake
 #
-# Consumed by:
-#   - tools/dev.py build  (UL_BOARD_* variables parsed via regex)
-#   - CMake build         (included directly)
-#
-# Linker script input: memory.ld in this directory (Layer 3).
-# The full linker script is assembled by cmake/generate_ld.py from
-# arch and kernel fragments — this board does not provide a complete .ld.
+# SoC addresses: boards/qemu_tc3xx/board_config.h (on the include path via
+# ULMK_CHIP_DIR).  board.cmake carries CPU, sources, and QEMU machine only.
 
-# ── Architecture & CPU ──────────────────────────────────────────────────────
 set(UL_BOARD_ARCH "tricore")
 set(ULMK_BOARD_CPU  "tc39xx")
 
-# ── Compiler flags ────────────────────────────────────────────────────────────
-# Consumed by tools/dev.py build (regex-parsed, no CMake expansion).
-# -mcpu is NOT listed here — tools/dev.py derives it from ULMK_BOARD_CPU above.
-# For CMake builds the mcpu flag is injected via the block below.
-set(ULMK_BOARD_CFLAGS
-    -DULMK_ARCH_QEMU_VIRT_CONSOLE=1
-    -DULMK_ARCH_SRC_STM0_SR0=0xF0038300u
-    -DULMK_ARCH_SRC_SRE_BIT=10u
-    -DULMK_ARCH_IDLE_IS_WAIT=0
-    -DULMK_ARCH_MPU_NUM_DPR=4
-    -DULMK_ARCH_MPU_NUM_CPR=4
-)
-
-# CMake-specific: propagate mcpu to C/ASM compilers and linker (once).
 if(DEFINED CMAKE_C_FLAGS)
     string(REGEX REPLACE " -mcpu=[^ ]+" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
     string(REGEX REPLACE " -mcpu=[^ ]+" "" CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS}")
@@ -38,7 +18,6 @@ if(DEFINED CMAKE_C_FLAGS)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -mcpu=${ULMK_BOARD_CPU}")
 endif()
 
-# ── Board sources ─────────────────────────────────────────────────────────────
 set(ULMK_BOARD_SOURCES
     qemu_console.c
     board_console.c
@@ -46,6 +25,4 @@ set(ULMK_BOARD_SOURCES
     board_services.c
 )
 
-# ── QEMU emulation ────────────────────────────────────────────────────────────
-# Unset or empty means real-hardware-only board (dev.py build qemu will error).
 set(UL_BOARD_QEMU_MACHINE "KIT_AURIX_TC397B_TRB")

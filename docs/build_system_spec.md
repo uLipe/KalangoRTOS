@@ -350,7 +350,8 @@ cmake -B build -DULMK_CHIP_DIR=/path/to/my_board          # real hardware
 |------|----------|-------------|
 | `memory.ld` | yes | `MEMORY {}` block + linker flags (`ULMK_MPU_ALIGN`, `HAVE_CSA`, etc.) |
 | `bmhd.ld.in` | only if `HAVE_BMHD=1` | Chip boot header section |
-| `board.cmake` | yes | Sets `ULMK_BOARD_CPU`, `ULMK_BOARD_CFLAGS`, `ULMK_BOARD_SOURCES` |
+| `board.cmake` | yes | Sets `ULMK_BOARD_CPU`, `ULMK_BOARD_SOURCES`, QEMU machine |
+| `board_config.h` | yes | SoC MMIO bases (`ULMK_BOARD_SRC_BASE`, `ULMK_BOARD_PLIC_BASE`, …) |
 
 Full chip input contract: `docs/linker_spec.md §9`.
 
@@ -363,7 +364,6 @@ Each board directory must contain a `board.cmake` with:
 ```cmake
 set(UL_BOARD_ARCH "tricore")   # or "riscv"
 set(ULMK_BOARD_CPU   "tc39xx")           # TriCore: passed to -mcpu=
-set(ULMK_BOARD_CFLAGS "-DULMK_ARCH_QEMU_VIRT_CONSOLE=1 …")
 set(ULMK_BOARD_SOURCES
     qemu_console.c
     board_console.c
@@ -371,9 +371,10 @@ set(ULMK_BOARD_SOURCES
 )
 ```
 
-RISC-V boards additionally pass arch constants in `ULMK_BOARD_CFLAGS`, e.g.
-`ULMK_ARCH_HAVE_CLINT`, `ULMK_BOARD_CLINT_BASE`, `ULMK_ARCH_PMP_NUM`, and
-`-march=rv32imac_zicsr_zifencei`.
+SoC addresses and platform options belong in `board_config.h` (included via
+`${ULMK_CHIP_DIR}` on the compiler path).  `arch/<isa>/arch_config.h` pulls it
+in and validates required `ULMK_BOARD_*` symbols.  Optional `-D` overrides in
+`ULMK_BOARD_CFLAGS` remain supported for test matrices (e.g. irq_integ CLINT).
 
 `ULMK_BOARD_SOURCES` paths are relative to `${ULMK_CHIP_DIR}`.  They are added to
 `ulmk_kernel` and must provide at minimum:

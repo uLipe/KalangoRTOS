@@ -40,7 +40,7 @@
 				 ((UL_IRQ_TEST_PLIC_IRQ / 32u) * 4u))
 #endif
 #else
-#define UL_IRQ_TEST_SRC		0xF0038308u
+#define UL_IRQ_TEST_SRC		(ULMK_BOARD_SRC_BASE + 0xC2u * 4u)
 #endif
 #define SRC_SETR_BIT		(1u << 26)
 #if defined(__riscv) && ULMK_ARCH_HAVE_CLIC

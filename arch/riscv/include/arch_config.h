@@ -1,12 +1,15 @@
 /* SPDX-License-Identifier: MIT */
 /*
  * RISC-V architecture constants — arch/riscv/include/arch_config.h
- * Board SoC addresses (CLINT/PLIC/UART) come from board.cmake -D flags.
- * See docs/arch/riscv_implementation.md
+ *
+ * SoC bases (CLINT/PLIC/CLIC) come from boards/<soc>/board_config.h.
+ * This file holds ISA invariants and standard interrupt-controller offsets.
  */
 
 #ifndef ULMK_ARCH_RISCV_CONFIG_H
 #define ULMK_ARCH_RISCV_CONFIG_H
+
+#include <board_config.h>
 
 #ifndef ULMK_ARCH_HAVE_FPU
 #define ULMK_ARCH_HAVE_FPU	0
@@ -52,7 +55,7 @@
 #endif
 
 #if !ULMK_ARCH_HAVE_CLINT && !ULMK_ARCH_HAVE_PLIC && !ULMK_ARCH_HAVE_CLIC
-#error "RISC-V: enable ULMK_ARCH_HAVE_CLINT, ULMK_ARCH_HAVE_PLIC, and/or ULMK_ARCH_HAVE_CLIC"
+#error "RISC-V: enable ULMK_ARCH_HAVE_CLINT, ULMK_ARCH_HAVE_PLIC, and/or ULMK_ARCH_HAVE_CLIC in board_config.h"
 #endif
 
 #ifndef ULMK_BOARD_CLINT_BASE
@@ -78,12 +81,18 @@
 #define ULMK_BOARD_PLIC_BASE	0u
 #endif
 
+#if ULMK_ARCH_HAVE_PLIC
+#if ULMK_BOARD_PLIC_BASE == 0u
+#error "board_config.h must define ULMK_BOARD_PLIC_BASE when ULMK_ARCH_HAVE_PLIC=1"
+#endif
+
 #define ULMK_ARCH_PLIC_PRIORITY_BASE	(ULMK_BOARD_PLIC_BASE + 0x0u)
 #define ULMK_ARCH_PLIC_PENDING_BASE	(ULMK_BOARD_PLIC_BASE + 0x1000u)
 #define ULMK_ARCH_PLIC_ENABLE_BASE	(ULMK_BOARD_PLIC_BASE + 0x2000u)
 #define ULMK_ARCH_PLIC_ENABLE_STRIDE	0x80u
 #define ULMK_ARCH_PLIC_CONTEXT_BASE	(ULMK_BOARD_PLIC_BASE + 0x200000u)
 #define ULMK_ARCH_PLIC_CONTEXT_STRIDE	0x1000u
+#endif /* ULMK_ARCH_HAVE_PLIC */
 
 #define ULMK_ARCH_CTX_FRAME_SIZE	64u
 

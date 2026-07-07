@@ -403,12 +403,18 @@ Even for QEMU bring-up, create a minimal board directory:
 ```
 boards/<board>/
 ├── board.cmake
+├── board_config.h    ← SoC MMIO bases, IRQ ctrl, platform quirks
 ├── memory.ld
 ├── board_console.c    ← ulmk_printk_char_out (semihosting, UART, or MMIO)
 └── board_services.c   ← ulmk_board_init + board_services_init
 ```
 
-See `docs/application_development_guide.md §5–§6` for the exact content.
+`board_config.h` is on the compiler include path via `${ULMK_CHIP_DIR}` (CMake
+and integration tests).  `arch/<isa>/arch_config.h` includes it and holds only
+ISA invariants (CSFR addresses, CSA layout, standard IRQ-controller offsets).
+Future boards may generate `board_config.h` from a DTS `reg` property.
+
+See `boards/board_config.h.template` for required symbols per architecture.
 
 ---
 

@@ -527,7 +527,7 @@ void ulmk_arch_mpu_init(void)
 	 * and MMIO accesses for driver threads.
 	 */
 	mpu_write_dpr(ULMK_ARCH_MPU_MMIO_DPR,
-		      ULMK_ARCH_FLASH_BASE, 0xFFFFFFF8u);
+		      ULMK_BOARD_FLASH_BASE, 0xFFFFFFF8u);
 
 	/* CPR 0: kernel code only */
 	if (kexec_hi > kexec_lo)
@@ -727,26 +727,25 @@ bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
  * IRQ / SRC
  *
  * QEMU Linumiz TC27x maps Service Request Control registers at:
- *   IR_SRC_BASE (0xF0038000) + slot_index * 4
+ *   ULMK_BOARD_SRC_BASE + slot_index * 4  (see board_config.h)
  *
- * The tick ISR uses slot 0xC0 (configured in arch_config.h).
- * User-programmable IRQs are allocated sequentially from slot 0xC1.
+ * Dynamic IRQ slots are allocated from 0xC1; board timer uses 0xC0.
  *
  * SRC register bit layout (tc4x_mode=0 in Linumiz QEMU):
  *   [7:0]  SRPN — service request priority number
- *   [10]   SRE  — service request enable (bit 10 for tc4x_mode=0)
+ *   [n]    SRE  — service request enable (ULMK_BOARD_SRC_SRE_BIT)
  *   [13:11]TOS  — target CPU (0 = CPU0)
  *   [24]   SRR  — service request raised (set by hardware/SETR)
  *   [25]   CLRR — write 1 to clear SRR
  *   [26]   SETR — write 1 to software-raise SRR (for testing)
  * ========================================================================= */
 
-#define SRC_BASE        0xF0038000u
-#define SRC_SRE_BIT     (1u << 10)
-#define SRC_TOS_SHIFT   11u
-#define SRC_SRR_BIT     (1u << 24)
-#define SRC_CLRR_BIT    (1u << 25)
-#define SRC_SETR_BIT    (1u << 26)
+#define SRC_BASE        ULMK_BOARD_SRC_BASE
+#define SRC_SRE_BIT     (1u << ULMK_BOARD_SRC_SRE_BIT)
+#define SRC_TOS_SHIFT   ULMK_ARCH_SRC_TOS_SHIFT
+#define SRC_SRR_BIT     ULMK_ARCH_SRC_SRR_BIT
+#define SRC_CLRR_BIT    ULMK_ARCH_SRC_CLRR_BIT
+#define SRC_SETR_BIT    ULMK_ARCH_SRC_SETR_BIT
 
 /* srpn → SRC register address; 0 = unregistered */
 static uint32_t g_src_addr[256];

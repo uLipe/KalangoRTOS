@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <ulmk/microkernel.h>
 #include <arch_config.h>
+#include "board_config.h"
 #include "board_timer.h"
 #include "board_internal.h"
 

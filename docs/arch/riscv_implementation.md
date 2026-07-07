@@ -19,7 +19,7 @@ Target: **rv32imac** on QEMU `virt` (`boards/qemu_riscv_virt`).
 
 ## Interrupt controllers
 
-Backends are separate compilation units, selected in `board.cmake`:
+Backends are separate compilation units, selected in `board_config.h`:
 
 | File | `ULMK_ARCH_HAVE_*` | Role |
 |------|-------------------|------|
@@ -28,11 +28,14 @@ Backends are separate compilation units, selected in `board.cmake`:
 | `irq_plic.c` | `ULMK_ARCH_HAVE_PLIC=1` | MEIP claim/complete, peripheral IRQs |
 | `irq.c` | (glue) | `ulmk_arch_irq_src_*`, trap demux |
 
-SoC base addresses (`ULMK_BOARD_CLIC_BASE`, `ULMK_BOARD_PLIC_BASE`, UART) are defined in **board** headers / `board.cmake`, not in `arch_config.h`.
+SoC base addresses live in `boards/<soc>/board_config.h` (`ULMK_BOARD_PLIC_BASE`,
+timer RTC base, etc.).  `arch/riscv/arch_config.h` applies standard CLINT/PLIC
+offsets only.
 
 ## Timer (board service)
 
-The sleep server uses the QEMU **Goldfish RTC** (`0x00101000`) as an MMIO compare timer. The compare-match IRQ is delivered through **PLIC** (IRQ 11), with `ulmk_notif_wait()` in the server thread — same pattern as STM0 on TriCore. CLINT `mtime`/`mtimecmp` is not used.
+The sleep server uses the QEMU **Goldfish RTC** (`ULMK_BOARD_TIMER_RTC_BASE` in
+`board_config.h`) as an MMIO compare timer. The compare-match IRQ is delivered through **PLIC** (IRQ 11), with `ulmk_notif_wait()` in the server thread — same pattern as STM0 on TriCore. CLINT `mtime`/`mtimecmp` is not used.
 
 ## Build
 

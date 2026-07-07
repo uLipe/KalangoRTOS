@@ -9,20 +9,12 @@ BOARD   := $(ROOT)/boards/qemu_riscv_virt
 TEST_LD := boot_test_riscv.ld
 
 ARCH_CFLAGS := \
-	-march=rv32imac_zicsr_zifencei -mabi=ilp32 \
-	-DULMK_ARCH_HAVE_FPU=0 \
-	-DULMK_ARCH_PMP_NUM=8 \
-	-DULMK_ARCH_IDLE_IS_WFI=0 \
-	-DULMK_ARCH_HAVE_CLIC=0 \
-	-DULMK_ARCH_HAVE_PLIC=1 \
-	-DULMK_BOARD_PLIC_BASE=0x0C000000u
+	-march=rv32imac_zicsr_zifencei -mabi=ilp32
 
 ifeq ($(ULMK_RISCV_IRQ_INTEG),1)
 ARCH_CFLAGS += \
 	-DULMK_ARCH_HAVE_CLINT=1 \
 	-DULMK_BOARD_CLINT_BASE=0x02000000u
-else
-ARCH_CFLAGS += -DULMK_ARCH_HAVE_CLINT=0
 endif
 
 ARCH_LDFLAGS := -march=rv32imac_zicsr_zifencei -mabi=ilp32

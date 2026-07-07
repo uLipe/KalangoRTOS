@@ -589,7 +589,7 @@ void board_console_puts(const char *s)
 static void console_server(void *arg)
 {
     volatile uint32_t *virt = ulmk_mem_map(
-        (void *)ULMK_ARCH_QEMU_VIRT_BASE,
+        (void *)ULMK_BOARD_VIRT_CONSOLE_BASE,
         4u,
         ULMK_PERM_READ | ULMK_PERM_WRITE,
         ULMK_MMAP_PERIPH);

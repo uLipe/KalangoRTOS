@@ -7,8 +7,9 @@
 
 #include <stdint.h>
 #include <kernel/include/ulmk_printk.h>
+#include <board_config.h>
 
-#define VIRT_BASE        0xBF000000UL
+#define VIRT_BASE        ULMK_BOARD_VIRT_CONSOLE_BASE
 #define VIRT_PUTCHAR_OFF 0x20U
 #define VIRT_EXIT_OFF    0x28U
 

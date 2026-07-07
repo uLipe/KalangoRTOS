@@ -598,9 +598,10 @@ The syscall entry path sets `CCPN = 255` immediately, disabling all hardware
 IRQs for the syscall duration.  This avoids the need for IRQ-save critical
 sections inside most syscall handlers.
 
-Interrupt sources use SRC (Service Request Control) registers.  The SRC address
-for STM0 SR0 is parameterised as `ULMK_ARCH_SRC_STM0_SR0` via board `CFLAGS` to
-support different chip families without arch-code changes.
+Interrupt sources use SRC (Service Request Control) registers.  The SRC block
+base and SRE bit position are defined in `boards/<soc>/board_config.h` as
+`ULMK_BOARD_SRC_BASE` and `ULMK_BOARD_SRC_SRE_BIT`; the arch port applies
+standard AURIX bit layout from `arch_config.h`.
 
 ### Trap class routing
 
@@ -652,9 +653,9 @@ current thread layout before `mret`.
 
 ### IRQ backends
 
-`board.cmake` sets `ULMK_ARCH_HAVE_CLINT` / `ULMK_ARCH_HAVE_PLIC`.
-SoC base addresses (`CLINT`, `PLIC`, UART) are **board** constants passed via
-`-DULMK_BOARD_*` — not in `arch_config.h`.
+`board_config.h` sets `ULMK_ARCH_HAVE_CLINT` / `ULMK_ARCH_HAVE_PLIC`.
+SoC base addresses are **board** symbols in `board_config.h` (`ULMK_BOARD_*`);
+`arch_config.h` applies architecture-standard offsets only.
 
 Timer drivers must use **MMIO** (`ulmk_mem_map` with `ULMK_MMAP_PERIPH`), not
 the `time` CSR (inaccessible from U-mode).

@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: MIT
+# boards/board_config.h.template — copy to <your_board>/board_config.h
+#
+# SoC / platform constants for a ulmk board (Layer 3 chip input).
+# arch/<isa>/arch_config.h includes this file via ULMK_CHIP_DIR on the path.
+# Future: generated from board DTS (reg = <base size>).
+
+#ifndef ULMK_BOARD_CONFIG_H
+#define ULMK_BOARD_CONFIG_H
+
+/* ── TriCore AURIX example ───────────────────────────────────────────────── */
+#if 0
+#define ULMK_BOARD_SRC_BASE		0xF0038000u
+#define ULMK_BOARD_SRC_SRE_BIT		12u
+#define ULMK_BOARD_SRC_STM0_SR0		0xF0038490u
+#define ULMK_BOARD_STM0_BASE		0xF0001000u
+#define ULMK_BOARD_FLASH_BASE		0x80000000u
+#define ULMK_BOARD_RAM_BASE		0x70000000u
+#define ULMK_BOARD_PERIPH_BASE		0xF0000000u
+#define ULMK_BOARD_IDLE_IS_WAIT		1
+#define ULMK_BOARD_MPU_NUM_DPR		18
+#define ULMK_BOARD_MPU_NUM_CPR		10
+#endif
+
+/* ── RISC-V virt example ───────────────────────────────────────────────── */
+#if 0
+#define ULMK_ARCH_HAVE_PLIC		1
+#define ULMK_BOARD_PLIC_BASE		0x0C000000u
+#define ULMK_BOARD_TIMER_RTC_BASE	0x00101000u
+#define ULMK_BOARD_TIMER_PLIC_IRQ	11u
+#endif
+
+#endif /* ULMK_BOARD_CONFIG_H */

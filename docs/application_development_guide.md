@@ -330,16 +330,25 @@ my_board/
 
 ```cmake
 set(ULMK_BOARD_CPU   "tc39xx")   # passed to -mcpu=
-set(ULMK_BOARD_CFLAGS
-    "-DULMK_ARCH_SRC_STM0_SR0=0xF0038300u"
-    "-DULMK_ARCH_SRC_SRE_BIT=10u"
-    "-DULMK_ARCH_IDLE_IS_WAIT=0"
-)
 set(ULMK_BOARD_SOURCES
     board_console.c
     board_services.c
 )
 ```
+
+### board_config.h
+
+SoC MMIO bases and platform quirks (not arch ISA constants):
+
+```c
+#define ULMK_BOARD_SRC_BASE      0xF0038000u
+#define ULMK_BOARD_SRC_SRE_BIT   10u
+#define ULMK_BOARD_STM0_BASE     0xF0001000u
+#define ULMK_BOARD_FLASH_BASE    0x80000000u
+#define ULMK_BOARD_IDLE_IS_WAIT  0
+```
+
+See `boards/board_config.h.template` and `boards/qemu_tc3xx/board_config.h`.
 
 ### board_services.c
 
