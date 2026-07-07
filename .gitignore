@@ -45,3 +45,6 @@ __pycache__/
 
 .cursor/
 .ulmk/
+
+# Internal personal design notes — kept locally, not tracked
+docs/microkernel_book_tricore.md
