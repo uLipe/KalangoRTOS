@@ -5,14 +5,15 @@
  * TriCore TC1.6.1 / TC2xx architecture constants
  * Full specification: docs/arch_api_spec.md §4
  *
- * SoC addresses and platform options live in boards/<soc>/board_config.h
- * (ULMK_CHIP_DIR on the include path).  This file holds ISA invariants only.
+ * SoC addresses and platform options come from ulmk/platform.h, a generated
+ * snapshot of boards/<soc>/board_config.h (see tools/gen_config.py).  This
+ * file holds ISA invariants only.
  */
 
 #ifndef ULMK_ARCH_TRICORE_CONFIG_H
 #define ULMK_ARCH_TRICORE_CONFIG_H
 
-#include <board_config.h>
+#include <ulmk/platform.h>
 
 #ifndef ULMK_BOARD_SRC_BASE
 #error "board_config.h must define ULMK_BOARD_SRC_BASE (SoC SRC block base)"

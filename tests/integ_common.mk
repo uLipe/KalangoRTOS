@@ -61,13 +61,9 @@ TIMEOUT_CMD  := timeout --kill-after=5 $(QEMU_TIMEOUT)
 .PHONY: all run clean gen_config
 
 gen_config:
-	@mkdir -p $(GEN_INC)/ulmk
-	@printf '#ifndef ULMK_CONFIG_H\n#define ULMK_CONFIG_H\n' > $(GEN_INC)/ulmk/config.h
-	@printf '#define ULMK_CONFIG_MAX_IRQ_BINDINGS 16\n' >> $(GEN_INC)/ulmk/config.h
-	@printf '#define ULMK_CONFIG_DEBUG_PRINTK     1\n' >> $(GEN_INC)/ulmk/config.h
-	@printf '#define ULMK_CONFIG_SCHED_QUANTUM_US 10000\n' >> $(GEN_INC)/ulmk/config.h
-	@printf '#define ULMK_CONFIG_SCHED_QUANTUM_TICKS 10\n' >> $(GEN_INC)/ulmk/config.h
-	@printf '#endif\n' >> $(GEN_INC)/ulmk/config.h
+	@python3 $(ROOT)/tools/gen_config.py \
+		--out-dir $(GEN_INC) \
+		--board-config $(BOARD)/board_config.h
 
 all: gen_config $(TARGET)
 

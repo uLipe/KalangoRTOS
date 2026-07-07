@@ -99,11 +99,12 @@ ulmk/
 ├── CMakeLists.txt                        ← top-level orchestrator
 ├── cmake/
 │   ├── toolchain-tricore-gcc.cmake       ← toolchain (-mcpu, sysroot, …)
-│   ├── config.cmake                      ← 6 kernel config symbols (cache vars)
-│   ├── config.h.in                       ← template → build/include/ulmk/config.h
+│   ├── config.cmake                      ← kernel config knobs (cache vars)
 │   ├── component_api.cmake               ← ulmk_component_register(), ulmk_components_finalize()
 │   ├── linker_api.cmake                  ← ulmk_add_app(), ulmk_add_domain(), ulmk_generate_linker_script()
 │   └── generate_ld.py                    ← assembles build/generated/ulmk.ld
+├── tools/
+│   └── gen_config.py                     ← generates build/generated/ulmk/{config.h,platform.h}
 ├── kernel/                               ← kernel implementation (sched, ipc, mem, irq, …)
 ├── arch/
 │   └── tricore/
@@ -281,8 +282,8 @@ cmake -B /build/ulipe \
       -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-tricore-gcc.cmake \
       -DULMK_CHIP_DIR=boards/qemu_tc3xx
 │
-├─ cmake/config.cmake          → 6 config symbols (cache vars)
-│   configure_file(config.h.in → build/include/ulmk/config.h)
+├─ cmake/config.cmake          → kernel config knobs (cache vars)
+│   tools/gen_config.py → build/generated/ulmk/{config.h,platform.h}
 │
 ├─ cmake/component_api.cmake   → defines ulmk_component_register, ulmk_components_finalize
 │
@@ -435,37 +436,46 @@ and a missing symbol produces a link-time error rather than a silent no-op.
 
 ### 10.1 Symbols
 
-Defined in `cmake/config.cmake`:
+Only symbols the real (non-`UL_UNIT_TEST`) kernel actually reads are configurable.
+TCBs, IPC endpoints and notification objects are heap-allocated (pointer-as-handle),
+so there are no static-pool size knobs for them.
 
 ```
 ┌──────────────────────────────────┬──────────┬────────────────────────────────────┐
 │ Symbol                           │ Default  │ What it controls                   │
 ├──────────────────────────────────┼──────────┼────────────────────────────────────┤
-│ ULMK_CONFIG_MAX_THREADS            │ 32       │ Static TCB pool                    │
-│ ULMK_CONFIG_MAX_ENDPOINTS          │ 64       │ Static IPC endpoint pool           │
-│ ULMK_CONFIG_MAX_NOTIFS             │ 32       │ Static notification pool           │
-│ ULMK_CONFIG_MAX_IRQ_BINDINGS       │ 16       │ SRPN → notif binding table         │
+│ ULMK_CONFIG_MAX_IRQ_BINDINGS       │ 16       │ irq.c static SRPN → notif table    │
 │ ULMK_CONFIG_DEBUG_PRINTK           │ 1        │ Kernel printk (0 = no-op)          │
 └──────────────────────────────────┴──────────┴────────────────────────────────────┘
 ```
+
+Canonical defaults and range validation live in **`tools/gen_config.py`** — the
+single generator shared by the CMake build and the integration-test Makefiles.
+`cmake/config.cmake` only re-exposes these as user-overridable cache variables.
 
 ### 10.2 Override
 
 ```bash
 cmake -B build \
     -DULMK_CHIP_DIR=boards/qemu_tc3xx \
-    -DULMK_CONFIG_MAX_THREADS=16 \
+    -DULMK_CONFIG_MAX_IRQ_BINDINGS=32 \
     -DULMK_CONFIG_DEBUG_PRINTK=0
 ```
 
-### 10.3 Generated header
+### 10.3 Generated headers
 
-`configure_file(cmake/config.h.in ${CMAKE_BINARY_DIR}/include/ulmk/config.h)`
+`tools/gen_config.py` emits two headers under `${CMAKE_BINARY_DIR}/generated/ulmk/`:
 
-The header is **kernel-internal only**.  User code must not include it.
+| Header | Content | Included by |
+|--------|---------|-------------|
+| `config.h` | kernel sizing/policy (table above) | `kernel/*.c` |
+| `platform.h` | snapshot of `boards/<soc>/board_config.h` | arch layer (`arch_config.h`) |
+
+Both are **kernel/arch-internal**.  User code must not include them.  A future DTS
+pipeline replaces the `board_config.h` snapshot step without touching the kernel.
 
 Board-specific timer clock rates (e.g. STM0 frequency) belong in board source
-(`board_timer.c`), not in `config.cmake`.
+(`board_timer.c`) or `board_config.h`, not in `config.cmake`.
 
 ---
 

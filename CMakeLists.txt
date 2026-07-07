@@ -19,11 +19,6 @@ include(cmake/arch_sources.cmake)
 
 include(cmake/config.cmake)
 
-configure_file(
-    cmake/config.h.in
-    "${CMAKE_BINARY_DIR}/generated/ulmk/config.h"
-    @ONLY)
-
 # ---------------------------------------------------------------------------
 # Linker API (ulmk_add_app, ulmk_add_domain, ulmk_set_root_thread)
 # ---------------------------------------------------------------------------
@@ -51,6 +46,29 @@ set(_ULMK_BOARD_SRCS "")
 foreach(_src IN LISTS ULMK_BOARD_SOURCES)
     list(APPEND _ULMK_BOARD_SRCS "${ULMK_CHIP_DIR}/${_src}")
 endforeach()
+
+# ---------------------------------------------------------------------------
+# Generated config headers — single generator shared with the test Makefiles.
+#   generated/ulmk/config.h    kernel sizing/policy (kernel includes this)
+#   generated/ulmk/platform.h  SoC snapshot for the arch layer (from board_config.h)
+# ---------------------------------------------------------------------------
+
+find_program(ULMK_PYTHON NAMES python3 python REQUIRED)
+
+execute_process(
+    COMMAND "${ULMK_PYTHON}" "${CMAKE_SOURCE_DIR}/tools/gen_config.py"
+        --out-dir "${CMAKE_BINARY_DIR}/generated"
+        --board-config "${ULMK_CHIP_DIR}/board_config.h"
+        --set "ULMK_CONFIG_MAX_IRQ_BINDINGS=${ULMK_CONFIG_MAX_IRQ_BINDINGS}"
+        --set "ULMK_CONFIG_DEBUG_PRINTK=${ULMK_CONFIG_DEBUG_PRINTK}"
+    RESULT_VARIABLE _ulmk_gen_rc)
+if(NOT _ulmk_gen_rc EQUAL 0)
+    message(FATAL_ERROR "gen_config.py failed (rc=${_ulmk_gen_rc})")
+endif()
+
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/tools/gen_config.py"
+    "${ULMK_CHIP_DIR}/board_config.h")
 
 # ---------------------------------------------------------------------------
 # Kernel static library
@@ -137,6 +155,7 @@ add_executable(ulmk ${_ulmk_exe_sources})
 target_include_directories(ulmk PRIVATE
     "${CMAKE_SOURCE_DIR}"
     "${ULMK_ARCH_DIR}/include"
+    "${CMAKE_BINARY_DIR}/generated"
     "${ULMK_CHIP_DIR}")
 
 target_compile_options(ulmk PRIVATE -fno-data-sections)

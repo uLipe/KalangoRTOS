@@ -112,6 +112,13 @@ never includes this file.
 #endif
 ```
 
+Keep this file to **ISA invariants only** (control-register addresses, MPU/PMP
+slot layout, ABI constants).  For SoC bases (peripheral MMIO, IRQ controller)
+`#include <ulmk/platform.h>` — the generated snapshot of the board's
+`board_config.h` (`tools/gen_config.py`; see `docs/build_system_spec.md §10`).
+This is how the shipped `arch/tricore` and `arch/riscv` ports resolve
+`ULMK_BOARD_*` symbols.
+
 ---
 
 ## Step 2 — ulmk_arch.h (local copy)
@@ -409,10 +416,12 @@ boards/<board>/
 └── board_services.c   ← ulmk_board_init + board_services_init
 ```
 
-`board_config.h` is on the compiler include path via `${ULMK_CHIP_DIR}` (CMake
-and integration tests).  `arch/<isa>/arch_config.h` includes it and holds only
-ISA invariants (CSFR addresses, CSA layout, standard IRQ-controller offsets).
-Future boards may generate `board_config.h` from a DTS `reg` property.
+`board_config.h` is snapshotted by `tools/gen_config.py` into
+`generated/ulmk/platform.h`, which `arch/<isa>/arch_config.h` includes.
+`arch_config.h` itself holds only ISA invariants (CSFR addresses, CSA layout,
+standard IRQ-controller offsets).  Board sources still include their own
+`board_config.h` directly via `${ULMK_CHIP_DIR}`.  A future DTS pipeline
+generates `platform.h` directly, replacing the snapshot step.
 
 See `boards/board_config.h.template` for required symbols per architecture.
 

@@ -133,7 +133,7 @@ CMake configure variables of interest:
 -DULMK_CHIP_DIR=boards/qemu_tc3xx           # TriCore QEMU (default)
 -DULMK_CHIP_DIR=boards/qemu_riscv_virt      # RISC-V QEMU virt
 -DULMK_COMP_hello_world_ENABLED=ON          # component override (dev.py sets these)
--DULMK_CONFIG_MAX_THREADS=32                # TCB pool size
+-DULMK_CONFIG_MAX_IRQ_BINDINGS=16          # SRPN → notif binding table
 -DULMK_CONFIG_DEBUG_PRINTK=1               # kernel debug prints
 ```
 

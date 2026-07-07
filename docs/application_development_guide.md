@@ -16,11 +16,12 @@
 5. [Per-Thread Heap (slabAO Model)](#5-per-thread-heap-slabao-model)
 6. [Providing Board Services](#6-providing-board-services)
 7. [Creating a Custom Board (chip input)](#7-creating-a-custom-board-chip-input)
-8. [Build](#8-build)
-9. [Output Artefacts](#9-output-artefacts)
-10. [Running on QEMU](#10-running-on-qemu)
-11. [Running on Real Hardware](#11-running-on-real-hardware)
-12. [Worked Example](#12-worked-example)
+8. [Configuration Model (per layer)](#8-configuration-model-per-layer)
+9. [Build](#9-build)
+10. [Output Artefacts](#10-output-artefacts)
+11. [Running on QEMU](#11-running-on-qemu)
+12. [Running on Real Hardware](#12-running-on-real-hardware)
+13. [Worked Example](#13-worked-example)
 
 ---
 
@@ -78,6 +79,7 @@ my_project/
 │
 └── my_board/                 ← chip input for real hardware
     ├── board.cmake
+    ├── board_config.h        ← SoC MMIO bases, IRQ ctrl, platform quirks
     ├── memory.ld
     ├── board_console.c       ← ulmk_printk_char_out via UART
     └── board_services.c      ← ulmk_board_init + board_services_init
@@ -320,6 +322,7 @@ Create a board directory (can be inside `ulmk_apps/` or anywhere on disk):
 ```
 my_board/
 ├── board.cmake          ← board descriptor
+├── board_config.h       ← SoC MMIO bases, IRQ ctrl, platform quirks
 ├── memory.ld            ← MEMORY block
 ├── board_console.c      ← ulmk_printk_char_out via UART or semihosting
 ├── board_services.c     ← ulmk_board_init + board_services_init
@@ -424,7 +427,65 @@ MEMORY {
 
 ---
 
-## 8. Build
+## 8. Configuration Model (per layer)
+
+Configuration is split by **who owns the value**, and a single generator
+(`tools/gen_config.py`) folds it into the `generated/ulmk/` headers the build
+consumes.  You never edit the generated headers — you edit the layer that owns
+each value.
+
+```
+Layer        You edit                                Generated / consumed
+──────────────────────────────────────────────────────────────────────────────
+Kernel       cmake/config.cmake  (cache vars)   ──▶  generated/ulmk/config.h
+policy       -DULMK_CONFIG_* on the cmake line        (kernel/*.c include this)
+
+Board /      boards/<soc>/board_config.h        ──▶  generated/ulmk/platform.h
+SoC          (MMIO bases, IRQ ctrl, quirks)           (arch_config.h includes this)
+
+Arch /       arch/<isa>/arch_config.h                 (included via ulmk_arch.h;
+ISA          (CSFR/CSR addrs, CSA/PMP layout)          ships with the kernel — you
+                                                        do not normally touch it)
+
+Memory       <chip_dir>/memory.ld               ──▶  generated/ulmk.ld
+sizing       (MEMORY block, stack/CSA sizes)          (linked with -T)
+```
+
+**Rules of thumb**
+
+- A number that changes per **product** (IRQ table size, printk on/off) →
+  `config.cmake` or `-DULMK_CONFIG_*`.  Canonical defaults and range checks live
+  in `tools/gen_config.py`.
+- A number that changes per **chip/board** (a peripheral base, an IRQ line, a
+  clock, a build quirk) → `board_config.h`.
+- A number fixed by the **ISA** (a control-register address, CSA/PMP slot
+  layout) → `arch_config.h`.  If you find yourself editing this for a new board,
+  the value probably belongs in `board_config.h` instead.
+- A memory address/region size → `memory.ld` (see §7).
+
+### Kernel policy knobs
+
+Only symbols the real kernel reads are configurable (TCBs, endpoints and
+notifications are heap-allocated, so they have no static-pool caps):
+
+| Symbol | Default | Controls |
+|--------|---------|----------|
+| `ULMK_CONFIG_MAX_IRQ_BINDINGS` | 16 | `irq.c` SRPN → notif binding table |
+| `ULMK_CONFIG_DEBUG_PRINTK` | 1 | kernel `printk` (0 = compile to no-op) |
+
+```bash
+cmake -B build -DULMK_CHIP_DIR=... \
+      -DULMK_CONFIG_MAX_IRQ_BINDINGS=32 \
+      -DULMK_CONFIG_DEBUG_PRINTK=0
+```
+
+The same generator serves the integration-test Makefiles, so every build path
+produces identical headers.  A future DTS pipeline replaces the `board_config.h`
+snapshot step, feeding `platform.h` directly — kernel and arch code are unaffected.
+
+---
+
+## 9. Build
 
 ```bash
 # Enter the dev container
@@ -445,25 +506,27 @@ Key CMake options:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `ULMK_CHIP_DIR` | `boards/qemu_tc3xx` | Path to chip input directory |
-| `ULMK_CONFIG_MAX_THREADS` | `16` | TCB pool size |
-| `ULMK_CONFIG_DEBUG_PRINTK` | `1` | Kernel debug prints (0 = no-op) |
+| `ULMK_CONFIG_*` | see §8 | Kernel policy knobs (`config.cmake`) |
 
-Timer clock rates and sleep policy live in board code (`board_timer.c`), not in
-CMake kernel config.
+See [§8 Configuration Model](#8-configuration-model-per-layer) for the full set of
+knobs and which layer owns each value.
 
 ---
 
-## 9. Output Artefacts
+## 10. Output Artefacts
 
 After a successful build:
 
 ```
 build/
 └── ulipe/
-    ├── ulmk         ← final ELF
+    ├── ulmk                     ← final ELF
     ├── libulmk_kernel.a         ← kernel + board + component objects
     └── generated/
-        └── ulmk.ld  ← generated linker script
+        ├── ulmk.ld              ← generated linker script
+        └── ulmk/
+            ├── config.h         ← kernel policy (from tools/gen_config.py)
+            └── platform.h       ← SoC snapshot of board_config.h
 ```
 
 | Artefact | Use |
@@ -488,7 +551,7 @@ tricore-elf-objdump -h ulmk | grep -E "text|data|bss|startup"
 
 ---
 
-## 10. Running on QEMU
+## 11. Running on QEMU
 
 ```bash
 # Inside the dev container
@@ -511,7 +574,7 @@ QEMU limitations:
 
 ---
 
-## 11. Running on Real Hardware
+## 12. Running on Real Hardware
 
 ### Flash via Lauterbach Trace32
 
@@ -555,7 +618,7 @@ After flashing:
 
 ---
 
-## 12. Worked Example
+## 13. Worked Example
 
 Create a minimal application that blinks an LED via a driver component.
 

@@ -2,14 +2,15 @@
 /*
  * RISC-V architecture constants — arch/riscv/include/arch_config.h
  *
- * SoC bases (CLINT/PLIC/CLIC) come from boards/<soc>/board_config.h.
- * This file holds ISA invariants and standard interrupt-controller offsets.
+ * SoC bases (CLINT/PLIC/CLIC) come from ulmk/platform.h, a generated snapshot
+ * of boards/<soc>/board_config.h (see tools/gen_config.py).  This file holds
+ * ISA invariants and standard interrupt-controller offsets.
  */
 
 #ifndef ULMK_ARCH_RISCV_CONFIG_H
 #define ULMK_ARCH_RISCV_CONFIG_H
 
-#include <board_config.h>
+#include <ulmk/platform.h>
 
 #ifndef ULMK_ARCH_HAVE_FPU
 #define ULMK_ARCH_HAVE_FPU	0
