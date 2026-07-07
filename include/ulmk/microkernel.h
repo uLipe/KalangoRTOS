@@ -1,15 +1,19 @@
 /* SPDX-License-Identifier: MIT */
 /*
  * Copyright (c) 2024-2026 Felipe Neves
+ */
+
+/**
+ * @file microkernel.h
+ * @brief ulmk public userspace API.
  *
- * Public API — ulmk
- * Full specification: docs/api_spec.md
+ * Usage: @code #include <ulmk/microkernel.h> @endcode
  *
- * Usage: #include <ulmk/microkernel.h>
- *
- * All public API functions are static inline syscall wrappers.
- * They issue a TriCore SYSCALL instruction; the kernel router
+ * All public API functions are static inline syscall wrappers: they issue the
+ * architecture's SYSCALL/trap instruction and the kernel router
  * (kernel/syscall/syscall_router.c) dispatches to the handler.
+ *
+ * @see docs/api_spec.md for the full specification.
  */
 
 #ifndef ULMK_MICROKERNEL_H
@@ -159,6 +163,15 @@ typedef void (*ulmk_irq_handler_t)(void *arg);
  * Boot entry point — user must provide exactly one strong definition
  * ========================================================================= */
 
+/**
+ * @brief Boot entry point the application must implement.
+ *
+ * Exactly one strong definition must be linked.  The kernel creates the root
+ * thread and calls this at @c ULMK_PRIV_DRIVER with all capabilities.  It must
+ * never return — call ulmk_thread_exit() once bootstrapping is complete.
+ *
+ * @param info Boot state: available memory regions and CSA pool location.
+ */
 void ulmk_root_thread(const ulmk_boot_info_t *info);
 
 /* =========================================================================
@@ -166,6 +179,10 @@ void ulmk_root_thread(const ulmk_boot_info_t *info);
  * All require ULMK_PRIV_DRIVER except ulmk_thread_self() and ulmk_thread_yield().
  * ========================================================================= */
 
+/**
+ * @brief Return the calling thread's TID.
+ * @return TID of the current thread.  Callable at any privilege level.
+ */
 static inline ulmk_tid_t ulmk_thread_self(void)
 {
 	uint32_t r;
@@ -173,6 +190,14 @@ static inline ulmk_tid_t ulmk_thread_self(void)
 	return (ulmk_tid_t)r;
 }
 
+/**
+ * @brief Yield the CPU to the next runnable thread at the same priority.
+ *
+ * FIFO within a priority level.  Does not time-slice; use blocking or periodic
+ * yields for fairness at the same level.
+ *
+ * @return @c ULMK_OK.
+ */
 static inline int ulmk_thread_yield(void)
 {
 	uint32_t r;
@@ -180,6 +205,13 @@ static inline int ulmk_thread_yield(void)
 	return (int)r;
 }
 
+/**
+ * @brief Create a runnable thread.
+ * @param attr Thread attributes: entry, arg, stack_size, priority, privilege
+ *             and optional per-thread heap size.
+ * @return New TID, or @c ULMK_TID_INVALID on failure.
+ * @pre Caller holds @c ULMK_CAP_SPAWN.
+ */
 static inline ulmk_tid_t ulmk_thread_create(const ulmk_thread_attr_t *attr)
 {
 	uint32_t r;
@@ -187,6 +219,12 @@ static inline ulmk_tid_t ulmk_thread_create(const ulmk_thread_attr_t *attr)
 	return (ulmk_tid_t)r;
 }
 
+/**
+ * @brief Terminate a thread, freeing its stack and context.
+ * @param tid Target thread; removed from any wait list first.
+ * @return @c ULMK_OK, @c ULMK_ESRCH (unknown tid) or @c ULMK_EPERM.
+ * @pre Caller holds @c ULMK_CAP_KILL.
+ */
 static inline int ulmk_thread_kill(ulmk_tid_t tid)
 {
 	uint32_t r;
@@ -194,6 +232,12 @@ static inline int ulmk_thread_kill(ulmk_tid_t tid)
 	return (int)r;
 }
 
+/**
+ * @brief Remove a thread from the ready queue without terminating it.
+ * @param tid Target thread; consumes no CPU while suspended.
+ * @return @c ULMK_OK or an error code.
+ * @pre Caller runs at @c ULMK_PRIV_DRIVER.
+ */
 static inline int ulmk_thread_suspend(ulmk_tid_t tid)
 {
 	uint32_t r;
@@ -201,6 +245,12 @@ static inline int ulmk_thread_suspend(ulmk_tid_t tid)
 	return (int)r;
 }
 
+/**
+ * @brief Make a previously suspended thread runnable again.
+ * @param tid Target thread.
+ * @return @c ULMK_OK or an error code.
+ * @pre Caller runs at @c ULMK_PRIV_DRIVER.
+ */
 static inline int ulmk_thread_resume(ulmk_tid_t tid)
 {
 	uint32_t r;
@@ -208,6 +258,13 @@ static inline int ulmk_thread_resume(ulmk_tid_t tid)
 	return (int)r;
 }
 
+/**
+ * @brief Set a thread's priority.
+ * @param tid  Target thread.
+ * @param prio New priority (0 = highest, 255 = lowest).
+ * @return @c ULMK_OK or an error code.
+ * @note Takes effect at the next scheduling decision.
+ */
 static inline int ulmk_thread_priority_set(ulmk_tid_t tid, uint8_t prio)
 {
 	uint32_t r;
@@ -215,6 +272,12 @@ static inline int ulmk_thread_priority_set(ulmk_tid_t tid, uint8_t prio)
 	return (int)r;
 }
 
+/**
+ * @brief Query a thread's current priority.
+ * @param tid Target thread.
+ * @return Priority in the range 0-255, or a negative error code if @p tid is
+ *         unknown.
+ */
 static inline int ulmk_thread_priority_get(ulmk_tid_t tid)
 {
 	uint32_t r;
@@ -222,6 +285,11 @@ static inline int ulmk_thread_priority_get(ulmk_tid_t tid)
 	return (int)r;
 }
 
+/**
+ * @brief Terminate the calling thread.
+ *
+ * Never returns.  ulmk_root_thread() must call this once bootstrapping is done.
+ */
 static inline __attribute__((noreturn)) void ulmk_thread_exit(void)
 {
 	uint32_t r;
@@ -234,6 +302,14 @@ static inline __attribute__((noreturn)) void ulmk_thread_exit(void)
  * IPC Endpoint API — docs/api_spec.md §7
  * ========================================================================= */
 
+/**
+ * @brief Create an endpoint owned by the calling thread.
+ *
+ * Create the endpoint before spawning the server so clients can call it
+ * immediately.
+ *
+ * @return New endpoint, or @c ULMK_EP_INVALID if the pool is exhausted.
+ */
 static inline ulmk_ep_t ulmk_ep_create(void)
 {
 	uint32_t r;
@@ -241,6 +317,12 @@ static inline ulmk_ep_t ulmk_ep_create(void)
 	return (ulmk_ep_t)r;
 }
 
+/**
+ * @brief Synchronous send: call an endpoint and block for the reply.
+ * @param ep  Target endpoint.
+ * @param msg Message to send; overwritten in place with the reply.
+ * @return @c ULMK_OK, or @c ULMK_EINVAL (bad endpoint).
+ */
 static inline int ulmk_ep_call(ulmk_ep_t ep, ulmk_msg_t *msg)
 {
 	uint32_t r;
@@ -248,6 +330,14 @@ static inline int ulmk_ep_call(ulmk_ep_t ep, ulmk_msg_t *msg)
 	return (int)r;
 }
 
+/**
+ * @brief Block until a message arrives on an endpoint.
+ * @param ep     Endpoint to receive from.
+ * @param[out] msg    Filled with the received message.
+ * @param[out] sender Filled with the caller's TID.
+ * @return @c ULMK_OK or an error code.
+ * @note The server must ulmk_ep_reply(@p sender, …) to unblock the caller.
+ */
 static inline int ulmk_ep_recv(ulmk_ep_t ep, ulmk_msg_t *msg, ulmk_tid_t *sender)
 {
 	uint32_t r;
@@ -255,6 +345,12 @@ static inline int ulmk_ep_recv(ulmk_ep_t ep, ulmk_msg_t *msg, ulmk_tid_t *sender
 	return (int)r;
 }
 
+/**
+ * @brief Reply to a blocked caller and make it runnable.
+ * @param sender TID returned by ulmk_ep_recv().
+ * @param reply  Reply message.
+ * @return @c ULMK_OK or an error code.
+ */
 static inline int ulmk_ep_reply(ulmk_tid_t sender, const ulmk_msg_t *reply)
 {
 	uint32_t r;
@@ -262,10 +358,20 @@ static inline int ulmk_ep_reply(ulmk_tid_t sender, const ulmk_msg_t *reply)
 	return (int)r;
 }
 
-/*
- * ulmk_ep_reply_recv — reply to sender then immediately block for the next call.
- * The three output pointers are passed in a stack-allocated args struct to
- * stay within the 4-register argument limit (ep, sender, args*).
+/**
+ * @brief Atomic reply-and-receive: reply, then block for the next call.
+ *
+ * Cheaper than a separate ulmk_ep_reply() + ulmk_ep_recv().  The output
+ * pointers are packed into a stack-allocated args struct to stay within the
+ * 4-register argument limit.
+ *
+ * @param ep     Endpoint to receive the next call from.
+ * @param sender Caller to reply to, or @c ULMK_TID_INVALID to skip the reply
+ *               and only receive.
+ * @param reply  Reply message for @p sender.
+ * @param[out] next        Filled with the next received message.
+ * @param[out] next_sender Filled with the next caller's TID.
+ * @return @c ULMK_OK or an error code.
  */
 static inline int ulmk_ep_reply_recv(ulmk_ep_t ep, ulmk_tid_t sender,
 				   const ulmk_msg_t *reply, ulmk_msg_t *next,
@@ -277,6 +383,13 @@ static inline int ulmk_ep_reply_recv(ulmk_ep_t ep, ulmk_tid_t sender,
 	return (int)r;
 }
 
+/**
+ * @brief Allow another thread to call an endpoint.
+ * @param ep     Endpoint owned by the caller.
+ * @param target Thread granted the right to ulmk_ep_call() @p ep.
+ * @return @c ULMK_OK or an error code.
+ * @note The owner retains full access.
+ */
 static inline int ulmk_ep_grant(ulmk_ep_t ep, ulmk_tid_t target)
 {
 	uint32_t r;
@@ -284,10 +397,21 @@ static inline int ulmk_ep_grant(ulmk_ep_t ep, ulmk_tid_t target)
 	return (int)r;
 }
 
-/*
- * ulmk_ep_recv_or_notif — block on IPC or notification, whichever arrives first.
- * Result is written into a stack-allocated ulmk_recv_or_notif_result_t and the
- * individual output pointers are filled from it after the syscall returns.
+/**
+ * @brief Block on an endpoint or a notification, whichever arrives first.
+ *
+ * Lets a server also react to hardware events.  On return exactly one path is
+ * taken: @p sender != @c ULMK_TID_INVALID (IPC) or @p notif_bits != 0
+ * (notification).  The result is marshalled through a stack-allocated struct
+ * and copied to the output pointers after the syscall.
+ *
+ * @param ep    Endpoint to receive from.
+ * @param notif Notification to wait on.
+ * @param mask  Notification bits of interest.
+ * @param[out] msg        Received message (IPC path); may be NULL.
+ * @param[out] sender     Caller's TID (IPC path); may be NULL.
+ * @param[out] notif_bits Matched bits (notification path); may be NULL.
+ * @return @c ULMK_OK or an error code.
  */
 static inline int ulmk_ep_recv_or_notif(ulmk_ep_t ep, ulmk_notif_t notif,
 				      uint32_t mask, ulmk_msg_t *msg,
@@ -302,6 +426,12 @@ static inline int ulmk_ep_recv_or_notif(ulmk_ep_t ep, ulmk_notif_t notif,
 	return (int)r;
 }
 
+/**
+ * @brief Free an endpoint.
+ * @param ep Endpoint to destroy.
+ * @return @c ULMK_OK or an error code.
+ * @note Any threads blocked on @p ep are unblocked with @c ULMK_EINVAL.
+ */
 static inline int ulmk_ep_destroy(ulmk_ep_t ep)
 {
 	uint32_t r;
@@ -313,6 +443,10 @@ static inline int ulmk_ep_destroy(ulmk_ep_t ep)
  * Notification API — docs/api_spec.md §8
  * ========================================================================= */
 
+/**
+ * @brief Create a 32-bit notification object (each bit an independent flag).
+ * @return New notification, or @c ULMK_NOTIF_INVALID if the pool is exhausted.
+ */
 static inline ulmk_notif_t ulmk_notif_create(void)
 {
 	uint32_t r;
@@ -320,6 +454,13 @@ static inline ulmk_notif_t ulmk_notif_create(void)
 	return (ulmk_notif_t)r;
 }
 
+/**
+ * @brief Atomically OR bits into a notification, waking any waiter.
+ * @param notif Target notification.
+ * @param bits  Bits to set.
+ * @return @c ULMK_OK or an error code.
+ * @note Safe to reach from IRQ-delivery context (the kernel signals from the ISR).
+ */
 static inline int ulmk_notif_signal(ulmk_notif_t notif, uint32_t bits)
 {
 	uint32_t r;
@@ -327,6 +468,12 @@ static inline int ulmk_notif_signal(ulmk_notif_t notif, uint32_t bits)
 	return (int)r;
 }
 
+/**
+ * @brief Non-blocking check of notification bits.
+ * @param notif Target notification.
+ * @param mask  Bits of interest.
+ * @return The set bits matching @p mask (atomically cleared), or 0 if none.
+ */
 static inline uint32_t ulmk_notif_poll(ulmk_notif_t notif, uint32_t mask)
 {
 	uint32_t r;
@@ -334,6 +481,13 @@ static inline uint32_t ulmk_notif_poll(ulmk_notif_t notif, uint32_t mask)
 	return r;
 }
 
+/**
+ * @brief Block until at least one bit matching @p mask is set.
+ * @param notif Target notification.
+ * @param mask  Bits to wait for.
+ * @param[out] bits Filled with the matched bits (which are then cleared).
+ * @return @c ULMK_OK or an error code.
+ */
 static inline int ulmk_notif_wait(ulmk_notif_t notif, uint32_t mask, uint32_t *bits)
 {
 	uint32_t r;
@@ -341,6 +495,12 @@ static inline int ulmk_notif_wait(ulmk_notif_t notif, uint32_t mask, uint32_t *b
 	return (int)r;
 }
 
+/**
+ * @brief Free a notification object.
+ * @param notif Notification to destroy.
+ * @return @c ULMK_OK or an error code.
+ * @note Threads blocked on @p notif are woken with @c ULMK_EINVAL.
+ */
 static inline int ulmk_notif_destroy(ulmk_notif_t notif)
 {
 	uint32_t r;
@@ -362,6 +522,12 @@ static inline int ulmk_notif_destroy(ulmk_notif_t notif)
  *                            the kernel pool; requires ULMK_PRIV_DRIVER.
  * ========================================================================= */
 
+/**
+ * @brief Query the calling thread's private heap.
+ * @param[out] info Filled with the heap base and size.
+ * @return @c ULMK_OK, or @c ULMK_EPERM if the thread was created without a heap
+ *         (@c attr.heap_size == 0).
+ */
 static inline int ulmk_get_thread_heap(ulmk_heap_info_t *info)
 {
 	uint32_t r;
@@ -369,6 +535,14 @@ static inline int ulmk_get_thread_heap(ulmk_heap_info_t *info)
 	return (int)r;
 }
 
+/**
+ * @brief Grow the calling thread's heap.
+ * @param size Additional bytes to allocate from the global user pool, covered
+ *             by an extra MPU region.
+ * @return @c ULMK_OK, @c ULMK_ENOMEM, @c ULMK_EPERM or @c ULMK_ENOSPC (MPU
+ *         region limit reached).
+ * @pre Caller runs at @c ULMK_PRIV_DRIVER.
+ */
 static inline int ulmk_heap_extend(size_t size)
 {
 	uint32_t r;
@@ -376,6 +550,15 @@ static inline int ulmk_heap_extend(size_t size)
 	return (int)r;
 }
 
+/**
+ * @brief Map a memory region.
+ * @param hint  Advisory placement address (may be NULL).
+ * @param size  Region size in bytes.
+ * @param perms Permission mask of @c ULMK_PERM_* flags.
+ * @param flags @c ULMK_MMAP_ANON (from user pool) or @c ULMK_MMAP_PERIPH (MMIO,
+ *              requires @c ULMK_CAP_MAP_PERIPH).
+ * @return Base address of the mapping, or NULL on failure.
+ */
 static inline void *ulmk_mem_map(void *hint, size_t size,
 			       uint32_t perms, uint32_t flags)
 {
@@ -384,6 +567,12 @@ static inline void *ulmk_mem_map(void *hint, size_t size,
 	return (void *)(uintptr_t)r;
 }
 
+/**
+ * @brief Unmap a region previously returned by ulmk_mem_map().
+ * @param addr Base address of the mapping.
+ * @param size Region size in bytes.
+ * @return @c ULMK_OK or an error code.
+ */
 static inline int ulmk_mem_unmap(void *addr, size_t size)
 {
 	uint32_t r;
@@ -391,6 +580,14 @@ static inline int ulmk_mem_unmap(void *addr, size_t size)
 	return (int)r;
 }
 
+/**
+ * @brief Share a memory region with another thread (no copy).
+ * @param addr   Base address of the region.
+ * @param size   Region size in bytes.
+ * @param target Thread to grant access to.
+ * @param perms  Permission mask of @c ULMK_PERM_* flags.
+ * @return @c ULMK_OK or an error code.
+ */
 static inline int ulmk_mem_grant(void *addr, size_t size,
 			       ulmk_tid_t target, uint32_t perms)
 {
@@ -403,6 +600,15 @@ static inline int ulmk_mem_grant(void *addr, size_t size,
  * IRQ API — docs/api_spec.md §10  (requires ULMK_PRIV_DRIVER)
  * ========================================================================= */
 
+/**
+ * @brief Bind a hardware interrupt to a notification bit.
+ * @param srpn  Interrupt priority number / source.
+ * @param notif Notification signalled when the IRQ fires (from the ISR).
+ * @param bit   Bit index to set in @p notif.
+ * @return @c ULMK_OK or an error code.
+ * @pre Caller runs at @c ULMK_PRIV_DRIVER and holds @c ULMK_CAP_IRQ.
+ * @note At most @c ULMK_CONFIG_MAX_IRQ_BINDINGS bindings may be active at once.
+ */
 static inline int ulmk_irq_bind(uint8_t srpn, ulmk_notif_t notif, uint32_t bit)
 {
 	uint32_t r;
@@ -410,6 +616,12 @@ static inline int ulmk_irq_bind(uint8_t srpn, ulmk_notif_t notif, uint32_t bit)
 	return (int)r;
 }
 
+/**
+ * @brief Enable delivery of an interrupt.
+ * @param srpn Interrupt to enable.
+ * @return @c ULMK_OK or an error code.
+ * @pre Caller runs at @c ULMK_PRIV_DRIVER and holds @c ULMK_CAP_IRQ.
+ */
 static inline int ulmk_irq_enable(uint8_t srpn)
 {
 	uint32_t r;
@@ -417,6 +629,12 @@ static inline int ulmk_irq_enable(uint8_t srpn)
 	return (int)r;
 }
 
+/**
+ * @brief Disable delivery of an interrupt.
+ * @param srpn Interrupt to disable.
+ * @return @c ULMK_OK or an error code.
+ * @pre Caller runs at @c ULMK_PRIV_DRIVER and holds @c ULMK_CAP_IRQ.
+ */
 static inline int ulmk_irq_disable(uint8_t srpn)
 {
 	uint32_t r;
@@ -424,6 +642,13 @@ static inline int ulmk_irq_disable(uint8_t srpn)
 	return (int)r;
 }
 
+/**
+ * @brief Clear the pending flag for an interrupt.
+ * @param srpn Interrupt to acknowledge.
+ * @return @c ULMK_OK or an error code.
+ * @note Must be called after servicing a level-triggered IRQ to avoid immediate
+ *       re-entry.
+ */
 static inline int ulmk_irq_ack(uint8_t srpn)
 {
 	uint32_t r;
@@ -431,10 +656,18 @@ static inline int ulmk_irq_ack(uint8_t srpn)
 	return (int)r;
 }
 
-/*
- * ulmk_irq_bind_hw — bind a fixed hardware SRC register to a notification.
- * Used by board services for on-chip peripherals (e.g. STM0) whose SRC address
- * is fixed by the SoC.  Dynamic test IRQs use ulmk_irq_bind() instead.
+/**
+ * @brief Bind a fixed hardware source register to a notification bit.
+ *
+ * Like ulmk_irq_bind() but for on-chip peripherals whose interrupt-source
+ * register address is fixed by the SoC; used by board services.
+ *
+ * @param srpn    Interrupt priority number / source.
+ * @param notif   Notification signalled when the IRQ fires.
+ * @param bit     Bit index to set in @p notif.
+ * @param src_reg Absolute address of the source register; 0 is rejected.
+ * @return @c ULMK_OK, or @c ULMK_EINVAL if @p src_reg is 0.
+ * @pre Caller runs at @c ULMK_PRIV_DRIVER and holds @c ULMK_CAP_IRQ.
  */
 static inline int ulmk_irq_bind_hw(uint8_t srpn, ulmk_notif_t notif,
 				   uint32_t bit, uintptr_t src_reg)
@@ -449,6 +682,13 @@ static inline int ulmk_irq_bind_hw(uint8_t srpn, ulmk_notif_t notif,
  * Requires ULMK_CAP_GRANT_CAP.
  * ========================================================================= */
 
+/**
+ * @brief Grant capabilities to another thread.
+ * @param target Thread to receive the capabilities.
+ * @param caps   Mask of @c ULMK_CAP_* flags to grant.
+ * @return @c ULMK_OK or an error code.
+ * @pre Caller holds @c ULMK_CAP_GRANT_CAP and every capability in @p caps.
+ */
 static inline int ulmk_cap_grant(ulmk_tid_t target, uint32_t caps)
 {
 	uint32_t r;
