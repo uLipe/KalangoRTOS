@@ -165,11 +165,16 @@ uint32_t ulmk_arch_atomic_add(volatile uint32_t *ptr, uint32_t val);
 void ulmk_kern_start(void);
 
 /*
- * ulmk_board_init - optional board-level hardware setup (weak no-op stub)
- * Called by ulmk_kern_start() before .data copy.  User overrides with a
- * strong symbol.
+ * ulmk_board_init - board-level hardware setup, called by ulmk_kern_start()
+ * before the .data copy (PLL, flash wait states, external RAM).
+ *
+ * A definition must always be linked: the board provides one in its
+ * board_services.c, or a no-op comes from stub/board_init_stub.c.  The
+ * reference is deliberately NOT weak — under static-library packaging (the
+ * SDK) a weak reference would fail to pull the board's definition out of the
+ * archive and silently resolve to address 0, crashing at boot.
  */
-__attribute__((weak)) void ulmk_board_init(void);
+void ulmk_board_init(void);
 
 /*
  * ulmk_arch_init - one-time CPU and peripheral initialisation

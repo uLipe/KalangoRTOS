@@ -86,7 +86,14 @@ uint32_t ulmk_arch_atomic_add(volatile uint32_t *ptr, uint32_t val);
  */
 void ulmk_kern_start(void);
 
-__attribute__((weak)) void ulmk_board_init(void);
+/*
+ * Board-level hardware setup, called by ulmk_kern_start() before the .data
+ * copy.  A definition must always be linked (board board_services.c or
+ * stub/board_init_stub.c).  Not weak: under SDK static-library packaging a
+ * weak reference fails to pull the board definition from the archive and
+ * silently resolves to address 0, crashing at boot.
+ */
+void ulmk_board_init(void);
 
 void ulmk_arch_init(ulmk_boot_info_t *info);
 

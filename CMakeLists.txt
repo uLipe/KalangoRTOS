@@ -13,6 +13,12 @@ include(cmake/board_resolve.cmake)
 
 include(cmake/arch_sources.cmake)
 
+# Distribution SDK mode: emit the kernel/arch and the board as two static
+# libraries (+ processed linker script) for integration into external
+# toolchains, instead of a self-contained demo ELF.  Driven by
+# `tools/dev.py build --kernel`.
+option(ULMK_SDK "Emit distributable static libraries instead of a demo ELF" OFF)
+
 # ---------------------------------------------------------------------------
 # Build configuration
 # ---------------------------------------------------------------------------
@@ -122,61 +128,123 @@ endif()
 
 message(STATUS "ULMK_ARCH=${ULMK_ARCH}  ULMK_CHIP_DIR=${ULMK_CHIP_DIR}")
 
-file(GLOB _kernel_comp_dirs LIST_DIRECTORIES true
-    "${CMAKE_SOURCE_DIR}/components/*")
-foreach(_dir IN LISTS _kernel_comp_dirs)
-    if(IS_DIRECTORY "${_dir}" AND EXISTS "${_dir}/CMakeLists.txt")
-        get_filename_component(_cname "${_dir}" NAME)
-        add_subdirectory("${_dir}" "${CMAKE_BINARY_DIR}/components/${_cname}")
-    endif()
-endforeach()
-
-set(_ULMK_APPS_DIR "${CMAKE_SOURCE_DIR}/../ulmk_apps")
-if(IS_DIRECTORY "${_ULMK_APPS_DIR}")
-    file(GLOB _app_comp_dirs LIST_DIRECTORIES true "${_ULMK_APPS_DIR}/*")
-    foreach(_dir IN LISTS _app_comp_dirs)
+# Components and apps are userspace policy — never part of the distributable
+# kernel SDK, which ships only kernel + arch + board.
+if(NOT ULMK_SDK)
+    file(GLOB _kernel_comp_dirs LIST_DIRECTORIES true
+        "${CMAKE_SOURCE_DIR}/components/*")
+    foreach(_dir IN LISTS _kernel_comp_dirs)
         if(IS_DIRECTORY "${_dir}" AND EXISTS "${_dir}/CMakeLists.txt")
             get_filename_component(_cname "${_dir}" NAME)
-            add_subdirectory("${_dir}" "${CMAKE_BINARY_DIR}/ulmk_apps/${_cname}")
+            add_subdirectory("${_dir}" "${CMAKE_BINARY_DIR}/components/${_cname}")
         endif()
     endforeach()
-endif()
 
-ulmk_components_finalize()
+    set(_ULMK_APPS_DIR "${CMAKE_SOURCE_DIR}/../ulmk_apps")
+    if(IS_DIRECTORY "${_ULMK_APPS_DIR}")
+        file(GLOB _app_comp_dirs LIST_DIRECTORIES true "${_ULMK_APPS_DIR}/*")
+        foreach(_dir IN LISTS _app_comp_dirs)
+            if(IS_DIRECTORY "${_dir}" AND EXISTS "${_dir}/CMakeLists.txt")
+                get_filename_component(_cname "${_dir}" NAME)
+                add_subdirectory("${_dir}"
+                    "${CMAKE_BINARY_DIR}/ulmk_apps/${_cname}")
+            endif()
+        endforeach()
+    endif()
+
+    ulmk_components_finalize()
+endif()
 
 # ---------------------------------------------------------------------------
-# Kernel executable (kernel + arch startup + apps)
+# Board static library (arch startup/vectors + board services + user entry)
+#
+# These objects must land in the userspace text/BSS regions (board services run
+# at driver privilege), so they are kept OUT of libulmk_kernel.a and grouped in
+# their own archive.  In SDK mode this archive is a shipped artefact; in the
+# normal build the same objects are compiled straight into the demo ELF.
 # ---------------------------------------------------------------------------
 
-# user_entry.c is linked into the image (not libulmk_kernel.a) so it lands in
-# the userspace text region, executable by threads at every privilege.
-set(_ulmk_exe_sources
-    ${ULMK_ARCH_EXE_SOURCES}
-    ${_ULMK_BOARD_SRCS}
-    ${CMAKE_SOURCE_DIR}/kernel/init/user_entry.c)
+if(ULMK_SDK)
+    add_library(ulmk_board STATIC
+        ${ULMK_ARCH_EXE_SOURCES}
+        ${_ULMK_BOARD_SRCS}
+        ${CMAKE_SOURCE_DIR}/kernel/init/user_entry.c)
 
-if("${_ULMK_ROOT_THREAD_COMP}" STREQUAL "")
-    list(APPEND _ulmk_exe_sources "${CMAKE_SOURCE_DIR}/stub/root_thread_stub.c")
+    target_include_directories(ulmk_board PRIVATE
+        "${CMAKE_SOURCE_DIR}"
+        "${CMAKE_SOURCE_DIR}/include"
+        "${ULMK_ARCH_DIR}/include"
+        "${CMAKE_BINARY_DIR}/generated"
+        "${ULMK_CHIP_DIR}")
+
+    target_compile_options(ulmk_board PRIVATE -fno-data-sections)
+
+    if(DEFINED ULMK_BOARD_CFLAGS)
+        target_compile_options(ulmk_board PRIVATE ${ULMK_BOARD_CFLAGS})
+    endif()
 endif()
 
-add_executable(ulmk ${_ulmk_exe_sources})
+# ---------------------------------------------------------------------------
+# Kernel executable
+#   normal build : kernel + arch startup + board + apps  → demo ELF
+#   SDK build    : stub root thread linked against the two static libs, only
+#                  to validate that the shipped archives + linker script link.
+# ---------------------------------------------------------------------------
 
-target_include_directories(ulmk PRIVATE
-    "${CMAKE_SOURCE_DIR}"
-    "${ULMK_ARCH_DIR}/include"
-    "${CMAKE_BINARY_DIR}/generated"
-    "${ULMK_CHIP_DIR}")
+if(ULMK_SDK)
+    add_executable(ulmk "${CMAKE_SOURCE_DIR}/stub/root_thread_stub.c")
 
-target_compile_options(ulmk PRIVATE -fno-data-sections)
+    target_include_directories(ulmk PRIVATE
+        "${CMAKE_SOURCE_DIR}"
+        "${CMAKE_SOURCE_DIR}/include"
+        "${ULMK_ARCH_DIR}/include"
+        "${CMAKE_BINARY_DIR}/generated"
+        "${ULMK_CHIP_DIR}")
 
-if(DEFINED ULMK_BOARD_CFLAGS)
-    target_compile_options(ulmk PRIVATE ${ULMK_BOARD_CFLAGS})
+    target_compile_options(ulmk PRIVATE -fno-data-sections)
+
+    if(DEFINED ULMK_BOARD_CFLAGS)
+        target_compile_options(ulmk PRIVATE ${ULMK_BOARD_CFLAGS})
+    endif()
+
+    # kernel and board reference each other's symbols — group to resolve the
+    # circular dependency between the two archives.
+    target_link_libraries(ulmk PRIVATE
+        -Wl,--start-group ulmk_board ulmk_kernel -Wl,--end-group)
+
+    _ulmk_finalize_build(ulmk "${ULMK_CHIP_DIR}")
+else()
+    # user_entry.c is linked into the image (not libulmk_kernel.a) so it lands
+    # in the userspace text region, executable by threads at every privilege.
+    set(_ulmk_exe_sources
+        ${ULMK_ARCH_EXE_SOURCES}
+        ${_ULMK_BOARD_SRCS}
+        ${CMAKE_SOURCE_DIR}/kernel/init/user_entry.c)
+
+    if("${_ULMK_ROOT_THREAD_COMP}" STREQUAL "")
+        list(APPEND _ulmk_exe_sources
+            "${CMAKE_SOURCE_DIR}/stub/root_thread_stub.c")
+    endif()
+
+    add_executable(ulmk ${_ulmk_exe_sources})
+
+    target_include_directories(ulmk PRIVATE
+        "${CMAKE_SOURCE_DIR}"
+        "${ULMK_ARCH_DIR}/include"
+        "${CMAKE_BINARY_DIR}/generated"
+        "${ULMK_CHIP_DIR}")
+
+    target_compile_options(ulmk PRIVATE -fno-data-sections)
+
+    if(DEFINED ULMK_BOARD_CFLAGS)
+        target_compile_options(ulmk PRIVATE ${ULMK_BOARD_CFLAGS})
+    endif()
+
+    target_link_libraries(ulmk PRIVATE ulmk_kernel)
+
+    _ulmk_finalize_build(ulmk "${ULMK_CHIP_DIR}")
+
+    add_custom_command(TARGET ulmk POST_BUILD
+        COMMAND "${CMAKE_SIZE}" "$<TARGET_FILE:ulmk>"
+        COMMENT "Memory usage")
 endif()
-
-target_link_libraries(ulmk PRIVATE ulmk_kernel)
-
-_ulmk_finalize_build(ulmk "${ULMK_CHIP_DIR}")
-
-add_custom_command(TARGET ulmk POST_BUILD
-    COMMAND "${CMAKE_SIZE}" "$<TARGET_FILE:ulmk>"
-    COMMENT "Memory usage")

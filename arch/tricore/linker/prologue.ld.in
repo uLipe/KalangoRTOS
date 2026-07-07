@@ -7,3 +7,13 @@
 OUTPUT_FORMAT("elf32-tricore")
 OUTPUT_ARCH(tricore)
 ENTRY(_start)
+
+/*
+ * Force the reset entry and vector-table members to be pulled from the archive
+ * even though nothing references them by symbol (they are reached only by the
+ * reset address / BTV / BIV).  Harmless when startup.o / vectors.o are direct
+ * objects; required when they live inside a distributed static library.
+ * _start is exclusive to startup.S; _trap_class0 is exclusive to vectors.S.
+ */
+EXTERN(_start)
+EXTERN(_trap_class0)

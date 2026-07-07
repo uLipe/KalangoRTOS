@@ -6,12 +6,14 @@ Subcommands:
     (none)              Enter interactive dev container shell
     build               Configure and compile kernel ELF (CMake/Ninja)
     build qemu          Build if needed, then run in QEMU
+    build --kernel      Emit a distributable SDK (libs + linker + headers)
     components list     Discover components under components/ and ../ulmk_apps/
     components status   Show manifest default vs .ulmk/components.conf
     components enable   Persist component ON in .ulmk/components.conf
     components disable  Remove component from .ulmk/components.conf
     tests unit          Run host-compiled unit tests
     tests integ         Run QEMU integration tests
+    tests e2e           Run SDK consumer end-to-end tests
     killall             Stop all running dev containers
 
 Components default OFF in CMake manifests. Enable before building the demo:
@@ -443,7 +445,67 @@ def _qemu_only_shell(board: dict, build_subdir: str) -> str:
     ])
 
 
+def _sdk_build_shell(board_container: str, board: dict, board_name: str,
+                     clean: bool) -> str:
+    """Compile kernel + arch + board into a distributable SDK directory.
+
+    Delegates the actual work to tools/sdk_build.sh so the exact build and
+    assemble steps stay identical between this driver and the SDK consumer
+    integration test (tests/sdk_e2e).
+    """
+    arch = _board_arch(board)
+    toolchain = _toolchain_for_arch(arch)
+    build = f"/build/ulipe-{arch}-sdk"
+    # Kept under dist/ so the output tree never collides with the CMake
+    # validation executable, which is itself named "ulmk" at the build root.
+    sdk = f"{build}/dist/ulmk"
+
+    clean_flag = " --clean" if clean else ""
+    return (
+        "set -e\n"
+        f"bash /workspace/tools/sdk_build.sh"
+        f" --toolchain {toolchain}"
+        f" --chip-dir {board_container}"
+        f" --arch {arch}"
+        f" --board-name {board_name}"
+        f" --build-dir {build}"
+        f" --out-dir {sdk}"
+        f"{clean_flag}"
+    )
+
+
+def _run_sdk_build(args: argparse.Namespace) -> None:
+    if args.action == "qemu":
+        sys.exit("error: 'build qemu' cannot be combined with --kernel")
+    if not args.board:
+        sys.exit("error: --kernel requires --board <board_dir>")
+
+    board_host, board_container, extra_mounts = _resolve_board_path(args.board)
+    board = _parse_board_cmake(board_host)
+    board_name = board_host.name
+    arch = _board_arch(board)
+
+    BUILD_DIR.mkdir(parents=True, exist_ok=True)
+
+    shell_cmd = _sdk_build_shell(board_container, board, board_name, args.clean)
+
+    cmd = [
+        "docker", "run", "--rm",
+        "--volume", f"{WORKSPACE_ROOT}:/workspace",
+        "--volume", f"{BUILD_DIR}:/build",
+    ] + extra_mounts
+    cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
+    subprocess.run(cmd, check=True)
+
+    host_sdk = BUILD_DIR / f"ulipe-{arch}-sdk" / "dist" / "ulmk"
+    print(f"\nDistributable SDK on host → {host_sdk}")
+
+
 def _run_build(args: argparse.Namespace) -> None:
+    if getattr(args, "kernel", False):
+        _run_sdk_build(args)
+        return
+
     run_qemu = (args.action == "qemu")
 
     board_host, board_container, extra_mounts = _resolve_board_path(args.board)
@@ -516,7 +578,12 @@ def _discover_tests(kind: str) -> list[str]:
     for d in sorted(TESTS_DIR.iterdir()):
         if not d.is_dir() or not (d / "Makefile").exists():
             continue
-        if d.name.endswith("_e2e"):
+        is_e2e = d.name.endswith("_e2e")
+        if kind == "e2e":
+            if is_e2e:
+                result.append(d.name)
+            continue
+        if is_e2e:
             continue
         is_unit = d.name.endswith("_unit")
         if (kind == "unit") == is_unit:
@@ -530,6 +597,16 @@ def _run_one_shell(kind: str, name: str, arch: str) -> str:
         f"cd /workspace/tests/{name}",
         "make clean -s 2>/dev/null || true",
     ]
+    if kind == "e2e":
+        # e2e suites self-contain their build (they consume the shipped SDK,
+        # not the kernel sources); the 'run' target builds everything it needs.
+        steps.insert(
+            0,
+            'export PATH="/opt/qemu-tricore/bin:/opt/tricore-gcc-bin:'
+            '/opt/riscv-gcc-bin:${PATH}"',
+        )
+        steps.append(f"timeout --kill-after=5 {TEST_TIMEOUT} make run ARCH={arch}")
+        return " && ".join(steps)
     if kind == "integ":
         steps.append("make gen_config -s")
     steps.append("rm -rf integ_kernel libtest_kernel.a 2>/dev/null || true")
@@ -629,11 +706,15 @@ examples:
   python3 tools/dev.py build qemu
   python3 tools/dev.py build --board boards/qemu_riscv_virt
   python3 tools/dev.py build qemu --board boards/qemu_riscv_virt
+  python3 tools/dev.py build --kernel --board boards/qemu_tc3xx
+  python3 tools/dev.py build --kernel --board /path/to/external_board
   python3 tools/dev.py tests unit
   python3 tools/dev.py tests integ
   python3 tools/dev.py tests integ --board boards/qemu_riscv_virt
   python3 tools/dev.py tests integ --test sleep_integ
   python3 tools/dev.py tests integ --list
+  python3 tools/dev.py tests e2e
+  python3 tools/dev.py tests e2e --board boards/qemu_riscv_virt
   python3 tools/dev.py killall
 """
     parser = argparse.ArgumentParser(
@@ -657,10 +738,16 @@ examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "Compile the kernel with CMake/Ninja.\n\n"
-            "  build       configure + compile\n"
-            "  build qemu  compile (if needed) then launch QEMU\n"
-            "              uses /opt/qemu-tricore/bin on TriCore and\n"
-            "              qemu-system-riscv32 on RISC-V"
+            "  build           configure + compile the demo ELF\n"
+            "  build qemu      compile (if needed) then launch QEMU\n"
+            "                  uses /opt/qemu-tricore/bin on TriCore and\n"
+            "                  qemu-system-riscv32 on RISC-V\n"
+            "  build --kernel --board PATH\n"
+            "                  emit a distributable SDK for external toolchains:\n"
+            "                    ulmk/lib/ulmk_kernel_<arch>_<board>_gcc.a\n"
+            "                    ulmk/lib/ulmk_board_<arch>_<board>_gcc.a\n"
+            "                    ulmk/linker/linker_<arch>_<board>_gcc.ld\n"
+            "                    ulmk/include/{ulmk,board}/*.h"
         ),
     )
     build_p.add_argument(
@@ -675,6 +762,12 @@ examples:
         metavar="PATH",
         default=None,
         help="Board directory with board.cmake (default: boards/qemu_tc3xx)",
+    )
+    build_p.add_argument(
+        "--kernel",
+        action="store_true",
+        help="Build a distributable SDK (two static libs + processed linker "
+             "script + public headers) instead of a demo ELF; requires --board",
     )
     build_p.add_argument(
         "--clean",
@@ -727,24 +820,25 @@ examples:
         help="Build and run tests inside the container",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "Run unit or integration tests inside the dev container.\n\n"
+            "Run unit, integration or end-to-end tests inside the container.\n\n"
             "  tests unit              host-compiled Unity tests\n"
             "  tests integ             QEMU integration tests\n"
-            "  tests integ --list      show available suites\n"
-            "  tests integ --test NAME run one suite\n"
-            "  tests integ --board PATH  select architecture via board"
+            "  tests e2e               SDK consumer end-to-end tests\n"
+            "  tests <kind> --list     show available suites\n"
+            "  tests <kind> --test NAME run one suite\n"
+            "  tests <kind> --board PATH  select architecture via board"
         ),
     )
     tests_p.add_argument(
         "kind",
-        choices=["unit", "integ"],
+        choices=["unit", "integ", "e2e"],
         help="Test suite type",
     )
     tests_p.add_argument(
         "--board",
         metavar="PATH",
         default=None,
-        help="Board for integ tests (default: boards/qemu_tc3xx)",
+        help="Board for integ/e2e tests (default: boards/qemu_tc3xx)",
     )
     tests_p.add_argument(
         "--test",

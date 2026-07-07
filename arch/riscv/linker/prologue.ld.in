@@ -3,3 +3,10 @@
 OUTPUT_FORMAT("elf32-littleriscv")
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
+
+/*
+ * Force the reset entry (_start) to be pulled from the archive even though
+ * nothing references it by symbol.  Harmless when startup.o is a direct object;
+ * required when it lives inside a distributed static library.
+ */
+EXTERN(_start)
