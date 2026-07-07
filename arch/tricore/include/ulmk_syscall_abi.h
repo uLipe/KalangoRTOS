@@ -14,8 +14,15 @@
  *   Arguments:  D4 (a0), D5 (a1), D6 (a2), D7 (a3)  — 32-bit each
  *   Return:     D2  — written by ulmk_arch_syscall_entry() before RFE
  *
- * SYSCALL saves the upper context (D8–D15, A10–A15, PSW, PCXI).
- * D4–D7 are NOT in the upper context and remain live through the trap.
+ * SYSCALL saves the upper context (D8–D15, A10–A15, PSW, PCXI); the class-6
+ * handler runs a C function and returns via RFE, which restores ONLY that
+ * upper context.  The lower-context scratch registers (D0–D7, A2–A7) are read
+ * as arguments on entry but are then clobbered by the handler.  From the
+ * caller's point of view every lower-context register is destroyed by the
+ * trap, so the argument registers are declared read-write ("+d") and the
+ * remaining lower-context registers are listed as clobbers.  Omitting them
+ * lets the compiler assume an argument register (e.g. D6) survives across two
+ * back-to-back syscalls and reuse the stale value — a silent memory corruptor.
  */
 
 #ifndef ULMK_SYSCALL_ABI_TRICORE_H
@@ -27,6 +34,9 @@
  * Inline-assembly SYSCALL_N() macros
  * ========================================================================= */
 
+/* Address scratch registers clobbered by every syscall (never argument regs). */
+#define ULMK_SYSCALL_ACLOBBERS "a2", "a3", "a4", "a5", "a6", "a7"
+
 #define ULMK_SYSCALL_0(nr, ret) \
 	do { \
 		register uint32_t _d2 __asm__("d2"); \
@@ -34,7 +44,8 @@
 			"syscall %1" \
 			: "=d"(_d2) \
 			: "i"(nr) \
-			: "memory"); \
+			: "memory", "d0", "d1", "d3", "d4", "d5", "d6", "d7", \
+			  ULMK_SYSCALL_ACLOBBERS); \
 		(ret) = _d2; \
 	} while (0)
 
@@ -43,10 +54,11 @@
 		register uint32_t _d4 __asm__("d4") = (uint32_t)(uintptr_t)(a0); \
 		register uint32_t _d2 __asm__("d2"); \
 		__asm__ volatile( \
-			"syscall %1" \
-			: "=d"(_d2) \
-			: "i"(nr), "d"(_d4) \
-			: "memory"); \
+			"syscall %2" \
+			: "=d"(_d2), "+d"(_d4) \
+			: "i"(nr) \
+			: "memory", "d0", "d1", "d3", "d5", "d6", "d7", \
+			  ULMK_SYSCALL_ACLOBBERS); \
 		(ret) = _d2; \
 	} while (0)
 
@@ -56,10 +68,11 @@
 		register uint32_t _d5 __asm__("d5") = (uint32_t)(uintptr_t)(a1); \
 		register uint32_t _d2 __asm__("d2"); \
 		__asm__ volatile( \
-			"syscall %1" \
-			: "=d"(_d2) \
-			: "i"(nr), "d"(_d4), "d"(_d5) \
-			: "memory"); \
+			"syscall %3" \
+			: "=d"(_d2), "+d"(_d4), "+d"(_d5) \
+			: "i"(nr) \
+			: "memory", "d0", "d1", "d3", "d6", "d7", \
+			  ULMK_SYSCALL_ACLOBBERS); \
 		(ret) = _d2; \
 	} while (0)
 
@@ -70,10 +83,11 @@
 		register uint32_t _d6 __asm__("d6") = (uint32_t)(uintptr_t)(a2); \
 		register uint32_t _d2 __asm__("d2"); \
 		__asm__ volatile( \
-			"syscall %1" \
-			: "=d"(_d2) \
-			: "i"(nr), "d"(_d4), "d"(_d5), "d"(_d6) \
-			: "memory"); \
+			"syscall %4" \
+			: "=d"(_d2), "+d"(_d4), "+d"(_d5), "+d"(_d6) \
+			: "i"(nr) \
+			: "memory", "d0", "d1", "d3", "d7", \
+			  ULMK_SYSCALL_ACLOBBERS); \
 		(ret) = _d2; \
 	} while (0)
 
@@ -85,10 +99,11 @@
 		register uint32_t _d7 __asm__("d7") = (uint32_t)(uintptr_t)(a3); \
 		register uint32_t _d2 __asm__("d2"); \
 		__asm__ volatile( \
-			"syscall %1" \
-			: "=d"(_d2) \
-			: "i"(nr), "d"(_d4), "d"(_d5), "d"(_d6), "d"(_d7) \
-			: "memory"); \
+			"syscall %5" \
+			: "=d"(_d2), "+d"(_d4), "+d"(_d5), "+d"(_d6), "+d"(_d7) \
+			: "i"(nr) \
+			: "memory", "d0", "d1", "d3", \
+			  ULMK_SYSCALL_ACLOBBERS); \
 		(ret) = _d2; \
 	} while (0)
 
