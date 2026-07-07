@@ -492,10 +492,74 @@ python3 tools/dev.py build                      # configure + build (QEMU board)
 python3 tools/dev.py build --clean              # rm -rf build + configure + build
 python3 tools/dev.py build --board /path/board  # custom ULMK_CHIP_DIR
 python3 tools/dev.py run                        # build (if stale) + run on QEMU
+python3 tools/dev.py build --kernel --board /path/board   # distributable SDK
 ```
 
 `dev.py` does not maintain a parallel source list.  CMake is the single source
 of truth for what gets compiled.
+
+### 11.1 Distributable kernel SDK (`build --kernel`)
+
+For integrating ulmk into an external toolchain (Eclipse, STM32Cube, the
+Infineon IDE, an existing firmware tree replacing FreeRTOS), `build --kernel`
+emits a self-contained SDK for one board.  `--board` is **mandatory** with
+`--kernel`; the board may live anywhere (a private out-of-tree directory is the
+expected case).
+
+```bash
+python3 tools/dev.py build --kernel --board /path/to/my_board
+```
+
+Output (under `build/ulipe-<arch>-sdk/dist/`):
+
+```
+ulmk/
+  lib/ulmk_kernel_<arch>_<board>_gcc.a   kernel + arch (kernel text/data, CPR0)
+  lib/ulmk_board_<arch>_<board>_gcc.a    startup + vectors + board + user entry
+                                         (userspace text/BSS, CPR1)
+  linker/linker_<arch>_<board>_gcc.ld    fully-processed linker script
+  include/ulmk/*.h                       public microkernel API
+  include/ulmk_syscall_abi.h             arch SYSCALL ABI (ULMK_SYSCALL_N macros;
+                                         redirected to by <ulmk/syscall_abi.h>)
+  include/board/*.h                      public board services / board init API
+```
+
+`include/ulmk_syscall_abi.h` is the architecture-specific ABI header.
+`<ulmk/syscall_abi.h>` is only a redirector to it, and `<ulmk/microkernel.h>`
+pulls it in transitively, so it **must** ship at the include root or every
+consumer of the public API fails to compile.
+
+Two archives instead of one: the kernel runs at supervisor privilege (CPR0)
+while board services run as driver-privilege userspace threads (CPR1), and the
+linker separates the two by archive name.  Consumers link **both** archives —
+group them to resolve the kernel⇄board cross-references:
+
+```bash
+<arch>-gcc -T linker_<arch>_<board>_gcc.ld -nostartfiles -Wl,--gc-sections \
+    my_root_thread.o my_app.o \
+    -Wl,--start-group ulmk_board_<...>.a ulmk_kernel_<...>.a -Wl,--end-group \
+    -o firmware.elf
+```
+
+The consumer provides `ulmk_root_thread()` (and any driver/app threads).
+`ulmk_board_init()` and `board_services_init()` ship inside the board archive.
+The reset entry (`_start`) and vector tables are force-linked from the archive
+via `EXTERN(...)` in the arch linker prologue, so no whole-archive flag is
+needed.  Components and apps are userspace policy and are **never** bundled in
+the SDK.
+
+Under the hood, SDK mode (`-DULMK_SDK=ON`) skips component discovery, builds the
+two archives plus the processed `ulmk.ld`, and links a throwaway ELF (stub root
+thread) purely to validate that the shipped archives and linker script link.
+
+The build/assemble steps live in `tools/sdk_build.sh` so that `dev.py` and the
+SDK consumer test share one implementation.  `tests/sdk_e2e/` is a standalone
+end-to-end test: it builds the SDK, then compiles a root thread that exercises
+every public syscall against the shipped artefacts only (no kernel sources), and
+checks a PASS/FAIL sentinel in QEMU.  Run it with `python3 tools/dev.py tests
+e2e` (add `--board boards/qemu_riscv_virt` for RV32).  Board bring-up must go
+through the portable `board_services_init(info)` entry point; `board_console_start()`
+is board-internal (a no-op stub on some boards) and must not be called directly.
 
 ---
 

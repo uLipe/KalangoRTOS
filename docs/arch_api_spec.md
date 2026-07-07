@@ -615,6 +615,22 @@ The syscall entry path sets `CCPN = 255` immediately, disabling all hardware
 IRQs for the syscall duration.  This avoids the need for IRQ-save critical
 sections inside most syscall handlers.
 
+### SYSCALL register clobbers (userspace ABI, §13.4)
+
+Class-6 entry is `call ulmk_arch_syscall_entry; rfe`.  `call` saves only the
+**upper context** (D8–D15, A10–A15); `rfe` restores only that.  The C handler
+therefore clobbers the entire **lower context** (D0–D7, A2–A7) from the
+caller's point of view — the argument registers D4–D7 are read on entry but are
+*not* preserved across the trap.  The `ULMK_SYSCALL_N()` inline-asm macros in
+`arch/tricore/include/ulmk_syscall_abi.h` must reflect this: the argument
+registers are declared read-write (`"+d"`) and every remaining lower-context
+register is listed as a clobber.  Omitting them lets the compiler assume an
+argument register (e.g. D6) survives two back-to-back syscalls and reuse the
+stale value — a silent memory corruptor that only surfaces under `-O2` register
+reuse (e.g. two consecutive `ulmk_ep_reply_recv()` calls).  This differs from
+RV32, where the trap handler saves and restores the full GPR file, so only `a0`
+(the return value) changes and input-only arg constraints are correct.
+
 Interrupt sources use SRC (Service Request Control) registers.  The SRC block
 base and SRE bit position are defined in `boards/<soc>/board_config.h` as
 `ULMK_BOARD_SRC_BASE` and `ULMK_BOARD_SRC_SRE_BIT`; the arch port applies

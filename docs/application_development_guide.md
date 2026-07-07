@@ -22,6 +22,7 @@
 11. [Running on QEMU](#11-running-on-qemu)
 12. [Running on Real Hardware](#12-running-on-real-hardware)
 13. [Worked Example](#13-worked-example)
+14. [SDK Mode — Integrating ulmk into an External Toolchain](#14-sdk-mode--integrating-ulmk-into-an-external-toolchain)
 
 ---
 
@@ -801,3 +802,127 @@ python3 tools/dev.py build --board /workspace/../my_board
 # Flash or run on QEMU
 python3 tools/dev.py run
 ```
+
+---
+
+## 14. SDK Mode — Integrating ulmk into an External Toolchain
+
+Everything above builds a **single ELF from the kernel sources** using ulmk's
+own CMake/dev.py flow.  That is the right model when ulmk owns the build.
+
+SDK mode is the opposite: it packages the kernel as a **closed, prebuilt drop-in**
+(two static archives + a processed linker script + public headers) so you can
+add ulmk to an *existing* firmware project driven by a third-party build system —
+Eclipse, STM32CubeIDE, the Infineon toolchain, a Makefile tree replacing
+FreeRTOS, etc.  You never bring the kernel sources into that project.
+
+### 14.1 When to use it
+
+| Use in-tree build (§9)               | Use SDK mode (this section)                     |
+|--------------------------------------|-------------------------------------------------|
+| ulmk drives the whole build          | An external IDE/build system owns the firmware  |
+| Apps live in `ulmk_apps/` components | Apps live in your existing project tree         |
+| You want to hack the kernel          | You want a stable, opaque binary to link        |
+
+### 14.2 Producing the SDK
+
+```bash
+# --board is MANDATORY with --kernel.  It may point anywhere — an out-of-tree
+# private board directory is the expected case (see §7 for the chip input).
+python3 tools/dev.py build --kernel --board boards/qemu_tc3xx
+python3 tools/dev.py build --kernel --board /path/to/my_board
+```
+
+Output tree (`build/ulipe-<arch>-sdk/dist/ulmk/`, with
+`<tag> = <arch>_<board>_gcc`):
+
+```
+ulmk/
+  lib/
+    ulmk_kernel_<tag>.a          kernel + arch — supervisor code/data (CPR0)
+    ulmk_board_<tag>.a           startup + vectors + board services + user
+                                 entry — driver-privilege userspace (CPR1)
+  linker/
+    linker_<tag>.ld              fully-processed, self-contained linker script
+  include/
+    ulmk/*.h                     public microkernel API (microkernel.h, …)
+    ulmk_syscall_abi.h           arch SYSCALL ABI; <ulmk/syscall_abi.h> only
+                                 redirects to it, and <ulmk/microkernel.h>
+                                 pulls it in — it MUST be on the include path
+    board/*.h                    public board API (board_services.h,
+                                 board_console.h, …); no *internal* headers
+```
+
+**Two archives, not one.**  The kernel runs at supervisor privilege (CPR0) while
+board services run as driver-privilege userspace threads (CPR1); the linker
+separates the two by archive name.  Always link **both**, wrapped in a group so
+the kernel⇄board cross-references resolve regardless of order.
+
+### 14.3 What you must provide
+
+The consumer supplies exactly one function — the root thread (§4):
+
+```c
+#include <ulmk/microkernel.h>
+#include <board/board_services.h>
+
+void ulmk_root_thread(const ulmk_boot_info_t *info)
+{
+    board_services_init(info);          /* start board console/timer, etc. */
+    /* spawn your driver/app threads here … */
+    ulmk_thread_exit();                 /* must never return */
+}
+```
+
+Everything else ships in the archives:
+
+- `_start` (reset entry) and the vector tables are force-linked from
+  `ulmk_board_<tag>.a` via `EXTERN(...)` in the linker script — **no**
+  whole-archive / `--whole-archive` flag is needed.
+- `ulmk_board_init()` (early chip setup) and `board_services_init()` (spawns the
+  console/timer service threads) live in the board archive.  Use
+  `board_services_init(info)` for bring-up — it is the portable entry point.
+  Do **not** call board-internal helpers like `board_console_start()` directly;
+  they are board-private and may be no-op stubs on some boards.
+
+### 14.4 Linking against the SDK
+
+Compile your sources with both include dirs, then link both archives against the
+shipped linker script with `-nostartfiles` (ulmk provides `_start`):
+
+```bash
+CC=tricore-elf-gcc          # or riscv-none-elf-gcc
+SDK=path/to/ulmk
+
+$CC -mcpu=tc39xx -ffreestanding -O2 -g \
+    -I$SDK/include -I$SDK/include/board \
+    -T $SDK/linker/linker_<tag>.ld \
+    -nostartfiles -Wl,--gc-sections -Wl,--no-warn-rwx-segments \
+    my_root_thread.c my_app.c \
+    -Wl,--start-group \
+        $SDK/lib/ulmk_board_<tag>.a $SDK/lib/ulmk_kernel_<tag>.a \
+    -Wl,--end-group \
+    -lc -lgcc \
+    -o firmware.elf
+```
+
+In an IDE, translate this to:
+
+- **Include paths:** `$SDK/include` and `$SDK/include/board`
+- **Linker script:** `$SDK/linker/linker_<tag>.ld` (replace any default script)
+- **Libraries:** both `.a` files, added as a group
+- **Flags:** `-nostartfiles` (do not let the toolchain inject its own crt0)
+
+### 14.5 Reference consumer
+
+`tests/sdk_e2e/` is a complete, CI-run example of consuming the SDK: its
+`Makefile` builds the SDK via `tools/sdk_build.sh`, then compiles a standalone
+root thread (`sdk_test.c`) that exercises every public syscall and links it
+exactly as above.  Run it end to end with:
+
+```bash
+python3 tools/dev.py tests e2e                                  # TriCore
+python3 tools/dev.py tests e2e --board boards/qemu_riscv_virt   # RISC-V
+```
+
+Use it as the canonical template for wiring ulmk into your own project.

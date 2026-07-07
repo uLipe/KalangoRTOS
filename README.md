@@ -120,6 +120,34 @@ ulmk: hello from userspace — tick #0
 ping_pong: round 1
 ```
 
+### Alternative: consume ulmk as a prebuilt SDK
+
+The demo above builds a single ELF from the kernel sources.  If instead you want
+to drop ulmk into an **existing firmware tree or a third-party IDE** (Eclipse,
+STM32Cube, the Infineon toolchain — e.g. to replace FreeRTOS), build it once as a
+distributable SDK: two static archives + a fully-processed linker script + the
+public headers.
+
+```bash
+# --board is mandatory with --kernel; it may point anywhere (out-of-tree board)
+python3 tools/dev.py build --kernel --board boards/qemu_tc3xx
+```
+
+This emits a self-contained tree under `build/ulipe-<arch>-sdk/dist/ulmk/`:
+
+```
+ulmk/
+  lib/ulmk_kernel_<tag>.a     kernel + arch (supervisor)
+  lib/ulmk_board_<tag>.a      startup + vectors + board services (driver)
+  linker/linker_<tag>.ld      processed linker script
+  include/                    public microkernel + board headers
+```
+
+Your firmware then provides `ulmk_root_thread()`, includes `<ulmk/microkernel.h>`,
+and links both archives.  See the
+[SDK integration guide](docs/application_development_guide.md#14-sdk-mode--integrating-ulmk-into-an-external-toolchain)
+for the full recipe, and `tests/sdk_e2e/` for a working consumer.
+
 ### Build options reference
 
 ```bash
