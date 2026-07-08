@@ -39,6 +39,15 @@
 #define UL_IRQ_TEST_PLIC_PEND	(ULMK_ARCH_PLIC_PENDING_BASE + \
 				 ((UL_IRQ_TEST_PLIC_IRQ / 32u) * 4u))
 #endif
+#elif defined(__ARM_ARCH)
+/*
+ * Cortex-M: bind the SRPN to a free NVIC line and pend it in software via the
+ * STIR register (0xE000EF00, in the always-mapped PPB).  CCR.USERSETMPEND is
+ * set by the arch init so a driver-privilege thread may write STIR directly.
+ */
+#define UL_IRQ_TEST_NVIC_LINE	3u
+#define UL_IRQ_TEST_SRC		ULMK_ARCH_NVIC_SRC(UL_IRQ_TEST_NVIC_LINE)
+#define ARM_NVIC_STIR		0xE000EF00u
 #else
 #define UL_IRQ_TEST_SRC		(ULMK_BOARD_SRC_BASE + 0xC2u * 4u)
 #endif
@@ -168,6 +177,8 @@ static void irq_sw_trigger(void)
 	*(volatile uint32_t *)(uintptr_t)UL_IRQ_TEST_PLIC_PEND =
 		1u << (UL_IRQ_TEST_PLIC_IRQ & 31u);
 #endif
+#elif defined(__ARM_ARCH)
+	*(volatile uint32_t *)(uintptr_t)ARM_NVIC_STIR = UL_IRQ_TEST_NVIC_LINE;
 #else
 	volatile uint32_t *src = (volatile uint32_t *)(uintptr_t)UL_IRQ_TEST_SRC;
 
@@ -182,7 +193,7 @@ static void trigger_entry(void *arg)
 
 	(void)arg;
 
-#if !defined(__riscv)
+#if !defined(__riscv) && !defined(__ARM_ARCH)
 	if (ulmk_mem_map((void *)TC27X_SRC_BASE, TC27X_SRC_SIZE,
 		       ULMK_PERM_READ | ULMK_PERM_WRITE, ULMK_MMAP_PERIPH)
 	    != (void *)TC27X_SRC_BASE) {

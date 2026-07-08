@@ -53,7 +53,7 @@ done
 # The kernel repo root is this script's parent directory.
 WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
 
-export PATH="/opt/qemu-tricore/bin:/opt/tricore-gcc-bin:/opt/riscv-gcc-bin:${PATH}"
+export PATH="/opt/qemu-tricore/bin:/opt/tricore-gcc-bin:/opt/riscv-gcc-bin:/opt/arm-gcc-bin:${PATH}"
 
 TAG="${ARCH}_${BOARD_NAME}_gcc"
 KERNEL_A="ulmk_kernel_${TAG}.a"

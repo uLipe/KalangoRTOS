@@ -26,8 +26,24 @@ MACHINE   := virt
 QEMU_EXTRA := -bios none -m 16M
 BOARD     := boards/qemu_riscv_virt
 ARCH_FLAGS := -march=rv32imac_zicsr_zifencei -mabi=ilp32
+else ifeq ($(ARCH),arm)
+# Cortex-M: default to the ARMv7-M board (mps2-an500); override with
+#   make ARCH=arm ARM_BOARD=qemu_mps2_an505 ...
+ARM_BOARD ?= qemu_mps2_an500
+CC        := arm-none-eabi-gcc
+QEMU      := qemu-system-arm
+BOARD     := boards/$(ARM_BOARD)
+ifeq ($(ARM_BOARD),qemu_mps2_an505)
+MACHINE    := mps2-an505
+ARCH_FLAGS := -mthumb -mcpu=cortex-m33 -mfloat-abi=softfp -mfpu=fpv5-sp-d16
 else
-$(error unsupported ARCH '$(ARCH)' — use tricore or riscv)
+MACHINE    := mps2-an500
+ARCH_FLAGS := -mthumb -mcpu=cortex-m7 -mfloat-abi=softfp -mfpu=fpv5-sp-d16
+endif
+# -semihosting lets ulmk_sim_exit() (SYS_EXIT) stop the machine with a status.
+QEMU_EXTRA := -semihosting
+else
+$(error unsupported ARCH '$(ARCH)' — use tricore, riscv or arm)
 endif
 
 BOARD_NAME := $(notdir $(BOARD))

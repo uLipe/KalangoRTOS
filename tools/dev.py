@@ -62,6 +62,11 @@ ARCH_TRICORE_ONLY_TESTS = frozenset({"ctx_early_tricore"})
 
 QEMU_TRICORE = "/opt/qemu-tricore/bin/qemu-system-tricore"
 QEMU_RISCV   = "qemu-system-riscv32"
+QEMU_ARM     = "qemu-system-arm"
+
+# PATH prefix inside the container: all cross toolchains + QEMU forks.
+CONTAINER_PATH = ('export PATH="/opt/qemu-tricore/bin:/opt/tricore-gcc-bin:'
+                  '/opt/riscv-gcc-bin:/opt/arm-gcc-bin:${PATH}"')
 
 
 # ---------------------------------------------------------------------------
@@ -334,9 +339,17 @@ def _toolchain_for_arch(arch: str) -> str:
     return f"/workspace/cmake/toolchain-{arch}-gcc.cmake"
 
 
+def _build_subdir(arch: str, board_name: str) -> str:
+    """Per-board build dir so distinct boards of one arch never share objects
+    (e.g. the two ARM Cortex-M boards mps2-an500 / mps2-an505)."""
+    return f"ulipe-{arch}-{board_name}"
+
+
 def _qemu_binary(arch: str) -> str:
     if arch == "riscv":
         return QEMU_RISCV
+    if arch == "arm":
+        return QEMU_ARM
     return QEMU_TRICORE
 
 
@@ -360,16 +373,14 @@ def _resolve_board_path(board_arg: str | None) -> tuple[Path, str, list[str]]:
 
 def _build_shell(board_container: str, board: dict,
                  clean: bool, run_qemu: bool,
-                 component_flags: list[str]) -> str:
+                 component_flags: list[str], build_subdir: str) -> str:
     arch = _board_arch(board)
     toolchain = _toolchain_for_arch(arch)
-    build_subdir = f"ulipe-{arch}"
     qemu = _qemu_binary(arch)
 
     lines: list[str] = [
         "set -e",
-        f'export PATH="/opt/qemu-tricore/bin:/opt/tricore-gcc-bin:'
-        f'/opt/riscv-gcc-bin:${{PATH}}"',
+        CONTAINER_PATH,
         "",
     ]
 
@@ -436,8 +447,7 @@ def _qemu_only_shell(board: dict, build_subdir: str) -> str:
 
     return "\n".join([
         "set -e",
-        f'export PATH="/opt/qemu-tricore/bin:/opt/tricore-gcc-bin:'
-        f'/opt/riscv-gcc-bin:${{PATH}}"',
+        CONTAINER_PATH,
         f"test -f /build/{build_subdir}/ulmk",
         "echo '--- running in QEMU (Ctrl-C to stop) ---'",
         f"{qemu} -machine {machine} {extra_args} \\",
@@ -511,7 +521,7 @@ def _run_build(args: argparse.Namespace) -> None:
     board_host, board_container, extra_mounts = _resolve_board_path(args.board)
     board = _parse_board_cmake(board_host)
     arch = _board_arch(board)
-    build_subdir = f"ulipe-{arch}"
+    build_subdir = _build_subdir(arch, board_host.name)
 
     qemu_machine = board.get("UL_BOARD_QEMU_MACHINE", "")
     if isinstance(qemu_machine, list):
@@ -535,7 +545,8 @@ def _run_build(args: argparse.Namespace) -> None:
         shell_cmd = _qemu_only_shell(board, build_subdir)
     else:
         shell_cmd = _build_shell(
-            board_container, board, args.clean, run_qemu, component_flags)
+            board_container, board, args.clean, run_qemu, component_flags,
+            build_subdir)
 
     cmd = [
         "docker", "run", "--rm",
@@ -591,28 +602,28 @@ def _discover_tests(kind: str) -> list[str]:
     return result
 
 
-def _run_one_shell(kind: str, name: str, arch: str) -> str:
+def _run_one_shell(kind: str, name: str, arch: str, make_extra: str = "") -> str:
+    # make_extra carries per-board make variables (e.g. ARM_BOARD=<name>) so a
+    # single arch that ships multiple QEMU boards selects the right one.
+    ext = f" {make_extra}" if make_extra else ""
     steps = [
-        f"echo '=== {name} (ARCH={arch}) ==='",
+        f"echo '=== {name} (ARCH={arch}{ext}) ==='",
         f"cd /workspace/tests/{name}",
         "make clean -s 2>/dev/null || true",
     ]
     if kind == "e2e":
         # e2e suites self-contain their build (they consume the shipped SDK,
         # not the kernel sources); the 'run' target builds everything it needs.
-        steps.insert(
-            0,
-            'export PATH="/opt/qemu-tricore/bin:/opt/tricore-gcc-bin:'
-            '/opt/riscv-gcc-bin:${PATH}"',
-        )
-        steps.append(f"timeout --kill-after=5 {TEST_TIMEOUT} make run ARCH={arch}")
+        steps.insert(0, CONTAINER_PATH)
+        steps.append(
+            f"timeout --kill-after=5 {TEST_TIMEOUT} make run ARCH={arch}{ext}")
         return " && ".join(steps)
     if kind == "integ":
-        steps.append("make gen_config -s")
+        steps.append(f"make gen_config -s ARCH={arch}{ext}")
     steps.append("rm -rf integ_kernel libtest_kernel.a 2>/dev/null || true")
     steps += [
-        f"make -s ARCH={arch}",
-        f"timeout --kill-after=5 {TEST_TIMEOUT} make run ARCH={arch}",
+        f"make -s ARCH={arch}{ext}",
+        f"timeout --kill-after=5 {TEST_TIMEOUT} make run ARCH={arch}{ext}",
     ]
     return " && ".join(steps)
 
@@ -623,10 +634,11 @@ def _filter_integ_tests(tests: list[str], arch: str) -> list[str]:
     return [t for t in tests if t not in ARCH_TRICORE_ONLY_TESTS]
 
 
-def _run_all_shell(kind: str, tests: list[str], arch: str) -> str:
+def _run_all_shell(kind: str, tests: list[str], arch: str,
+                   make_extra: str = "") -> str:
     lines = ["FAILED=''"]
     for name in tests:
-        snippet = _run_one_shell(kind, name, arch)
+        snippet = _run_one_shell(kind, name, arch, make_extra)
         lines.append(
             f"if ( {snippet} ); then :; "
             f"else FAILED=\"$FAILED {name}\"; fi"
@@ -650,6 +662,10 @@ def _run_tests(args: argparse.Namespace) -> None:
     board_host, _, _ = _resolve_board_path(getattr(args, "board", None))
     arch = _board_arch(_parse_board_cmake(board_host))
 
+    # ARM ships two QEMU boards (mps2-an500 / mps2-an505) under one arch; the
+    # test Makefiles pick the board via ARM_BOARD, so forward the selected one.
+    make_extra = f"ARM_BOARD={board_host.name}" if arch == "arm" else ""
+
     if args.list:
         tests = _discover_tests(kind)
         if kind == "integ":
@@ -669,7 +685,7 @@ def _run_tests(args: argparse.Namespace) -> None:
                 f"Available: {', '.join(available)}"
             )
         print(f"Running {kind} test: {test_name} (ARCH={arch})")
-        shell_cmd = _run_one_shell(kind, test_name, arch)
+        shell_cmd = _run_one_shell(kind, test_name, arch, make_extra)
         cmd = _base_docker_cmd(interactive=False)
         cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
         os.execvp("docker", cmd)
@@ -680,7 +696,7 @@ def _run_tests(args: argparse.Namespace) -> None:
         if not tests:
             sys.exit(f"No {kind} tests found under {TESTS_DIR}")
         print(f"Running {len(tests)} {kind} test(s) [ARCH={arch}]: {', '.join(tests)}")
-        shell_cmd = _run_all_shell(kind, tests, arch)
+        shell_cmd = _run_all_shell(kind, tests, arch, make_extra)
         cmd = _base_docker_cmd(interactive=False)
         cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
         os.execvp("docker", cmd)
@@ -706,6 +722,8 @@ examples:
   python3 tools/dev.py build qemu
   python3 tools/dev.py build --board boards/qemu_riscv_virt
   python3 tools/dev.py build qemu --board boards/qemu_riscv_virt
+  python3 tools/dev.py build qemu --board boards/qemu_mps2_an500
+  python3 tools/dev.py build qemu --board boards/qemu_mps2_an505
   python3 tools/dev.py build --kernel --board boards/qemu_tc3xx
   python3 tools/dev.py build --kernel --board /path/to/external_board
   python3 tools/dev.py tests unit
@@ -740,8 +758,9 @@ examples:
             "Compile the kernel with CMake/Ninja.\n\n"
             "  build           configure + compile the demo ELF\n"
             "  build qemu      compile (if needed) then launch QEMU\n"
-            "                  uses /opt/qemu-tricore/bin on TriCore and\n"
-            "                  qemu-system-riscv32 on RISC-V\n"
+            "                  uses /opt/qemu-tricore/bin on TriCore,\n"
+            "                  qemu-system-riscv32 on RISC-V and\n"
+            "                  qemu-system-arm on ARM Cortex-M\n"
             "  build --kernel --board PATH\n"
             "                  emit a distributable SDK for external toolchains:\n"
             "                    ulmk/lib/ulmk_kernel_<arch>_<board>_gcc.a\n"
