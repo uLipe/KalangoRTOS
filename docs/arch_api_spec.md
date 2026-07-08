@@ -26,6 +26,8 @@
 11. [Character Output Primitive](#11-character-output-primitive)
 12. [Kernel Callbacks (arch → kernel)](#12-kernel-callbacks-arch--kernel)
 13. [TriCore TC2xx Reference Implementation Notes](#13-tricore-tc2xx-reference-implementation-notes)
+14. [RISC-V RV32 Reference Implementation Notes](#14-risc-v-rv32-reference-implementation-notes)
+15. [ARM Cortex-M Reference Implementation Notes](#15-arm-cortex-m-reference-implementation-notes)
 
 ---
 
@@ -701,3 +703,75 @@ RISC-V saves a 128-byte trap frame on the thread stack.  ISR preemption uses
 `mret`.  TriCore arms `g_preempt_*` via `ULMK_SCHED_SWITCH_PREEMPT_ISR`.
 
 See `docs/arch/riscv_implementation.md` for the full RISC-V porting guide.
+
+---
+
+## 15. ARM Cortex-M Reference Implementation Notes
+
+This section documents implementation decisions specific to the ARM Cortex-M port
+(`arch/arm/`).  It covers **ARMv7-M** (Cortex-M4F/M7) and **ARMv8-M mainline**
+(Cortex-M33).  It is **not** part of the generic contract.
+
+### Files
+
+| File | Implements |
+|------|-----------|
+| `arch.c` | CPU idle (WFI), SVC/SysTick/IRQ/fault C dispatch, atomics, boot bring-up |
+| `ctx_switch.S` | Synchronous coroutine switch by swapping MSP (no PendSV) |
+| `trap.S` | SVC/exception assembly entry, first-thread launch |
+| `startup.S` | `_start` — MSP reload, VTOR, FPU enable, jumps to `ulmk_kern_start` |
+| `vectors.S` | Kernel vector table (`_ulmk_vector_table`) |
+| `mpu_v7m.c` | PMSAv7 MPU (`RBAR`/`RASR`) — compiled when `!ULMK_ARCH_ARMV8M` |
+| `mpu_v8m.c` | PMSAv8 MPU (`RBAR`/`RLAR` + `MAIR`) — compiled when `ULMK_ARCH_ARMV8M` |
+| `irq.c` | NVIC glue for `ulmk_arch_irq_src_*` |
+
+The two MPU backends are both listed in the build; each is `#if`-guarded on
+`ULMK_ARCH_ARMV8M` so only the one matching the target contributes code.  v7-M
+vs v8-M differences elsewhere use the same compile-time switch.
+
+### Context switch model (no PendSV)
+
+Cortex-M exceptions always run on **MSP**, so the port gives every thread a
+private **kernel stack** and performs a **synchronous coroutine switch** by
+saving/restoring MSP (and callee-saved + optional FP regs) in
+`ulmk_arch_ctx_switch` (`ctx_switch.S`).  PendSV is **never** used — this keeps
+the switch deterministic and identical to the cooperative model of the other
+ports.  The very first thread is launched from Handler mode via
+`SVC #ULMK_ARCH_SVC_LAUNCH` (`g_arm_first_launch` carries its context).
+
+### Privilege and syscalls
+
+- Kernel runs **privileged (Handler/Thread on MSP)**; user threads run
+  **unprivileged Thread mode** (`CONTROL.nPRIV=1`).  Both `ULMK_PRIV_USER` and
+  `ULMK_PRIV_DRIVER` map to unprivileged mode; peripheral reach for drivers is
+  granted through the MPU (and, on v8-M boards behind a PPC, `ulmk_board_init`).
+- Syscalls use the **`SVC`** instruction; the SVC C dispatcher decodes the
+  immediate and routes to `syscall_router` (numbers in `include/ulmk/syscall_nr.h`,
+  ABI in `arch/arm/include/ulmk_syscall_abi.h`).
+- IRQ masking uses **`PRIMASK`** (`cpsid i` / `cpsie i`).
+
+### FPU
+
+The FPU is **enabled at startup** (CPACR CP10/CP11) when
+`ULMK_ARCH_HAVE_FPU` is set — **default on**, disable via the `arch_config`
+symbol as on RISC-V.  Lazy FP stacking is disabled; FP callee-saved registers
+are saved/restored explicitly by the context switch.
+
+### MPU layout
+
+Static regions cover kernel exec, kernel RAM, peripherals and the user
+image; `ulmk_arch_mpu_switch()` reprograms the per-thread data/exec regions.
+`boards/*/memory.ld` exports the `_ulmk_mem_*` bounds.  Region 0 is the
+kernel/background region with full access.
+
+### Boards and preemption
+
+QEMU boards: `boards/qemu_mps2_an500` (Cortex-M7, ARMv7-M) and
+`boards/qemu_mps2_an505` (Cortex-M33, ARMv8-M).  The AN505 boots **Secure** and
+its peripherals sit behind the IoTKit **PPC**; `boards/qemu_mps2_an505/board_init.c`
+grants unprivileged peripheral access at boot and is linked in *every* build
+(including tests that skip the board service threads).
+
+SysTick drives the scheduler tick.  ISR preemption uses
+`ulmk_sched_trap_dispatch(true)` → `ulmk_arch_sched_switch()`; the switch is the
+same synchronous MSP swap used cooperatively (no PendSV tail-chaining).

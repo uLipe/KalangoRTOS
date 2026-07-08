@@ -334,6 +334,8 @@ Boot sequence (inside the ELF):
 ```bash
 cmake -B build -DULMK_CHIP_DIR=boards/qemu_tc3xx          # TriCore QEMU (default)
 cmake -B build -DULMK_CHIP_DIR=boards/qemu_riscv_virt     # RISC-V QEMU virt
+cmake -B build -DULMK_CHIP_DIR=boards/qemu_mps2_an500     # ARMv7-M (Cortex-M7) QEMU
+cmake -B build -DULMK_CHIP_DIR=boards/qemu_mps2_an505     # ARMv8-M (Cortex-M33) QEMU
 cmake -B build -DULMK_CHIP_DIR=/path/to/my_board          # real hardware
 ```
 
@@ -344,6 +346,7 @@ cmake -B build -DULMK_CHIP_DIR=/path/to/my_board          # real hardware
 |-----------------|----------------|--------------|
 | `tricore` | `cmake/toolchain-tricore-gcc.cmake` | `arch/tricore/` |
 | `riscv` | `cmake/toolchain-riscv-gcc.cmake` | `arch/riscv/` |
+| `arm` | `cmake/toolchain-arm-gcc.cmake` | `arch/arm/` |
 
 `ULMK_CHIP_DIR` must point to a directory containing:
 
@@ -363,8 +366,8 @@ Full chip input contract: `docs/linker_spec.md §9`.
 Each board directory must contain a `board.cmake` with:
 
 ```cmake
-set(UL_BOARD_ARCH "tricore")   # or "riscv"
-set(ULMK_BOARD_CPU   "tc39xx")           # TriCore: passed to -mcpu=
+set(UL_BOARD_ARCH "tricore")   # or "riscv" / "arm"
+set(ULMK_BOARD_CPU   "tc39xx")           # passed to -mcpu= (e.g. cortex-m7, cortex-m33)
 set(ULMK_BOARD_SOURCES
     qemu_console.c
     board_console.c
@@ -382,7 +385,7 @@ in and validates required `ULMK_BOARD_*` symbols.  Optional `-D` overrides in
 
 | Symbol | Where | When called |
 |--------|-------|-------------|
-| `ulmk_board_init(void)` | `board_services.c` | From `startup.S` before `.data` copy |
+| `ulmk_board_init(void)` | `board_services.c` (or a dedicated `board_init.c`) | From `startup.S` before `.data` copy |
 | `ulmk_printk_char_out(char)` | `qemu_console.c` or equivalent | By kernel printk subsystem |
 | `board_services_init(const ulmk_boot_info_t *)` | `board_services.c` | From `ulmk_root_thread()` |
 
@@ -557,7 +560,9 @@ SDK consumer test share one implementation.  `tests/sdk_e2e/` is a standalone
 end-to-end test: it builds the SDK, then compiles a root thread that exercises
 every public syscall against the shipped artefacts only (no kernel sources), and
 checks a PASS/FAIL sentinel in QEMU.  Run it with `python3 tools/dev.py tests
-e2e` (add `--board boards/qemu_riscv_virt` for RV32).  Board bring-up must go
+e2e` (add `--board boards/qemu_riscv_virt` for RV32, or
+`--board boards/qemu_mps2_an500` / `boards/qemu_mps2_an505` for Cortex-M).
+Board bring-up must go
 through the portable `board_services_init(info)` entry point; `board_console_start()`
 is board-internal (a no-op stub on some boards) and must not be called directly.
 
