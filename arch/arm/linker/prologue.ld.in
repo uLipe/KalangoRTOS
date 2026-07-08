@@ -1,0 +1,14 @@
+/* linker/arm/prologue.ld.in — Layer 2 ARM Cortex-M */
+
+OUTPUT_FORMAT("elf32-littlearm")
+OUTPUT_ARCH(arm)
+ENTRY(_start)
+
+/*
+ * Force the reset entry (_start) and the vector table to be pulled from the
+ * archive even though nothing references them by symbol.  Harmless when the
+ * objects are direct inputs; required when they live inside a distributed
+ * static library (SDK mode).
+ */
+EXTERN(_start)
+EXTERN(_ulmk_vector_table)

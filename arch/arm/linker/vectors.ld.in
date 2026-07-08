@@ -1,0 +1,10 @@
+/* linker/arm/vectors.ld.in — Cortex-M vector table + reset entry */
+
+    .isr_vector : ALIGN(512) {
+        _ulmk_kernel_exec_start = .;
+        KEEP(*(.isr_vector))
+    } > KERNEL_FLASH
+
+    .startup : ALIGN(4) {
+        KEEP(*(.text._start))
+    } > KERNEL_FLASH
