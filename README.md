@@ -1,10 +1,12 @@
 # ulmk
 
 A small, seL4-inspired microkernel for automotive-grade embedded systems.
-Primary targets: **AURIX TriCore TC2xx/TC3xx** (QEMU CI) and **RISC-V RV32IMAC**
-(QEMU `virt` CI).  Isolation is enforced by the hardware MPU/PMP at thread
-granularity; policy lives entirely in userspace.  Single ELF output, O(1) bitmap
-scheduler, synchronous IPC with priority inheritance.
+Primary targets: **AURIX TriCore TC2xx/TC3xx** (QEMU CI), **RISC-V RV32IMAC**
+(QEMU `virt` CI), and **ARM Cortex-M** — **ARMv7-M** (Cortex-M7, `mps2-an500`)
+and **ARMv8-M** (Cortex-M33, `mps2-an505`) on QEMU CI.  Isolation is enforced
+by the hardware MPU/PMP at thread granularity; policy lives entirely in
+userspace.  Single ELF output, O(1) bitmap scheduler, synchronous IPC with
+priority inheritance.
 
 ---
 
@@ -35,6 +37,47 @@ Key properties:
   **OFF**; enable them with `python3 tools/dev.py components enable`.
 - **No weak symbols.**  Board and component sources provide strong definitions.
   A missing symbol is a link error, not a silent no-op.
+
+### Microkernel philosophy
+
+ulmk follows the classic microkernel split: the **kernel is mechanism**, userspace
+is **policy**.  Threads never call each other directly — they exchange messages
+through kernel-managed IPC endpoints and notifications.  Every privileged
+operation (create a thread, map memory, bind an IRQ) crosses a single **syscall
+gateway**; the kernel validates the request, enforces MPU boundaries, and
+returns.  Driver logic, service topology, and startup order all live in
+userspace (`ulmk_root_thread`, board services, components).
+
+```mermaid
+flowchart TB
+    subgraph userspace["Userspace — policy"]
+        direction LR
+        A["App thread<br/>(ULMK_PRIV_USER)"]
+        D["Driver / server<br/>(ULMK_PRIV_DRIVER)"]
+        S["Another service"]
+    end
+
+    subgraph kernel["ulmk microkernel — mechanism"]
+        direction TB
+        GW["Syscall gateway<br/>(trap / SVC / ecall)"]
+        IPC["IPC endpoints &amp; notifications"]
+        SCH["Scheduler"]
+        MPU["MPU / PMP isolation"]
+    end
+
+    A -->|"ulmk_ep_send / reply"| GW
+    D -->|"ulmk_thread_* / ulmk_mem_*"| GW
+    S -->|"ulmk_notif_* / ulmk_irq_*"| GW
+    GW --> IPC
+    GW --> SCH
+    GW --> MPU
+    A <-->|"sync IPC"| D
+    D <-->|"sync IPC"| S
+```
+
+The diagram is schematic: all cross-boundary traffic funnels through the kernel.
+Applications hold only the capabilities they were granted; the MPU keeps each
+thread inside its own data domain even though everything links into one ELF.
 
 ---
 
@@ -91,6 +134,12 @@ python3 tools/dev.py build --board boards/qemu_riscv_virt
 # TriCore QEMU (default board)
 python3 tools/dev.py build
 
+# ARM Cortex-M7 (ARMv7-M)
+python3 tools/dev.py build --board boards/qemu_mps2_an500
+
+# ARM Cortex-M33 (ARMv8-M)
+python3 tools/dev.py build --board boards/qemu_mps2_an505
+
 # Clean rebuild
 python3 tools/dev.py build --clean
 
@@ -108,6 +157,8 @@ Local component selection is stored in `.ulmk/components.conf` (gitignored).
 ```bash
 python3 tools/dev.py build qemu --board boards/qemu_riscv_virt
 python3 tools/dev.py build qemu
+python3 tools/dev.py build qemu --board boards/qemu_mps2_an500
+python3 tools/dev.py build qemu --board boards/qemu_mps2_an505
 ```
 
 Expected output (with demo components enabled):
@@ -160,6 +211,8 @@ CMake configure variables of interest:
 ```bash
 -DULMK_CHIP_DIR=boards/qemu_tc3xx           # TriCore QEMU (default)
 -DULMK_CHIP_DIR=boards/qemu_riscv_virt      # RISC-V QEMU virt
+-DULMK_CHIP_DIR=boards/qemu_mps2_an500      # ARMv7-M Cortex-M7 QEMU
+-DULMK_CHIP_DIR=boards/qemu_mps2_an505      # ARMv8-M Cortex-M33 QEMU
 -DULMK_COMP_hello_world_ENABLED=ON          # component override (dev.py sets these)
 -DULMK_CONFIG_MAX_IRQ_BINDINGS=16          # SRPN → notif binding table
 -DULMK_CONFIG_DEBUG_PRINTK=1               # kernel debug prints
@@ -176,10 +229,16 @@ python3 tools/dev.py tests integ
 
 # Integration tests — RISC-V
 python3 tools/dev.py tests integ --board boards/qemu_riscv_virt
+
+# Integration tests — ARM Cortex-M
+python3 tools/dev.py tests integ --board boards/qemu_mps2_an500
+python3 tools/dev.py tests integ --board boards/qemu_mps2_an505
 ```
 
-Individual integration tests also support `ARCH=tricore` or `ARCH=riscv` via
-`tests/integ_common.mk` (see any `tests/*/Makefile`).
+Individual integration tests also support `ARCH=tricore`, `ARCH=riscv`, or
+`ARCH=arm` via `tests/integ_common.mk` (see any `tests/*/Makefile`).  For ARM,
+pass `ARM_BOARD=qemu_mps2_an500` or `ARM_BOARD=qemu_mps2_an505` when invoking
+`make` directly.
 
 ---
 
@@ -191,6 +250,7 @@ cmake/
   arch.cmake                   ULMK_ARCH selection from board.cmake
   toolchain-tricore-gcc.cmake
   toolchain-riscv-gcc.cmake
+  toolchain-arm-gcc.cmake
   component_api.cmake          ulmk_component_register, ulmk_components_finalize
   config.cmake                 kernel configuration symbols
   linker_api.cmake             ulmk_generate_linker_script
@@ -198,8 +258,11 @@ cmake/
 kernel/                      platform-independent kernel
 arch/tricore/                TriCore TC1.6.x port
 arch/riscv/                  RISC-V RV32 port
+arch/arm/                    ARM Cortex-M port (ARMv7-M / ARMv8-M)
 boards/qemu_tc3xx/           TriCore QEMU CI board
 boards/qemu_riscv_virt/      RISC-V QEMU virt CI board
+boards/qemu_mps2_an500/      ARMv7-M Cortex-M7 QEMU CI board
+boards/qemu_mps2_an505/      ARMv8-M Cortex-M33 QEMU CI board
 components/hello_world/      reference ROOT_THREAD component (default OFF)
 components/ping_pong/        IPC ping/pong demo (default OFF)
 include/ulmk/microkernel.h     public API (all syscall wrappers)
