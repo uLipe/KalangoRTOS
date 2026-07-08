@@ -19,6 +19,18 @@
 #include <kernel/include/list.h>
 
 /*
+ * Ports that run exceptions on a private per-thread kernel stack carved from
+ * the top of the thread stack (ARM Cortex-M) must reserve that carve on top of
+ * the caller's requested user stack, or a small stack_size underflows into
+ * adjacent memory on the first exception.  Zero on ports with a shared kernel
+ * stack (TriCore CSA, RISC-V).  Static callers (idle/root) already fold this
+ * reserve into their statically-sized stacks; only the dynamic allocator adds it.
+ */
+#ifndef ULMK_ARCH_KSTACK_SIZE
+#define ULMK_ARCH_KSTACK_SIZE	0u
+#endif
+
+/*
  * Thread registry: all allocated TCBs (static + dynamic).
  * ulmk_tid_t is an opaque handle (TCB pointer); lookup is O(1) via cast.
  */
@@ -218,19 +230,27 @@ uint32_t ulmk_kern_exit(void)
  */
 uint32_t ulmk_kern_thread_spawn(uint32_t attr_ptr)
 {
-	const ulmk_thread_attr_t *attr =
+	const ulmk_thread_attr_t *uattr =
 		(const ulmk_thread_attr_t *)(uintptr_t)attr_ptr;
+	ulmk_thread_attr_t attr;
 	ulmk_thread_t *th;
 	void          *slab;
 	size_t         slab_size;
 	size_t         heap_size;
 	int            ret;
 
-	if (!attr || !attr->entry || attr->stack_size == 0)
+	if (!uattr || !uattr->entry || uattr->stack_size == 0)
 		return (uint32_t)(int32_t)ULMK_EINVAL;
 
-	heap_size = attr->heap_size;
-	slab_size = attr->stack_size + heap_size;
+	/*
+	 * Grow the requested stack by the arch kernel-stack reserve so the full
+	 * user stack survives the per-thread carve (see ULMK_ARCH_KSTACK_SIZE).
+	 */
+	attr = *uattr;
+	attr.stack_size += ULMK_ARCH_KSTACK_SIZE;
+
+	heap_size = attr.heap_size;
+	slab_size = attr.stack_size + heap_size;
 
 	th = (ulmk_thread_t *)ulmk_heap_alloc(sizeof(ulmk_thread_t));
 	if (!th)
@@ -242,7 +262,7 @@ uint32_t ulmk_kern_thread_spawn(uint32_t attr_ptr)
 		return (uint32_t)(int32_t)ULMK_ENOMEM;
 	}
 
-	ret = ulmk_thread_init(th, attr, slab);
+	ret = ulmk_thread_init(th, &attr, slab);
 	if (ret != ULMK_OK) {
 		ulmk_heap_free(slab);
 		ulmk_heap_free(th);
@@ -251,7 +271,7 @@ uint32_t ulmk_kern_thread_spawn(uint32_t attr_ptr)
 
 	th->slab_base = slab;
 	th->slab_size = slab_size;
-	th->heap_base = (uintptr_t)slab + attr->stack_size;
+	th->heap_base = (uintptr_t)slab + attr.stack_size;
 	th->heap_size = heap_size;
 
 	/*
@@ -259,7 +279,7 @@ uint32_t ulmk_kern_thread_spawn(uint32_t attr_ptr)
 	 * when the thread has a heap.  ulmk_thread_init already set
 	 * regions[0] to cover just the stack.
 	 */
-	if (heap_size > 0u && attr->privilege != ULMK_PRIV_KERNEL) {
+	if (heap_size > 0u && attr.privilege != ULMK_PRIV_KERNEL) {
 		th->regions[0].base = (uintptr_t)slab;
 		th->regions[0].size = slab_size;
 	}

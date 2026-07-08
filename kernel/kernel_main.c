@@ -86,8 +86,21 @@ static void idle_thread_entry(void *arg)
  * Static thread storage
  * ========================================================================= */
 
+/*
+ * Idle only loops on ulmk_arch_cpu_idle(), so its user stack need is trivial,
+ * but on ports that carve a private per-thread kernel stack from the top of the
+ * thread stack (ARM Cortex-M), the slab must also cover that carve or the very
+ * first exception taken while idle runs underflows below the stack.  Size the
+ * slab as a small user portion plus the arch kernel-stack reserve (0 on ports
+ * that do not carve, e.g. TriCore CSA / RISC-V single-stack).
+ */
+#ifndef ULMK_ARCH_KSTACK_SIZE
+#define ULMK_ARCH_KSTACK_SIZE	0u
+#endif
+#define ULMK_IDLE_STACK_SIZE	(256u + ULMK_ARCH_KSTACK_SIZE)
+
 static ulmk_thread_t idle_thread_g   UL_KERNEL_BSS;
-static uint8_t     idle_stack_g[256]
+static uint8_t     idle_stack_g[ULMK_IDLE_STACK_SIZE]
 	__attribute__((aligned(8))) UL_KERNEL_BSS;
 
 static ulmk_thread_t root_thread_g   UL_KERNEL_BSS;
