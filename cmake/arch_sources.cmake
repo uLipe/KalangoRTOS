@@ -18,6 +18,17 @@ elseif(ULMK_ARCH STREQUAL "riscv")
 		${ULMK_ARCH_DIR}/trap.S)
 	set(ULMK_ARCH_EXE_SOURCES
 		${ULMK_ARCH_DIR}/startup.S)
+elseif(ULMK_ARCH STREQUAL "arm")
+	set(ULMK_ARCH_KERNEL_SOURCES
+		${ULMK_ARCH_DIR}/arch.c
+		${ULMK_ARCH_DIR}/irq.c
+		${ULMK_ARCH_DIR}/mpu_v7m.c
+		${ULMK_ARCH_DIR}/mpu_v8m.c
+		${ULMK_ARCH_DIR}/ctx_switch.S
+		${ULMK_ARCH_DIR}/trap.S)
+	set(ULMK_ARCH_EXE_SOURCES
+		${ULMK_ARCH_DIR}/startup.S
+		${ULMK_ARCH_DIR}/vectors.S)
 else()
 	message(FATAL_ERROR "Unsupported ULMK_ARCH=${ULMK_ARCH}")
 endif()
