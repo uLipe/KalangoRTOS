@@ -1,9 +1,10 @@
 # =============================================================================
-# ulmk — multi-arch development environment (TriCore + RISC-V)
+# ulmk — multi-arch development environment (TriCore + RISC-V + ARM Cortex-M)
 #
 # Two stages:
-#   toolchain  — tricore-elf-gcc + riscv-none-elf-gcc + CMake + Ninja
-#   dev        — QEMU TriCore (linumiz) + QEMU RISC-V (upstream apt)
+#   toolchain  — tricore-elf-gcc + riscv-none-elf-gcc + arm-none-eabi-gcc
+#                + CMake + Ninja
+#   dev        — QEMU TriCore (linumiz) + QEMU RISC-V + QEMU ARM (upstream apt)
 #
 # Build manually:
 #   docker build --target dev -t ulipe-microkernel:dev tools/docker/
@@ -71,6 +72,23 @@ RUN set -e && \
 ENV PATH="/opt/riscv-gcc-bin:${PATH}"
 RUN riscv-none-elf-gcc --version
 
+# xPack Arm embedded GCC (arm-none-eabi) — ARMv7-M / ARMv8-M Cortex-M port
+ARG ARM_XPACK_VERSION=14.2.1-1.1
+ARG ARM_XPACK_ARCHIVE=xpack-arm-none-eabi-gcc-${ARM_XPACK_VERSION}-linux-x64.tar.gz
+
+RUN set -e && \
+    URL="https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v${ARM_XPACK_VERSION}/${ARM_XPACK_ARCHIVE}" && \
+    wget -q "${URL}" -O /tmp/arm-gcc.tar.gz && \
+    tar -xf /tmp/arm-gcc.tar.gz -C /opt && \
+    rm /tmp/arm-gcc.tar.gz && \
+    GCC_BIN=$(find /opt -name "arm-none-eabi-gcc" -type f | head -1) && \
+    GCC_BINDIR=$(dirname "${GCC_BIN}") && \
+    ln -sfn "${GCC_BINDIR}" /opt/arm-gcc-bin && \
+    echo "ARM GCC: $("${GCC_BIN}" --version | head -1)"
+
+ENV PATH="/opt/arm-gcc-bin:${PATH}"
+RUN arm-none-eabi-gcc --version
+
 WORKDIR /workspace
 
 # -----------------------------------------------------------------------------
@@ -91,6 +109,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         qemu-system-misc \
+        qemu-system-arm \
         libglib2.0-dev \
         libfdt-dev \
         libpixman-1-dev \
@@ -127,6 +146,7 @@ RUN set -e && \
 ENV PATH="/opt/qemu-tricore/bin:${PATH}"
 RUN qemu-system-tricore --version
 RUN qemu-system-riscv32 --version
+RUN qemu-system-arm --version
 
 RUN tricore-elf-gdb --version && echo "GDB OK"
 
