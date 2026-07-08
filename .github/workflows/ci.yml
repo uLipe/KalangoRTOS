@@ -200,3 +200,69 @@ jobs:
 
       - name: Run integration tests
         run: python3 tools/dev.py tests integ --board boards/qemu_riscv_virt
+
+  # ── ARM Cortex-M: build (mps2-an500 M7 + mps2-an505 M33) ──────────────────
+  build-arm:
+    name: Build kernel (ARM ${{ matrix.board }})
+    needs: docker-image
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [qemu_mps2_an500, qemu_mps2_an505]
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: |
+          IMG="${{ needs.docker-image.outputs.image }}:sha-${{ github.sha }}"
+          docker pull "$IMG"
+          docker tag  "$IMG" ulipe-microkernel:dev
+
+      - name: Build kernel (${{ matrix.board }})
+        run: |
+          python3 tools/dev.py build --board boards/${{ matrix.board }} \
+            --component hello_world \
+            --component ping_pong
+
+  # ── ARM Cortex-M: integration tests ───────────────────────────────────────
+  integ-tests-arm:
+    name: Integration tests (ARM ${{ matrix.board }})
+    needs: docker-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [qemu_mps2_an500, qemu_mps2_an505]
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: |
+          IMG="${{ needs.docker-image.outputs.image }}:sha-${{ github.sha }}"
+          docker pull "$IMG"
+          docker tag  "$IMG" ulipe-microkernel:dev
+
+      - name: Run integration tests
+        run: python3 tools/dev.py tests integ --board boards/${{ matrix.board }}
