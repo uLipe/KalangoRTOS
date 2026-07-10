@@ -95,8 +95,11 @@ def main():
     # 4a. Vectors — arch-specific when present (RISC-V trap section)
     vectors_arch = os.path.join(args.arch_dir, "vectors.ld.in")
     vectors_kernel = os.path.join(args.kernel_dir, "vectors.ld.in")
+    vectors_tables = os.path.join(args.kernel_dir, "vectors_tables.ld.in")
     if os.path.exists(vectors_arch):
         out.append(read_fragment(vectors_arch))
+    elif flags["HAVE_BMHD"] and os.path.exists(vectors_tables):
+        out.append(read_fragment(vectors_tables))
     else:
         out.append(read_fragment(vectors_kernel))
 

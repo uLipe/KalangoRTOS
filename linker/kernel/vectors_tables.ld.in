@@ -1,0 +1,13 @@
+/* linker/kernel/vectors_tables.ld.in
+ * Trap and interrupt tables only — used when HAVE_BMHD=1 (.startup lives in bmhd.ld.in).
+ */
+
+    .trap_table : ALIGN(256) {
+        _ulmk_trap_table = .;
+        KEEP(*(.trap_table))
+    } > KERNEL_FLASH
+
+    .int_table : ALIGN(256) {
+        _ulmk_int_table = .;
+        KEEP(*(.int_table))
+    } > KERNEL_FLASH
