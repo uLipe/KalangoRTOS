@@ -48,10 +48,19 @@ if(NOT DEFINED ULMK_CHIP_DIR)
 endif()
 
 # Prefix board sources with the board directory path.
+# Absolute paths (e.g. iLLD under deps/) are kept as-is.
 set(_ULMK_BOARD_SRCS "")
 foreach(_src IN LISTS ULMK_BOARD_SOURCES)
-    list(APPEND _ULMK_BOARD_SRCS "${ULMK_CHIP_DIR}/${_src}")
+    if(IS_ABSOLUTE "${_src}")
+        list(APPEND _ULMK_BOARD_SRCS "${_src}")
+    else()
+        list(APPEND _ULMK_BOARD_SRCS "${ULMK_CHIP_DIR}/${_src}")
+    endif()
 endforeach()
+
+if(NOT DEFINED ULMK_BOARD_INCLUDES)
+    set(ULMK_BOARD_INCLUDES "")
+endif()
 
 # ---------------------------------------------------------------------------
 # Generated config headers — single generator shared with the test Makefiles.
@@ -175,7 +184,8 @@ if(ULMK_SDK)
         "${CMAKE_SOURCE_DIR}/include"
         "${ULMK_ARCH_DIR}/include"
         "${CMAKE_BINARY_DIR}/generated"
-        "${ULMK_CHIP_DIR}")
+        "${ULMK_CHIP_DIR}"
+        ${ULMK_BOARD_INCLUDES})
 
     target_compile_options(ulmk_board PRIVATE -fno-data-sections)
 
@@ -199,7 +209,8 @@ if(ULMK_SDK)
         "${CMAKE_SOURCE_DIR}/include"
         "${ULMK_ARCH_DIR}/include"
         "${CMAKE_BINARY_DIR}/generated"
-        "${ULMK_CHIP_DIR}")
+        "${ULMK_CHIP_DIR}"
+        ${ULMK_BOARD_INCLUDES})
 
     target_compile_options(ulmk PRIVATE -fno-data-sections)
 
@@ -232,7 +243,8 @@ else()
         "${CMAKE_SOURCE_DIR}"
         "${ULMK_ARCH_DIR}/include"
         "${CMAKE_BINARY_DIR}/generated"
-        "${ULMK_CHIP_DIR}")
+        "${ULMK_CHIP_DIR}"
+        ${ULMK_BOARD_INCLUDES})
 
     target_compile_options(ulmk PRIVATE -fno-data-sections)
 
