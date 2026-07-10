@@ -25,8 +25,11 @@
 #define UART_DATA		0u
 #define UART_STATE		1u	/* bit0 = TX buffer full */
 #define UART_CTRL		2u	/* bit0 = TX enable      */
+#define UART_BAUDDIV		4u	/* pclk / baud; QEMU requires >= 16 */
 #define UART_STATE_TXFULL	(1u << 0)
 #define UART_CTRL_TXEN		(1u << 0)
+/* 25 MHz APB → ~115200 baud (BOARD_CPU_HZ / 115200). */
+#define UART_BAUDDIV_115200	217u
 
 /* CMSDK APB timer register indices (32-bit words). */
 #define TMR_CTRL		0u	/* bit0 EN, bit3 IRQEN */
@@ -101,6 +104,7 @@ static void board_server(void *arg)
 	if (!g_uart || !g_tmr)
 		ulmk_thread_exit();
 
+	g_uart[UART_BAUDDIV] = UART_BAUDDIV_115200;
 	g_uart[UART_CTRL] = UART_CTRL_TXEN;
 
 	reply.label    = 0u;
