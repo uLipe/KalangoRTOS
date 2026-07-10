@@ -64,6 +64,25 @@
 #define ULMK_ARCH_MAX_REGIONS	12
 #define ULMK_ARCH_REGION_ALIGN	64
 
+/*
+ * Optional board ISA revision (1.6.1 = TC2xx, 1.6.2 = TC3xx).  Defaults to
+ * 1.6.1 when the board does not declare ULMK_BOARD_TRICORE_ISA_*.
+ */
+#ifndef ULMK_BOARD_TRICORE_ISA_MAJOR
+#define ULMK_BOARD_TRICORE_ISA_MAJOR	1
+#endif
+#ifndef ULMK_BOARD_TRICORE_ISA_MINOR
+#define ULMK_BOARD_TRICORE_ISA_MINOR	6
+#endif
+#ifndef ULMK_BOARD_TRICORE_ISA_PATCH
+#define ULMK_BOARD_TRICORE_ISA_PATCH	1
+#endif
+
+#define ULMK_ARCH_TRICORE_ISA_161	\
+	(ULMK_BOARD_TRICORE_ISA_PATCH == 1)
+#define ULMK_ARCH_TRICORE_ISA_162	\
+	(ULMK_BOARD_TRICORE_ISA_PATCH == 2)
+
 /* =========================================================================
  * PSW initial values (reference — ulmk_arch_ctx_init overrides at thread create)
  * ========================================================================= */
