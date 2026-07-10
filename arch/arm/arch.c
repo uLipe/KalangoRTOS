@@ -360,7 +360,12 @@ void _arm_fault_dispatch(uint32_t exc, uint32_t *frame, uint32_t exc_return)
 		 */
 		REG32(ULMK_ARCH_SCB_CFSR) = REG32(ULMK_ARCH_SCB_CFSR);
 		frame[0] = 0u;	/* r0 = entry = NULL */
-		frame[6] = (uint32_t)(uintptr_t)&ulmk_user_thread_entry;
+		/*
+		 * Stacked ReturnAddress must be halfword-aligned; Thumb mode is
+		 * carried by EPSR.T (already set in the stacked xPSR).  ELF
+		 * function symbols have bit0 set — clear it before EXC_RETURN.
+		 */
+		frame[6] = (uint32_t)(uintptr_t)&ulmk_user_thread_entry & ~1u;
 		return;
 	}
 

@@ -111,8 +111,9 @@ _arm_launch_fresh_handler:			/* r1 = to, Handler mode */
 	str	r3, [r2, #12]			/* r3  */
 	str	r3, [r2, #16]			/* r12 */
 	ldr	r3, =_arm_thread_exit_catch
-	str	r3, [r2, #20]			/* lr  */
+	str	r3, [r2, #20]			/* lr (keep Thumb bit for BX) */
 	ldr	r3, =ulmk_user_thread_entry
+	bic	r3, r3, #1			/* EXC_RETURN PC must be halfword-aligned */
 	str	r3, [r2, #24]			/* pc  */
 	ldr	r3, =0x01000000
 	str	r3, [r2, #28]			/* xpsr (Thumb bit) */
