@@ -29,9 +29,10 @@ typedef int32_t ulmk_notif_t;
 #define ULMK_ETIMEOUT	-7
 
 /* Capabilities */
-#define ULMK_CAP_SPAWN	(1u << 0)
-#define ULMK_CAP_IRQ	(1u << 1)
-#define ULMK_CAP_ALL	0xFFu
+#define ULMK_CAP_SPAWN		(1u << 0)
+#define ULMK_CAP_IRQ		(1u << 2)
+#define ULMK_CAP_MAP_PERIPH	(1u << 3)
+#define ULMK_CAP_ALL		0xFFu
 
 /* Memory permissions */
 #define ULMK_PERM_READ	(1u << 0)

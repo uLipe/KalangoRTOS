@@ -87,6 +87,13 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 	th->region_count      = 0u;
 
 	th->cap_flags = (attr->privilege == ULMK_PRIV_KERNEL) ? ULMK_CAP_ALL : 0u;
+	/*
+	 * Drivers need MMIO + IRQ to bring up board servers.  Granting only
+	 * after create races with the first schedule of a higher-priority
+	 * driver thread; seed the minimum set at create time.
+	 */
+	if (attr->privilege == ULMK_PRIV_DRIVER)
+		th->cap_flags |= (uint8_t)(ULMK_CAP_MAP_PERIPH | ULMK_CAP_IRQ);
 
 	/*
 	 * Every non-kernel thread gets its stack as a default R+W MPU region.

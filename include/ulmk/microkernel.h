@@ -564,6 +564,12 @@ static inline void *ulmk_mem_map(void *hint, size_t size,
 {
 	uint32_t r;
 	ULMK_SYSCALL_4(ULMK_SYS_MMAP, hint, size, perms, flags, r);
+	/*
+	 * Kernel errors are small negative ints (ULMK_E*).  Do not treat any
+	 * high-bit address as failure — MMIO maps often live above 0x80000000.
+	 */
+	if ((int32_t)r < 0 && (int32_t)r >= -16)
+		return NULL;
 	return (void *)(uintptr_t)r;
 }
 
