@@ -399,7 +399,7 @@ uint32_t ulmk_kern_thread_get_prio(uint32_t tid)
 {
 	ulmk_thread_t *th = ulmk_thread_by_tid((ulmk_tid_t)tid);
 
-	if (!th)
+	if (!th || th->state == UL_THREAD_STATE_DEAD)
 		return (uint32_t)(int32_t)ULMK_ESRCH;
 	return (uint32_t)th->priority;
 }

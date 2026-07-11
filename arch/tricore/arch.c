@@ -1032,7 +1032,8 @@ static void dump_u8(uint8_t v)
 	ulmk_printk_char_out((char)('0' + v % 10u));
 }
 
-static inline uint32_t *pcxi_to_csa(uint32_t pcxi)
+static inline __attribute__((always_inline))
+uint32_t *pcxi_to_csa(uint32_t pcxi)
 {
 	uint32_t link = pcxi & 0x000FFFFFu;	/* strip PCPN/PIE/UL */
 
@@ -1057,25 +1058,36 @@ static const char * const trap_class_names[] = {
 /*
  * PSW of the context that caused the trap — read from the hardware-saved
  * upper CSA, not the live CSFR (trap stubs may already have raised IO/PRS).
+ *
+ * CALL frames on the path to this helper keep PSW.IS=1.  Walk PCXI and pick
+ * the first CSA word1 that looks like a userspace task PSW (IS=0, IO!=sup,
+ * PRS=user).  Lower-context A11 values rarely match that pattern.
  */
-static uint32_t trap_interrupted_psw(void)
+static inline __attribute__((always_inline))
+uint32_t trap_interrupted_psw(void)
 {
 	uint32_t  pcxi;
 	uint32_t *uc;
-	uint32_t  link;
+	uint32_t  psw;
+	uint32_t  i;
+	uint32_t  is;
+	uint32_t  io;
+	uint32_t  prs;
 
 	__asm__ volatile("mfcr %0, 0xFE00" : "=d"(pcxi));
-	uc = pcxi_to_csa(pcxi);
 
-	/*
-	 * Trap stubs "call ulmk_arch_trap_entry", adding one upper CSA layer;
-	 * follow the link word to reach the hardware trap frame (UC0).
-	 */
-	link = uc[0];
-	if (link != 0u)
-		uc = pcxi_to_csa(link);
+	for (i = 0u; i < 8u && pcxi != 0u; i++) {
+		uc  = pcxi_to_csa(pcxi);
+		psw = uc[1];
+		is  = (psw >> 9) & 1u;
+		io  = (psw >> 10) & 3u;
+		prs = (psw >> 12) & 3u;
+		if (is == 0u && io < 2u && prs == (uint32_t)ULMK_ARCH_PRS_USER)
+			return psw;
+		pcxi = uc[0];
+	}
 
-	return uc[1];
+	return 0u;
 }
 
 /*
@@ -1100,7 +1112,9 @@ void ulmk_arch_trap_entry(uint8_t trap_class, uint8_t tin)
 
 	psw         = trap_interrupted_psw();
 	is          = (psw >>  9) & 1u;	/* PSW.IS[9]: 1 = on ISP (ISR)   */
-	from_kernel = (is != 0u);
+	/* IO[11:10] == 2 → supervisor; psw==0 → walk failed. */
+	from_kernel = (psw == 0u) || (is != 0u) ||
+		      (((psw >> 10) & 3u) == 2u);
 
 	/* Elevate live PSW for kernel diagnostics (printk, CSFR dump). */
 	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));

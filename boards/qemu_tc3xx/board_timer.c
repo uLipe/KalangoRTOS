@@ -118,6 +118,23 @@ void board_timer_sleep_us(uint32_t us)
 	ulmk_ep_call(g_ep, &msg);
 }
 
+uint32_t board_timer_now_ticks(void)
+{
+	if (!g_stm0)
+		return 0u;
+	return g_stm0[stm0_off(STM0_TIM0)];
+}
+
+uint32_t board_timer_ticks_to_ns(uint32_t dt)
+{
+	uint64_t ns;
+
+	ns = ((uint64_t)dt * 1000000000ull) / (uint64_t)BOARD_TIMER_HW_CLOCK_HZ;
+	if (ns > 0xFFFFFFFFu)
+		return 0xFFFFFFFFu;
+	return (uint32_t)ns;
+}
+
 ulmk_tid_t board_timer_start(const ulmk_boot_info_t *info)
 {
 	ulmk_thread_attr_t attr = {0};
