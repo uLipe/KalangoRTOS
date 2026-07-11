@@ -48,3 +48,4 @@ __pycache__/
 
 # Internal personal design notes — kept locally, not tracked
 docs/microkernel_book_tricore.md
+build-riscv/

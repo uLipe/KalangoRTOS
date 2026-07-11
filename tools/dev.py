@@ -129,6 +129,14 @@ _REGISTER_KW = frozenset({
 })
 
 
+def _apps_mount() -> list[str]:
+    """Mount sibling ulmk_apps so CMake can see ../ulmk_apps inside the container."""
+    apps_root = WORKSPACE_ROOT.parent / "ulmk_apps"
+    if apps_root.is_dir():
+        return ["--volume", f"{apps_root}:/ulmk_apps:ro"]
+    return []
+
+
 def _component_scan_dirs() -> list[Path]:
     """Return directories that may contain ulmk_component_register()."""
     dirs: list[Path] = []
@@ -179,12 +187,17 @@ def _parse_component_cmake(path: Path) -> dict | None:
     if req_m:
         requires = req_m.group(1).split()
 
+    try:
+        comp_path = path.parent.relative_to(WORKSPACE_ROOT)
+    except ValueError:
+        comp_path = path.parent
+
     return {
         "name": name_m.group(1),
         "default": default,
         "requires": requires,
         "root_thread": bool(re.search(r"\bROOT_THREAD\b", body)),
-        "path": path.parent.relative_to(WORKSPACE_ROOT),
+        "path": comp_path,
     }
 
 
@@ -503,7 +516,7 @@ def _run_sdk_build(args: argparse.Namespace) -> None:
         "docker", "run", "--rm",
         "--volume", f"{WORKSPACE_ROOT}:/workspace",
         "--volume", f"{BUILD_DIR}:/build",
-    ] + extra_mounts
+    ] + extra_mounts + _apps_mount()
     cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
     subprocess.run(cmd, check=True)
 
@@ -552,7 +565,7 @@ def _run_build(args: argparse.Namespace) -> None:
         "docker", "run", "--rm",
         "--volume", f"{WORKSPACE_ROOT}:/workspace",
         "--volume", f"{BUILD_DIR}:/build",
-    ] + extra_mounts
+    ] + extra_mounts + _apps_mount()
 
     if run_qemu and sys.stdout.isatty():
         cmd += ["--interactive", "--tty"]
