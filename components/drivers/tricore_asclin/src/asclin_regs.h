@@ -33,19 +33,21 @@ static const uintptr_t asclin_bases[4] = {
  * Register offsets
  * -------------------------------------------------------------------------
  */
+/* Offsets match Infineon IfxAsclin_reg.h (TC27D / TC3xx ASCLIN). */
 #define ASCLIN_CLC_OFF          0x00u  /* Clock Control Register */
 #define ASCLIN_IOCR_OFF         0x04u  /* I/O Control Register */
-#define ASCLIN_TXFIFOCON_OFF    0x10u  /* TX FIFO Configuration Register */
-#define ASCLIN_RXFIFOCON_OFF    0x14u  /* RX FIFO Configuration Register */
-#define ASCLIN_BITCON_OFF       0x18u  /* Bit Configuration Register */
-#define ASCLIN_FRAMECON_OFF     0x1Cu  /* Frame Control Register */
-#define ASCLIN_DATCON_OFF       0x20u  /* Data Configuration Register */
-#define ASCLIN_BRG_OFF          0x24u  /* Baud Rate Generation Register */
-#define ASCLIN_FLAGS_OFF        0x38u  /* Flags Register */
-#define ASCLIN_FLAGSCLEAR_OFF   0x40u  /* Flags Clear Register */
-#define ASCLIN_TXDATA_OFF       0x4Cu  /* TX Data Register (write-only) */
-#define ASCLIN_RXDATA_OFF       0x50u  /* RX Data Register (read-only) */
-#define ASCLIN_CSR_OFF          0x54u  /* Clock Source Register */
+#define ASCLIN_ID_OFF           0x08u  /* Module Identification */
+#define ASCLIN_TXFIFOCON_OFF    0x0Cu  /* TX FIFO Configuration Register */
+#define ASCLIN_RXFIFOCON_OFF    0x10u  /* RX FIFO Configuration Register */
+#define ASCLIN_BITCON_OFF       0x14u  /* Bit Configuration Register */
+#define ASCLIN_FRAMECON_OFF     0x18u  /* Frame Control Register */
+#define ASCLIN_DATCON_OFF       0x1Cu  /* Data Configuration Register */
+#define ASCLIN_BRG_OFF          0x20u  /* Baud Rate Generation Register */
+#define ASCLIN_FLAGS_OFF        0x34u  /* Flags Register */
+#define ASCLIN_FLAGSCLEAR_OFF   0x3Cu  /* Flags Clear Register */
+#define ASCLIN_TXDATA_OFF       0x44u  /* TX Data Register (write-only) */
+#define ASCLIN_RXDATA_OFF       0x48u  /* RX Data Register (read-only) */
+#define ASCLIN_CSR_OFF          0x4Cu  /* Clock Source Register */
 
 #define ASCLIN_REG(base, off) \
 	(*((volatile uint32_t *)((uintptr_t)(base) + (uint32_t)(off))))
@@ -110,15 +112,15 @@ static const uintptr_t asclin_bases[4] = {
  */
 #define ASCLIN_TXFIFOCON_FLUSH      (1u << 0)
 #define ASCLIN_TXFIFOCON_ENO        (1u << 1)
-#define ASCLIN_TXFIFOCON_FILL_SHIFT  8u
-#define ASCLIN_TXFIFOCON_FILL_MASK  (0x7u << 8)
+#define ASCLIN_TXFIFOCON_FILL_SHIFT  16u
+#define ASCLIN_TXFIFOCON_FILL_MASK  (0x1Fu << 16)
 
-#define ASCLIN_RXFIFOCON_ENI        (1u << 0)
-#define ASCLIN_RXFIFOCON_FLUSH      (1u << 1)
-#define ASCLIN_RXFIFOCON_FILL_SHIFT  8u
-#define ASCLIN_RXFIFOCON_FILL_MASK  (0x7u << 8)
+#define ASCLIN_RXFIFOCON_FLUSH      (1u << 0)
+#define ASCLIN_RXFIFOCON_ENI        (1u << 1)
+#define ASCLIN_RXFIFOCON_FILL_SHIFT  16u
+#define ASCLIN_RXFIFOCON_FILL_MASK  (0x1Fu << 16)
 
-#define ASCLIN_FIFO_DEPTH  8u   /* TC27x: 8-byte TX and RX FIFOs */
+#define ASCLIN_FIFO_DEPTH  16u   /* TC27x: 16-entry TX and RX FIFOs */
 
 /* -------------------------------------------------------------------------
  * BRG — Baud Rate Generation Register

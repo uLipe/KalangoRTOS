@@ -142,13 +142,11 @@ static void asclin_hw_init(void *base, uint8_t tx_pin, uint8_t rx_pin,
 	ASCLIN_REG(base, ASCLIN_RXFIFOCON_OFF) = ASCLIN_RXFIFOCON_FLUSH;
 	ASCLIN_REG(base, ASCLIN_RXFIFOCON_OFF) = ASCLIN_RXFIFOCON_ENI;
 
-	/* Reconnect fA clock */
-	ASCLIN_REG(base, ASCLIN_CSR_OFF) = ASCLIN_CSR_CLKSEL_FA;
-
-	/* Switch to ASC/UART mode */
+	/* MODE must be set with clock off; then select fCLC (CSR.CLKSEL=1). */
 	ASCLIN_REG(base, ASCLIN_FRAMECON_OFF) =
 		(ASCLIN_REG(base, ASCLIN_FRAMECON_OFF) & ~(7u << 17)) |
 		ASCLIN_FRAMECON_MODE_ASC;
+	ASCLIN_REG(base, ASCLIN_CSR_OFF) = ASCLIN_CSR_CLKSEL_FA;
 }
 
 static int asclin_hw_tx(void *base, uint8_t byte)
