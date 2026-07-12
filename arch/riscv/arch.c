@@ -30,6 +30,7 @@
 #define MCAUSE_LOAD_FAULT	5u
 #define MCAUSE_STORE_FAULT	7u
 #define MCAUSE_INST_FAULT	1u
+#define MCAUSE_ILLEGAL_INST	2u
 
 #define PMP_R	0x01u
 #define PMP_W	0x02u
@@ -505,8 +506,17 @@ void _ulmk_trap_dispatch(struct riscv_trap_frame *frame)
 		return;
 	}
 
+	/*
+	 * U-mode fetch of kernel text may raise INST_FAULT (PMP deny) or,
+	 * when a NAPOT user RX window overlaps and the first insn is a
+	 * privileged CSR (-O1+), ILLEGAL_INST.  Both mean the thread must
+	 * die; only panic if the fault came from M-mode.
+	 */
+	mstatus = frame->regs[TF_MSTATUS / 4u];
 	if (code == MCAUSE_LOAD_FAULT || code == MCAUSE_STORE_FAULT ||
-	    code == MCAUSE_INST_FAULT)
+	    code == MCAUSE_INST_FAULT ||
+	    (code == MCAUSE_ILLEGAL_INST &&
+	     ((mstatus >> MSTATUS_MPP_SHIFT) & 3u) == 0u))
 		ulmk_arch_trap_entry(0u, (uint8_t)code);
 	else
 		ulmk_arch_trap_entry(mcause_to_trap_class(mcause), (uint8_t)code);
