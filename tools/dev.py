@@ -398,7 +398,8 @@ def _resolve_board_path(board_arg: str | None) -> tuple[Path, str, list[str]]:
 
 def _build_shell(board_container: str, board: dict,
                  clean: bool, run_qemu: bool,
-                 component_flags: list[str], build_subdir: str) -> str:
+                 component_flags: list[str], build_subdir: str,
+                 optimize_size: bool = False) -> str:
     arch = _board_arch(board)
     toolchain = _toolchain_for_arch(arch)
     qemu = _qemu_binary(arch)
@@ -422,6 +423,8 @@ def _build_shell(board_container: str, board: dict,
         f"    -DCMAKE_TOOLCHAIN_FILE={toolchain} \\",
         f"    -DULMK_CHIP_DIR={board_container} \\",
     ]
+    if optimize_size:
+        cfg.append("    -DULMK_OPTIMIZE_SIZE=ON \\")
     for flag in component_flags:
         cfg.append(f"    {flag} \\")
     cfg += [
@@ -481,7 +484,7 @@ def _qemu_only_shell(board: dict, build_subdir: str) -> str:
 
 
 def _sdk_build_shell(board_container: str, board: dict, board_name: str,
-                     clean: bool) -> str:
+                     clean: bool, optimize_size: bool = False) -> str:
     """Compile kernel + arch + board into a distributable SDK directory.
 
     Delegates the actual work to tools/sdk_build.sh so the exact build and
@@ -496,6 +499,7 @@ def _sdk_build_shell(board_container: str, board: dict, board_name: str,
     sdk = f"{build}/dist/ulmk"
 
     clean_flag = " --clean" if clean else ""
+    size_flag = " --optimize-size" if optimize_size else ""
     return (
         "set -e\n"
         f"bash /workspace/tools/sdk_build.sh"
@@ -505,7 +509,7 @@ def _sdk_build_shell(board_container: str, board: dict, board_name: str,
         f" --board-name {board_name}"
         f" --build-dir {build}"
         f" --out-dir {sdk}"
-        f"{clean_flag}"
+        f"{clean_flag}{size_flag}"
     )
 
 
@@ -522,7 +526,9 @@ def _run_sdk_build(args: argparse.Namespace) -> None:
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
 
-    shell_cmd = _sdk_build_shell(board_container, board, board_name, args.clean)
+    shell_cmd = _sdk_build_shell(
+        board_container, board, board_name, args.clean,
+        getattr(args, "optimize_size", False))
 
     cmd = [
         "docker", "run", "--rm",
@@ -571,7 +577,7 @@ def _run_build(args: argparse.Namespace) -> None:
     else:
         shell_cmd = _build_shell(
             board_container, board, args.clean, run_qemu, component_flags,
-            build_subdir)
+            build_subdir, getattr(args, "optimize_size", False))
 
     cmd = [
         "docker", "run", "--rm",
@@ -817,6 +823,11 @@ examples:
         "--clean",
         action="store_true",
         help="Remove previous build artefacts before compiling",
+    )
+    build_p.add_argument(
+        "--optimize-size",
+        action="store_true",
+        help="Compile kernel/arch with -Os instead of the default -Ofast",
     )
 
     build_p.add_argument(

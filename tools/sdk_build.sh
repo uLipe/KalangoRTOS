@@ -22,7 +22,8 @@ set -euo pipefail
 
 usage() {
 	echo "usage: $0 --toolchain FILE --chip-dir DIR --arch ARCH \\" >&2
-	echo "          --board-name NAME --build-dir DIR --out-dir DIR [--clean]" >&2
+	echo "          --board-name NAME --build-dir DIR --out-dir DIR \\" >&2
+	echo "          [--clean] [--optimize-size]" >&2
 	exit 2
 }
 
@@ -33,6 +34,7 @@ BOARD_NAME=""
 BUILD_DIR=""
 OUT_DIR=""
 CLEAN=0
+OPTIMIZE_SIZE=0
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -43,6 +45,7 @@ while [ $# -gt 0 ]; do
 	--build-dir)  BUILD_DIR="$2"; shift 2;;
 	--out-dir)    OUT_DIR="$2";   shift 2;;
 	--clean)      CLEAN=1;        shift;;
+	--optimize-size) OPTIMIZE_SIZE=1; shift;;
 	*) echo "error: unknown argument '$1'" >&2; usage;;
 	esac
 done
@@ -66,10 +69,15 @@ if [ "$CLEAN" -eq 1 ]; then
 fi
 
 echo "--- configure (SDK) ---"
+OPT_SIZE_FLAG=""
+if [ "$OPTIMIZE_SIZE" -eq 1 ]; then
+	OPT_SIZE_FLAG="-DULMK_OPTIMIZE_SIZE=ON"
+fi
 cmake -S "$WORKSPACE" -B "$BUILD_DIR" \
 	-DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
 	-DULMK_CHIP_DIR="$CHIP_DIR" \
 	-DULMK_SDK=ON \
+	${OPT_SIZE_FLAG} \
 	-GNinja \
 	--no-warn-unused-cli
 

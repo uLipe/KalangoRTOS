@@ -495,9 +495,19 @@ python3 tools/dev.py --rebuild    # force image rebuild
 python3 tools/dev.py build                      # configure + build (QEMU board)
 python3 tools/dev.py build --clean              # rm -rf build + configure + build
 python3 tools/dev.py build --board /path/board  # custom ULMK_CHIP_DIR
+python3 tools/dev.py build --optimize-size      # kernel/arch -Os (default: -Ofast)
 python3 tools/dev.py run                        # build (if stale) + run on QEMU
 python3 tools/dev.py build --kernel --board /path/board   # distributable SDK
 ```
+
+Kernel and arch objects default to **`-Ofast -fno-inline`**.  Pass
+`--optimize-size` (CMake `-DULMK_OPTIMIZE_SIZE=ON`) for **`-Os`**.  Board and
+component/userspace sources are unaffected.  Integration-test kernel objects
+follow the same default via `tests/integ_kernel.mk`.
+
+`-fno-inline` is required with `-Ofast` on TriCore: GCC inlining across CSA /
+syscall boundaries triggers class-3 TIN 6 (CTYP).  The flag is applied on every
+arch so the kernel opt surface stays uniform.
 
 `dev.py` does not maintain a parallel source list.  CMake is the single source
 of truth for what gets compiled.

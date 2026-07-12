@@ -24,6 +24,7 @@ option(ULMK_SDK "Emit distributable static libraries instead of a demo ELF" OFF)
 # ---------------------------------------------------------------------------
 
 include(cmake/config.cmake)
+include(cmake/optimize.cmake)
 
 # ---------------------------------------------------------------------------
 # Linker API (ulmk_add_app, ulmk_add_domain, ulmk_set_root_thread)
@@ -120,7 +121,9 @@ target_include_directories(ulmk_kernel PRIVATE
 
 target_compile_definitions(ulmk_kernel PRIVATE ULMK_KERNEL_BUILD=1)
 
-target_compile_options(ulmk_kernel PRIVATE -fno-data-sections)
+target_compile_options(ulmk_kernel PRIVATE
+	-fno-data-sections
+	${ULMK_KERNEL_OPT_FLAGS})
 
 # init.c runs before .data/.bss are initialised — keep GCC from lowering its
 # copy/zero loops into memcpy/memset calls.
@@ -130,6 +133,9 @@ set_source_files_properties(kernel/init/init.c PROPERTIES
 if(DEFINED ULMK_BOARD_CFLAGS)
     target_compile_options(ulmk_kernel PRIVATE ${ULMK_BOARD_CFLAGS})
 endif()
+
+# Arch startup/vectors are kernel-space bring-up; match kernel opt level.
+ulmk_apply_kernel_opt(ULMK_ARCH_EXE_SOURCES)
 
 # ---------------------------------------------------------------------------
 # Component scan — kernel/components/, board/components/, then ../ulmk_apps/
