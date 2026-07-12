@@ -91,6 +91,11 @@ function(ulmk_component_register)
 
     target_link_libraries("${_tgt}" PRIVATE ulmk_kernel)
 
+    # Board headers (drivers, board_config.h) for board-local and kit demos.
+    if(DEFINED ULMK_BOARD_INCLUDES)
+        target_include_directories("${_tgt}" PRIVATE ${ULMK_BOARD_INCLUDES})
+    endif()
+
     target_compile_definitions("${_tgt}" PRIVATE
         ULMK_MODULE_NAME=${ARG_NAME}
         ULMK_APP_NAME=${ARG_NAME})

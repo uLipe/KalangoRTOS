@@ -7,7 +7,7 @@ Subcommands:
     build               Configure and compile kernel ELF (CMake/Ninja)
     build qemu          Build if needed, then run in QEMU
     build --kernel      Emit a distributable SDK (libs + linker + headers)
-    components list     Discover components under components/ and ../ulmk_apps/
+    components list     Discover under components/, <board>/components/, ../ulmk_apps/
     components status   Show manifest default vs .ulmk/components.conf
     components enable   Persist component ON in .ulmk/components.conf
     components disable  Remove component from .ulmk/components.conf
@@ -137,7 +137,7 @@ def _apps_mount() -> list[str]:
     return []
 
 
-def _component_scan_dirs() -> list[Path]:
+def _component_scan_dirs(board_host: Path | None = None) -> list[Path]:
     """Return directories that may contain ulmk_component_register()."""
     dirs: list[Path] = []
 
@@ -152,6 +152,13 @@ def _component_scan_dirs() -> list[Path]:
                         dirs.append(sub)
             elif (entry / "CMakeLists.txt").is_file():
                 dirs.append(entry)
+
+    if board_host is not None:
+        board_comps = board_host / "components"
+        if board_comps.is_dir():
+            for entry in sorted(board_comps.iterdir()):
+                if entry.is_dir() and (entry / "CMakeLists.txt").is_file():
+                    dirs.append(entry)
 
     apps_root = WORKSPACE_ROOT.parent / "ulmk_apps"
     if apps_root.is_dir():
@@ -201,17 +208,17 @@ def _parse_component_cmake(path: Path) -> dict | None:
     }
 
 
-def _discover_components() -> list[dict]:
+def _discover_components(board_host: Path | None = None) -> list[dict]:
     found: list[dict] = []
-    for d in _component_scan_dirs():
+    for d in _component_scan_dirs(board_host):
         info = _parse_component_cmake(d / "CMakeLists.txt")
         if info:
             found.append(info)
     return sorted(found, key=lambda c: c["name"])
 
 
-def _component_names() -> list[str]:
-    return [c["name"] for c in _discover_components()]
+def _component_names(board_host: Path | None = None) -> list[str]:
+    return [c["name"] for c in _discover_components(board_host)]
 
 
 def _load_components_conf() -> set[str]:
@@ -255,16 +262,20 @@ def _resolve_enabled_components(
     return enabled
 
 
-def _component_cmake_flags(enabled: set[str]) -> list[str]:
+def _component_cmake_flags(
+    enabled: set[str], board_host: Path | None = None
+) -> list[str]:
     flags: list[str] = []
-    for name in _component_names():
+    for name in _component_names(board_host):
         val = "ON" if name in enabled else "OFF"
         flags.append(f"-DULMK_COMP_{name}_ENABLED={val}")
     return flags
 
 
-def _validate_component_names(names: list[str]) -> None:
-    known = set(_component_names())
+def _validate_component_names(
+    names: list[str], board_host: Path | None = None
+) -> None:
+    known = set(_component_names(board_host))
     for name in names:
         if name not in known:
             sys.exit(
@@ -275,7 +286,8 @@ def _validate_component_names(names: list[str]) -> None:
 
 def _run_components(args: argparse.Namespace) -> None:
     action = args.components_action
-    comps = _discover_components()
+    board_host, _, _ = _resolve_board_path(getattr(args, "board", None))
+    comps = _discover_components(board_host)
 
     if action == "list":
         print(f"components ({len(comps)}):")
@@ -302,7 +314,7 @@ def _run_components(args: argparse.Namespace) -> None:
         return
 
     if action == "enable":
-        _validate_component_names(args.names)
+        _validate_component_names(args.names, board_host)
         conf |= set(args.names)
         _save_components_conf(conf)
         print(f"enabled: {', '.join(args.names)}")
@@ -310,7 +322,7 @@ def _run_components(args: argparse.Namespace) -> None:
         return
 
     if action == "disable":
-        _validate_component_names(args.names)
+        _validate_component_names(args.names, board_host)
         for name in args.names:
             conf.discard(name)
         _save_components_conf(conf)
@@ -551,7 +563,7 @@ def _run_build(args: argparse.Namespace) -> None:
         getattr(args, "components", None),
         getattr(args, "no_components", False),
     )
-    component_flags = _component_cmake_flags(enabled)
+    component_flags = _component_cmake_flags(enabled, board_host)
 
     elf = BUILD_DIR / build_subdir / "ulmk"
     if run_qemu and not args.clean and elf.is_file():
@@ -826,20 +838,36 @@ examples:
         help="Discover and enable/disable kernel components",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "Components live under components/ and ../ulmk_apps/.\n"
-            "All are OFF by default in the manifest; enable them explicitly.\n\n"
-            "  components list              discover registered components\n"
-            "  components status            show manifest vs local config\n"
-            "  components enable NAME ...   persist ON in .ulmk/components.conf\n"
-            "  components disable NAME ...  remove from local config"
+            "Components live under components/, <board>/components/, and\n"
+            "../ulmk_apps/.  All are OFF by default; enable them explicitly.\n"
+            "Pass --board so board-local components are discoverable.\n\n"
+            "  components list --board PATH\n"
+            "  components status --board PATH\n"
+            "  components enable --board PATH NAME ...\n"
+            "  components disable --board PATH NAME ..."
         ),
     )
+    comp_board = argparse.ArgumentParser(add_help=False)
+    comp_board.add_argument(
+        "--board",
+        metavar="PATH",
+        default=None,
+        help="Board directory (default: boards/qemu_tc3xx); scans PATH/components/",
+    )
     comp_sub = comp_p.add_subparsers(dest="components_action", required=True)
-    comp_sub.add_parser("list", help="List all discoverable components")
-    comp_sub.add_parser("status", help="Show default vs configured state")
-    en_p = comp_sub.add_parser("enable", help="Enable components (saved to .conf)")
+    comp_sub.add_parser(
+        "list", parents=[comp_board], help="List all discoverable components"
+    )
+    comp_sub.add_parser(
+        "status", parents=[comp_board], help="Show default vs configured state"
+    )
+    en_p = comp_sub.add_parser(
+        "enable", parents=[comp_board], help="Enable components (saved to .conf)"
+    )
     en_p.add_argument("names", nargs="+", metavar="NAME")
-    dis_p = comp_sub.add_parser("disable", help="Disable components (saved to .conf)")
+    dis_p = comp_sub.add_parser(
+        "disable", parents=[comp_board], help="Disable components (saved to .conf)"
+    )
     dis_p.add_argument("names", nargs="+", metavar="NAME")
 
     subparsers.add_parser(

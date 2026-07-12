@@ -132,7 +132,7 @@ if(DEFINED ULMK_BOARD_CFLAGS)
 endif()
 
 # ---------------------------------------------------------------------------
-# Component scan — kernel/components/ then ../ulmk_apps/ sibling
+# Component scan — kernel/components/, board/components/, then ../ulmk_apps/
 # ---------------------------------------------------------------------------
 
 message(STATUS "ULMK_ARCH=${ULMK_ARCH}  ULMK_CHIP_DIR=${ULMK_CHIP_DIR}")
@@ -148,6 +148,19 @@ if(NOT ULMK_SDK)
             add_subdirectory("${_dir}" "${CMAKE_BINARY_DIR}/components/${_cname}")
         endif()
     endforeach()
+
+    # Board-local demos (pins, pot, kit LEDs) live next to the BSP.
+    if(DEFINED ULMK_CHIP_DIR AND IS_DIRECTORY "${ULMK_CHIP_DIR}/components")
+        file(GLOB _board_comp_dirs LIST_DIRECTORIES true
+            "${ULMK_CHIP_DIR}/components/*")
+        foreach(_dir IN LISTS _board_comp_dirs)
+            if(IS_DIRECTORY "${_dir}" AND EXISTS "${_dir}/CMakeLists.txt")
+                get_filename_component(_cname "${_dir}" NAME)
+                add_subdirectory("${_dir}"
+                    "${CMAKE_BINARY_DIR}/board_components/${_cname}")
+            endif()
+        endforeach()
+    endif()
 
     set(_ULMK_APPS_DIR "${CMAKE_SOURCE_DIR}/../ulmk_apps")
     if(IS_DIRECTORY "${_ULMK_APPS_DIR}")

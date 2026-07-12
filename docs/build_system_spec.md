@@ -170,10 +170,11 @@ ulmk/            ← kernel repo (this)
 
 ### 4.1 Scan locations
 
-The top-level `CMakeLists.txt` scans two locations at configure time:
+The top-level `CMakeLists.txt` scans three locations at configure time:
 
-1. `kernel/components/` — built-in components shipped with the kernel repo.
-2. `../ulmk_apps/` — optional external components sibling directory.
+1. `components/` — built-in components shipped with the kernel repo.
+2. `${ULMK_CHIP_DIR}/components/` — board-local demos (kit LEDs, pot, …).
+3. `../ulmk_apps/` — optional external components sibling (board-agnostic apps).
 
 For each directory found, if it contains a `CMakeLists.txt`, it is added via
 `add_subdirectory()`.  That `CMakeLists.txt` must call `ulmk_component_register()`
@@ -187,7 +188,7 @@ foreach(_dir IN LISTS _dirs)
         add_subdirectory("${_dir}" ...)
     endif()
 endforeach()
-# Same pattern for ../ulmk_apps/
+# Same pattern for ${ULMK_CHIP_DIR}/components/ and ../ulmk_apps/
 ```
 
 ### 4.2 Discovery log
@@ -223,7 +224,7 @@ linked (`ulmk_root_thread()` calls `ulmk_thread_exit()` immediately).
 
 | Command | Effect |
 |---------|--------|
-| `components list` | Discover all components under `components/` and `../ulmk_apps/` |
+| `components list` | Discover under `components/`, `<board>/components/`, `../ulmk_apps/` |
 | `components status` | Manifest default vs `.ulmk/components.conf` |
 | `components enable NAME …` | Persist ON in `.ulmk/components.conf` (gitignored) |
 | `components disable NAME …` | Remove from config |
