@@ -49,7 +49,14 @@ static inline uint32_t stm0_off(uint32_t reg)
 	return (reg - BOARD_TIMER_STM0_BASE) / sizeof(uint32_t);
 }
 
-static void stm0_arm_compare(uint32_t delta_ticks)
+/*
+ * Program CMP0 for a one-shot match.  Returns the absolute compare value.
+ *
+ * QEMU occasionally warps STM0 across the programmed deadline without raising
+ * SRC (or drops the edge if ICR was toggled mid-match).  Callers must treat a
+ * TIM0-past-CMP0 condition as expiry even if the notification never arrives.
+ */
+static uint32_t stm0_arm_compare(uint32_t delta_ticks)
 {
 	uint32_t now;
 	uint32_t cmp;
@@ -57,10 +64,22 @@ static void stm0_arm_compare(uint32_t delta_ticks)
 	if (delta_ticks == 0u)
 		delta_ticks = 1u;
 
+	/* Disarm + clear sticky match before writing a new deadline. */
+	g_stm0[stm0_off(STM0_ICR)]  = 0u;
+	g_stm0[stm0_off(STM0_ISCR)] = 0x00000001u;
+
 	now = g_stm0[stm0_off(STM0_TIM0)];
 	cmp = now + delta_ticks;
 	g_stm0[stm0_off(STM0_CMP0)] = cmp;
-	g_stm0[stm0_off(STM0_ICR)]   = 0x00000001u;
+	g_stm0[stm0_off(STM0_ISCR)] = 0x00000001u;
+	g_stm0[stm0_off(STM0_ICR)]  = 0x00000001u;
+
+	return cmp;
+}
+
+static int stm0_expired(uint32_t cmp)
+{
+	return (int32_t)(g_stm0[stm0_off(STM0_TIM0)] - cmp) >= 0;
 }
 
 static uint32_t us_to_ticks(uint32_t us)
@@ -80,13 +99,14 @@ static void timer_server(void *arg)
 	ulmk_msg_t  msg;
 	ulmk_msg_t  reply;
 	ulmk_tid_t  sender;
-	uint32_t    bits;
-	int         ret;
+	uint32_t    cmp;
+	uint32_t    mask;
 
 	(void)arg;
 
 	reply.label    = 0u;
 	reply.words[0] = 0u;
+	mask = 1u << BOARD_TIMER_NOTIF_BIT;
 
 	for (;;) {
 		ulmk_ep_recv(g_ep, &msg, &sender);
@@ -95,15 +115,25 @@ static void timer_server(void *arg)
 			continue;
 		}
 
-		stm0_arm_compare(us_to_ticks(msg.words[0]));
+		cmp = stm0_arm_compare(us_to_ticks(msg.words[0]));
 
-		bits = 0u;
-		ret  = ulmk_notif_wait(g_irq_notif,
-				       1u << BOARD_TIMER_NOTIF_BIT, &bits);
-		if (ret == ULMK_OK) {
-			g_stm0[stm0_off(STM0_ISCR)] = 0x00000001u;
-			ulmk_irq_ack(BOARD_TIMER_SRPN);
+		/*
+		 * Do not block solely on the IRQ notification: a missed STM0
+		 * edge leaves notif_wait hung until 32-bit wrap (~85 s), which
+		 * trips the CI 120 s timeout.  Poll + deadline check recovers
+		 * when TIM0 advances without SRC, while still honouring a
+		 * normal compare-match notif when QEMU delivers it.
+		 */
+		for (;;) {
+			if (ulmk_notif_poll(g_irq_notif, mask) != 0u)
+				break;
+			if (stm0_expired(cmp))
+				break;
+			ulmk_thread_yield();
 		}
+
+		g_stm0[stm0_off(STM0_ISCR)] = 0x00000001u;
+		ulmk_irq_ack(BOARD_TIMER_SRPN);
 
 		ulmk_ep_reply(sender, &reply);
 	}

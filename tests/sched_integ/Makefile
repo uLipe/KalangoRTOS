@@ -8,6 +8,7 @@ SENTINELS := "sched_integ: start" "sched_integ: PASS"
 
 include ../integ_common.mk
 
+# BOARD is set by arch/*.mk inside integ_common.mk — append after include.
 ifeq ($(ARCH),tricore)
 TEST_SRCS += $(BOARD)/board_timer.c
 endif
