@@ -1,0 +1,74 @@
+---
+description: HIL regression of existing board components when adding drivers
+alwaysApply: true
+---
+# Board Driver / Component Regression (HIL)
+
+When adding or changing a **board driver**, **board component**, or shared
+**`board_init` / clock bring-up** (especially EndInit CLC/FDR/FDIV paths),
+re-test the **existing** board components on that kit before considering the
+work done. A new peripheral must not silence UART or hang boot for other demos.
+
+## Why
+
+Shared `ulmk_board_init()` enables module clocks for the whole SoC. A bad
+CLC/CLC1/FDIV write can hang the peripheral bus and make **every** app look
+dead on serial — not only the new component. HIL capture must run **after**
+`flash.sh` finishes `start` (CPU is halted during erase/program).
+
+## TC275 Lite — mandatory smoke list
+
+After any change under `ulmk_boards/tc275_lite/` that touches drivers,
+`board_init.c`, `board_config.h`, or `components/`:
+
+```bash
+BOARD=../ulmk_boards/tc275_lite
+CAP=$BOARD/scripts/hil-serial-capture.sh
+ELF=/home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk   # or $BUILD_DIR/ulmk
+
+# For each existing component, rebuild alone and capture a known banner:
+python3 tools/dev.py build --board $BOARD --no-components --component board_can_loopback
+$CAP $ELF 'tx id=|CAN loopback' 15
+
+python3 tools/dev.py build --board $BOARD --no-components --component board_adc_pot
+$CAP $ELF 'ADC pot|pot raw=' 15
+
+python3 tools/dev.py build --board $BOARD --no-components --component board_pwm_led
+$CAP $ELF 'PWM|pwm|fade|duty' 15
+
+python3 tools/dev.py build --board $BOARD --no-components --component board_blinky
+$CAP $ELF 'blinky|LED|help' 15
+
+# Then the new component (example: I2C scanner)
+python3 tools/dev.py build --board $BOARD --no-components --component board_i2c_scanner
+$CAP $ELF 'I2C scanner|found ' 20
+```
+
+Extend this list whenever a new `components/board_*` lands on the kit.
+
+## Pass criteria
+
+| Component | Expect on `/dev/ttyUSB0` @ 115200 |
+|-----------|-----------------------------------|
+| `board_can_loopback` | Banner + `tx id=` / `rx id=` echo |
+| `board_adc_pot` | Banner + repeating `pot raw=` |
+| `board_pwm_led` | PWM/LED fade banner (or duty lines) |
+| `board_blinky` | Shell/help or LED banner |
+| `board_i2c_scanner` | Grid + `found N device(s)` (`N=0` OK; `TO`/`--` cells OK without slaves/pull-ups) |
+
+**0 bytes after a completed flash+start = FAIL** (boot hang or wrong baud), not
+“no devices”. Distinguish capture-script bugs from real hangs: confirm
+`flash.sh` printed `flash + start — done` before the capture window starts.
+
+## Capture script contract
+
+Use `tc275_lite/scripts/hil-serial-capture.sh`: flash **first**, open serial
+**after** start. Never start the UART timeout while OpenOCD still holds the
+core in halt.
+
+## Scope
+
+- Applies to external board trees (`ulmk_boards/…`) and in-tree boards with
+  HIL components.
+- QEMU-only kernel changes still follow `regression-testing.mdc`; this rule is
+  **additional** for silicon/board peripheral work.
