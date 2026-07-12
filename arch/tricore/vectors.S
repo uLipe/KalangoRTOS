@@ -108,11 +108,25 @@ _trap_class5:
     call    ulmk_arch_trap_entry
     j       .
 
-/* Class 6 — SYSCALL */
+/* Class 6 — SYSCALL
+ *
+ * Hardware leaves user TIN in D15 and args in D4–D7.  A C prologue at
+ * -O1+ will clobber those registers before any inline asm can read them,
+ * so park the five words on the interrupt/kernel stack and pass the
+ * frame pointer as the sole C argument (D4).
+ */
     .align  5
     .global _trap_class6
 _trap_class6:
+    sub.a   %a10, 20
+    st.w    [%a10] 0,  %d15
+    st.w    [%a10] 4,  %d4
+    st.w    [%a10] 8,  %d5
+    st.w    [%a10] 12, %d6
+    st.w    [%a10] 16, %d7
+    mov.d   %d4, %a10
     call    ulmk_arch_syscall_entry
+    lea     %a10, [%a10] 20
     rfe
 
 /* Class 7 — NMI */

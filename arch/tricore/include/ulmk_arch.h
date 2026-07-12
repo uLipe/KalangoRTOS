@@ -185,11 +185,11 @@ void ulmk_arch_init(ulmk_boot_info_t *info);
 
 /* =========================================================================
  * Arch-internal syscall entry (arch/tricore/arch.c)
- * Reads D15 (TIN) and D4–D7 (args) from live registers and dispatches
- * to ulmk_kern_trap_syscall().  Called from _trap_class6 in vectors.S.
+ * vectors.S parks TIN + D4–D7 on the stack and passes that frame pointer;
+ * this entry switches to kernel PRS and dispatches ulmk_kern_trap_syscall().
  * ========================================================================= */
 
-void ulmk_arch_syscall_entry(void);
+void ulmk_arch_syscall_entry(uint32_t frame_ptr);
 
 /*
  * ulmk_arch_trap_entry — arch-level fault dispatcher; called from vectors.S.

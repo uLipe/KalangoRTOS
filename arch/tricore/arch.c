@@ -929,31 +929,25 @@ uint32_t ulmk_arch_atomic_add(volatile uint32_t *ptr, uint32_t val)
  * Syscall entry — arch/tricore/arch.c
  *
  * TriCore SYSCALL (trap class 6) saves the upper context before entering
- * the trap handler.  D4–D7 (syscall args) and D15 (TIN = syscall number)
- * remain as live physical registers on entry to this function.
- *
- * We read them with volatile inline asm before any compiler write can
- * overwrite them, then forward them to the arch-agnostic kernel callback
- * ulmk_kern_trap_syscall().  Finally we write D2 (return register) so the
- * user sees the return value after RFE in vectors.S.
+ * the trap handler.  vectors.S parks TIN + D4–D7 on the stack and passes
+ * that frame pointer in D4 — required because a C prologue under -O1+
+ * would otherwise clobber the live argument registers.
  * ========================================================================= */
 
-void ulmk_arch_syscall_entry(void)
+void ulmk_arch_syscall_entry(uint32_t frame_ptr)
 {
-	uint32_t tin, args[4];
+	const uint32_t *frame = (const uint32_t *)(uintptr_t)frame_ptr;
+	uint32_t tin;
+	uint32_t args[4];
 	uint32_t psw;
 	uint32_t icr;
+	uint32_t ret;
 
-	/*
-	 * Capture syscall arguments from physical registers before any
-	 * compiler-generated code can overwrite them.  D15 = TIN (syscall
-	 * number), D4–D7 = up to four arguments (TriCore calling convention).
-	 */
-	__asm__ volatile("mov %0, %%d15" : "=d"(tin));
-	__asm__ volatile("mov %0, %%d4"  : "=d"(args[0]));
-	__asm__ volatile("mov %0, %%d5"  : "=d"(args[1]));
-	__asm__ volatile("mov %0, %%d6"  : "=d"(args[2]));
-	__asm__ volatile("mov %0, %%d7"  : "=d"(args[3]));
+	tin     = frame[0];
+	args[0] = frame[1];
+	args[1] = frame[2];
+	args[2] = frame[3];
+	args[3] = frame[4];
 
 	/*
 	 * Raise CCPN to 255, masking all IRQs for the duration of kernel
@@ -979,7 +973,7 @@ void ulmk_arch_syscall_entry(void)
 			 "isync"
 			 :: "d"(psw) : "memory");
 
-	uint32_t ret = ulmk_kern_trap_syscall((uint8_t)tin, args);
+	ret = ulmk_kern_trap_syscall((uint8_t)tin, args);
 
 	/*
 	 * If the syscall unblocked a higher-priority thread, perform a
