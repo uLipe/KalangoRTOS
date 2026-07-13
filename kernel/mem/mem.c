@@ -155,6 +155,8 @@ uint32_t ulmk_kern_mem_unmap(uint32_t addr, uint32_t size)
 			ulmk_heap_free((void *)(uintptr_t)addr);
 
 		thread_remove_region(cur, (uintptr_t)addr);
+		ulmk_arch_mpu_switch(cur->regions, cur->region_count,
+				     cur->privilege == ULMK_PRIV_KERNEL ? 0u : 1u);
 		(void)size;
 		return (uint32_t)ULMK_OK;
 	}
