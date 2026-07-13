@@ -61,7 +61,13 @@ if [[ -n "${ULMK_HIL_OCD:-}" && -n "${ULMK_HIL_OCD_CFG:-}" ]]; then
 		>/dev/null 2>&1 || true
 fi
 
-wait "$CAP"
+wait "$CAP" || true
 echo "===== uart ====="
 cat "$OUT"
+if ! grep -aE "$PATTERN" "$OUT" >/dev/null 2>&1; then
+	rm -f "$OUT"
+	echo "FAIL: pattern /$PATTERN/ not found in UART capture" >&2
+	exit 1
+fi
 rm -f "$OUT"
+echo "PASS: UART matched /$PATTERN/"
