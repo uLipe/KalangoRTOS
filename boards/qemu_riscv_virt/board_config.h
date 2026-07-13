@@ -9,8 +9,9 @@
 #ifndef ULMK_BOARD_CONFIG_H
 #define ULMK_BOARD_CONFIG_H
 
+/* CLINT for MSIP soft-IRQ tests; tick stays on Goldfish RTC via PLIC. */
 #ifndef ULMK_ARCH_HAVE_CLINT
-#define ULMK_ARCH_HAVE_CLINT		0
+#define ULMK_ARCH_HAVE_CLINT		1
 #endif
 
 #ifndef ULMK_ARCH_HAVE_CLIC
@@ -24,7 +25,7 @@
 #define ULMK_BOARD_PLIC_BASE		0x0C000000u
 
 #ifndef ULMK_BOARD_CLINT_BASE
-#define ULMK_BOARD_CLINT_BASE		0u
+#define ULMK_BOARD_CLINT_BASE		0x02000000u
 #endif
 
 #define ULMK_BOARD_TIMER_RTC_BASE	0x00101000u
