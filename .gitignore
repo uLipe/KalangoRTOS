@@ -14,9 +14,15 @@ tests/**/_out/
 # Unit test binaries (host-compiled)
 tests/*_unit/*_unit_test
 
-# Integration test kernel static library (built per test dir)
+# Integration test kernel static library (legacy / arch whitebox only)
 tests/**/integ_kernel/
 tests/**/libtest_kernel.a
+
+# SDK suite build artefacts
+tests/sdk_suite/_sdk_cache/
+tests/sdk_suite/**/_out/
+tests/sdk_suite/**/*.elf
+tests/sdk_e2e/_out/
 
 # TSIM simulation artefacts
 Sim.out

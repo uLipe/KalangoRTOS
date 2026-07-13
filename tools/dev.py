@@ -12,8 +12,8 @@ Subcommands:
     components enable   Persist component ON in .ulmk/components.conf
     components disable  Remove component from .ulmk/components.conf
     tests unit          Run host-compiled unit tests
-    tests integ         Run QEMU integration tests
-    tests e2e           Run SDK consumer end-to-end tests
+    tests e2e           Run SDK suite (black-box QEMU cases under tests/sdk_suite/)
+    tests integ         Arch whitebox only (e.g. ctx_early_tricore)
     killall             Stop all running dev containers
 
 Components default OFF in CMake manifests. Enable before building the demo:
@@ -59,6 +59,8 @@ DEFAULT_BOARD_RISCV = "boards/qemu_riscv_virt"
 TEST_TIMEOUT = 120
 
 ARCH_TRICORE_ONLY_TESTS = frozenset({"ctx_early_tricore"})
+SDK_SUITE_DIR = TESTS_DIR / "sdk_suite"
+SDK_WHITEBOX_DIR = SDK_SUITE_DIR / "arch_whitebox"
 
 QEMU_TRICORE = "/opt/qemu-tricore/bin/qemu-system-tricore"
 QEMU_RISCV   = "qemu-system-riscv32"
@@ -617,23 +619,53 @@ def _killall() -> None:
 
 def _discover_tests(kind: str) -> list[str]:
     result = []
+    if kind == "e2e":
+        # Prefer sdk_suite/<case>/; keep legacy *_e2e dirs as fallback.
+        if SDK_SUITE_DIR.is_dir():
+            for d in sorted(SDK_SUITE_DIR.iterdir()):
+                if not d.is_dir() or d.name.startswith("_"):
+                    continue
+                if d.name == "arch_whitebox":
+                    continue
+                if (d / "Makefile").exists():
+                    result.append(f"sdk_suite/{d.name}")
+            if result:
+                return result
+        for d in sorted(TESTS_DIR.iterdir()):
+            if d.is_dir() and d.name.endswith("_e2e") and (d / "Makefile").exists():
+                result.append(d.name)
+        return result
+
     for d in sorted(TESTS_DIR.iterdir()):
         if not d.is_dir() or not (d / "Makefile").exists():
             continue
-        is_e2e = d.name.endswith("_e2e")
-        if kind == "e2e":
-            if is_e2e:
-                result.append(d.name)
-            continue
-        if is_e2e:
+        if d.name.endswith("_e2e") or d.name == "sdk_suite":
             continue
         is_unit = d.name.endswith("_unit")
         if (kind == "unit") == is_unit:
             result.append(d.name)
+    # Arch whitebox (legacy integ path) — TriCore CSA early, etc.
+    if kind == "integ" and SDK_WHITEBOX_DIR.is_dir():
+        for d in sorted(SDK_WHITEBOX_DIR.iterdir()):
+            if d.is_dir() and (d / "Makefile").exists():
+                result.append(f"sdk_suite/arch_whitebox/{d.name}")
     return result
 
 
-def _run_one_shell(kind: str, name: str, arch: str, make_extra: str = "") -> str:
+def _sdk_cache_vars(arch: str, make_extra: str) -> str:
+    """Make variables for a shared SDK cache directory inside the container."""
+    board = "qemu_tc3xx"
+    if arch == "riscv":
+        board = "qemu_riscv_virt"
+    elif arch == "arm":
+        m = re.search(r"ARM_BOARD=(\S+)", make_extra)
+        board = m.group(1) if m else "qemu_mps2_an500"
+    tag = f"{arch}_{board}_gcc"
+    return f"SDK_CACHE=/workspace/tests/sdk_suite/_sdk_cache/{tag}"
+
+
+def _run_one_shell(kind: str, name: str, arch: str, make_extra: str = "",
+                   *, with_path: bool = True) -> str:
     # make_extra carries per-board make variables (e.g. ARM_BOARD=<name>) so a
     # single arch that ships multiple QEMU boards selects the right one.
     ext = f" {make_extra}" if make_extra else ""
@@ -643,11 +675,12 @@ def _run_one_shell(kind: str, name: str, arch: str, make_extra: str = "") -> str
         "make clean -s 2>/dev/null || true",
     ]
     if kind == "e2e":
-        # e2e suites self-contain their build (they consume the shipped SDK,
-        # not the kernel sources); the 'run' target builds everything it needs.
-        steps.insert(0, CONTAINER_PATH)
+        if with_path:
+            steps.insert(0, CONTAINER_PATH)
+        cache = _sdk_cache_vars(arch, make_extra)
         steps.append(
-            f"timeout --kill-after=5 {TEST_TIMEOUT} make run ARCH={arch}{ext}")
+            f"timeout --kill-after=5 {TEST_TIMEOUT} "
+            f"make run ARCH={arch}{ext} {cache}")
         return " && ".join(steps)
     if kind == "integ":
         steps.append(f"make gen_config -s ARCH={arch}{ext}")
@@ -662,14 +695,25 @@ def _run_one_shell(kind: str, name: str, arch: str, make_extra: str = "") -> str
 def _filter_integ_tests(tests: list[str], arch: str) -> list[str]:
     if arch == "tricore":
         return tests
-    return [t for t in tests if t not in ARCH_TRICORE_ONLY_TESTS]
+    return [t for t in tests if Path(t).name not in ARCH_TRICORE_ONLY_TESTS
+            and t not in ARCH_TRICORE_ONLY_TESTS]
 
 
 def _run_all_shell(kind: str, tests: list[str], arch: str,
                    make_extra: str = "") -> str:
-    lines = ["FAILED=''"]
+    lines = [CONTAINER_PATH, "FAILED=''"]
+    if kind == "e2e" and tests:
+        cache = _sdk_cache_vars(arch, make_extra)
+        ext = f" {make_extra}" if make_extra else ""
+        lines.append(
+            f"echo '=== warming SDK cache ===' && "
+            f"mkdir -p /workspace/tests/sdk_suite/_sdk_cache && "
+            f"( cd /workspace/tests/{tests[0]} && "
+            f"make sdk -s ARCH={arch}{ext} {cache} ) || "
+            f"FAILED=\"$FAILED sdk_warm\""
+        )
     for name in tests:
-        snippet = _run_one_shell(kind, name, arch, make_extra)
+        snippet = _run_one_shell(kind, name, arch, make_extra, with_path=False)
         lines.append(
             f"if ( {snippet} ); then :; "
             f"else FAILED=\"$FAILED {name}\"; fi"
@@ -758,12 +802,11 @@ examples:
   python3 tools/dev.py build --kernel --board boards/qemu_tc3xx
   python3 tools/dev.py build --kernel --board /path/to/external_board
   python3 tools/dev.py tests unit
-  python3 tools/dev.py tests integ
-  python3 tools/dev.py tests integ --board boards/qemu_riscv_virt
-  python3 tools/dev.py tests integ --test sleep_integ
-  python3 tools/dev.py tests integ --list
   python3 tools/dev.py tests e2e
   python3 tools/dev.py tests e2e --board boards/qemu_riscv_virt
+  python3 tools/dev.py tests e2e --test sdk_suite/abi_smoke
+  python3 tools/dev.py tests e2e --list
+  python3 tools/dev.py tests integ --test sdk_suite/arch_whitebox/ctx_early_tricore
   python3 tools/dev.py killall
 """
     parser = argparse.ArgumentParser(
