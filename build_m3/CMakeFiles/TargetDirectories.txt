@@ -1,8 +1,0 @@
-/home/ulipe/fun/KalangoRTOS/build_m3/CMakeFiles/test.dir
-/home/ulipe/fun/KalangoRTOS/build_m3/CMakeFiles/edit_cache.dir
-/home/ulipe/fun/KalangoRTOS/build_m3/CMakeFiles/rebuild_cache.dir
-/home/ulipe/fun/KalangoRTOS/build_m3/tests/CMakeFiles/kalango_test_cortexm3.dir
-/home/ulipe/fun/KalangoRTOS/build_m3/tests/CMakeFiles/kalango_test_cortexm4f.dir
-/home/ulipe/fun/KalangoRTOS/build_m3/tests/CMakeFiles/test.dir
-/home/ulipe/fun/KalangoRTOS/build_m3/tests/CMakeFiles/edit_cache.dir
-/home/ulipe/fun/KalangoRTOS/build_m3/tests/CMakeFiles/rebuild_cache.dir

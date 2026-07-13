@@ -1,3 +1,0 @@
-kalango_test_cortexm3 1 0.0900985
-kalango_test_cortexm4f 1 0.494619
----
