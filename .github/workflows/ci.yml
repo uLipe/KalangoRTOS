@@ -58,9 +58,9 @@ jobs:
           cache-from: type=registry,ref=${{ steps.info.outputs.image }}:buildcache
           cache-to: type=registry,ref=${{ steps.info.outputs.image }}:buildcache,mode=max
 
-  # ── Compile the kernel (hello_world, QEMU board) ──────────────────────────
-  build:
-    name: Build kernel
+  # ── TriCore: build ────────────────────────────────────────────────────────
+  build-tricore:
+    name: Build kernel (TriCore)
     needs: docker-image
     runs-on: ubuntu-latest
     permissions:
@@ -123,8 +123,8 @@ jobs:
           path: ci-results/unit/
           if-no-files-found: warn
 
-  # ── SDK suite (black-box QEMU, replaces legacy integ Makefile suites) ─────
-  integ-tests:
+  # ── TriCore: SDK suite (black-box QEMU + arch whitebox) ─────────────────
+  integ-tests-tricore:
     name: SDK suite (TriCore)
     needs: docker-image
     runs-on: ubuntu-latest
@@ -305,7 +305,7 @@ jobs:
   # ── Aggregate markdown report (PASS/FAIL/PARTIAL + coverage matrix) ─────
   coverage-report:
     name: Test coverage report
-    needs: [unit-tests, integ-tests, integ-tests-riscv, integ-tests-arm]
+    needs: [unit-tests, integ-tests-tricore, integ-tests-riscv, integ-tests-arm]
     if: always()
     runs-on: ubuntu-latest
     permissions:
