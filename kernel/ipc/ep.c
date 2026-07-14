@@ -197,6 +197,11 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
 	ulmk_sched_dequeue(cur);
+	/*
+	 * Must switch here (not defer to trap_dispatch): after wakeup the
+	 * reply payload is copied out below, which has to run in this
+	 * syscall frame before returning to userspace.
+	 */
 	ulmk_sched_resched();
 
 	/* Re-fetch cur: local var may be stale after context switch. */

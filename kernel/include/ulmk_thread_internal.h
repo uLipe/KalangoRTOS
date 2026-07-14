@@ -77,6 +77,13 @@ typedef struct ulmk_thread {
 	 * Capability bitmask — which privileged operations this thread may invoke.
 	 */
 	uint8_t           cap_flags;
+	/*
+	 * Per-thread WCET pause state (ULMK_CONFIG_SYSCALL_WCET).  Lives on the
+	 * TCB so a context switch to another thread's syscall cannot clobber it.
+	 */
+	uint32_t          wcet_blocked;
+	uint32_t          wcet_block_mark;
+	uint8_t           wcet_block_open;
 } ulmk_thread_t;
 
 int          ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr,

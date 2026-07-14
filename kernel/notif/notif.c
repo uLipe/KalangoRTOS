@@ -96,7 +96,7 @@ int notif_signal_impl(ulmk_notif_t notif_id, uint32_t bits)
 
 	w->blocked_reason = UL_BLOCKED_NONE;
 	w->state          = UL_THREAD_STATE_READY;
-	ulmk_sched_enqueue(w);
+	ulmk_sched_enqueue_locked(w);
 
 	ulmk_arch_cpu_irq_restore(key);
 
@@ -136,7 +136,7 @@ int notif_wait_impl(ulmk_notif_t notif_id, uint32_t mask, uint32_t *out)
 	cur->block_status      = 0;
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
-	ulmk_sched_dequeue(cur);
+	ulmk_sched_dequeue_locked(cur);
 
 	n->waiter    = cur;
 	n->wait_mask = mask;
@@ -148,7 +148,7 @@ int notif_wait_impl(ulmk_notif_t notif_id, uint32_t mask, uint32_t *out)
 		cur->state = UL_THREAD_STATE_READY;
 		cur->blocked_reason = UL_BLOCKED_NONE;
 		cur->blocked_notif  = ULMK_NOTIF_INVALID;
-		ulmk_sched_enqueue(cur);
+		ulmk_sched_enqueue_locked(cur);
 		ulmk_arch_cpu_irq_restore(key);
 		*out = matched;
 		return 0;

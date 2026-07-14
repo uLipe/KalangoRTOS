@@ -57,6 +57,9 @@ void		 ulmk_sched_resched(void);
 
 void		 ulmk_sched_enqueue(ulmk_thread_t *t);
 void		 ulmk_sched_dequeue(ulmk_thread_t *t);
+/* Caller already serialised IRQs — no nested irq_save. */
+void		 ulmk_sched_enqueue_locked(ulmk_thread_t *t);
+void		 ulmk_sched_dequeue_locked(ulmk_thread_t *t);
 ulmk_thread_t	*ulmk_sched_current(void);
 ulmk_thread_t	*ulmk_sched_peek_next(void);
 

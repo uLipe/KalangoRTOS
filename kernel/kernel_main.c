@@ -17,6 +17,7 @@
 #include <kernel/include/ulmk_irq_internal.h>
 #include <kernel/include/ulmk_mem_internal.h>
 #include <kernel/include/ulmk_printk.h>
+#include <kernel/include/ulmk_syscall_wcet_internal.h>
 #include <kernel/syscall/syscall_router.h>
 
 /* Linker-provided user pool boundaries (defined in .user_pool section). */
@@ -48,17 +49,25 @@ uint32_t ulmk_kern_trap_syscall(uint8_t tin, uint32_t args[4])
 #if ULMK_CONFIG_SYSCALL_WCET
 	uint32_t begin;
 	uint32_t end;
+	uint32_t blocked;
+	uint32_t wall;
 	uint32_t ret;
 
+	ulmk_syscall_wcet_account_reset();
 	begin = ulmk_arch_cycle_read();
 	ret   = ulmk_syscall_router(tin, args[0], args[1], args[2], args[3]);
 	end   = ulmk_arch_cycle_read();
+	blocked = ulmk_syscall_wcet_blocked_cycles();
+	wall = end - begin;
+	if (blocked > wall)
+		blocked = wall;
 
-	g_ulmk_syscall_wcet.magic = ULMK_SYSCALL_WCET_MAGIC;
-	g_ulmk_syscall_wcet.nr    = tin;
-	g_ulmk_syscall_wcet.begin = begin;
-	g_ulmk_syscall_wcet.end   = end;
-	g_ulmk_syscall_wcet.delta = end - begin;
+	g_ulmk_syscall_wcet.magic   = ULMK_SYSCALL_WCET_MAGIC;
+	g_ulmk_syscall_wcet.nr      = tin;
+	g_ulmk_syscall_wcet.begin   = begin;
+	g_ulmk_syscall_wcet.end     = end;
+	g_ulmk_syscall_wcet.blocked = blocked;
+	g_ulmk_syscall_wcet.delta   = wall - blocked;
 	g_ulmk_syscall_wcet.seq++;
 	return ret;
 #else

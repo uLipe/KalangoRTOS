@@ -107,6 +107,8 @@ void ulmk_sched_enqueue(ulmk_thread_t *t)
 }
 
 void ulmk_sched_dequeue(ulmk_thread_t *t)         { (void)t; g_dequeue_count++; }
+void ulmk_sched_enqueue_locked(ulmk_thread_t *t)  { ulmk_sched_enqueue(t); }
+void ulmk_sched_dequeue_locked(ulmk_thread_t *t)  { ulmk_sched_dequeue(t); }
 void ulmk_sched_resched(void)                   { g_schedule_count++; }
 void ulmk_sched_set_dead_for_cleanup(ulmk_thread_t *t) { (void)t; }
 

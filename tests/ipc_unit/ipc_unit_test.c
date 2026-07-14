@@ -123,6 +123,8 @@ static int          g_dequeue_count;
 ulmk_thread_t *ulmk_sched_current(void)   { return g_current; }
 void ulmk_sched_enqueue(ulmk_thread_t *t) { t->state = UL_THREAD_STATE_READY; g_enqueue_count++; }
 void ulmk_sched_dequeue(ulmk_thread_t *t) { (void)t; g_dequeue_count++; }
+void ulmk_sched_enqueue_locked(ulmk_thread_t *t) { ulmk_sched_enqueue(t); }
+void ulmk_sched_dequeue_locked(ulmk_thread_t *t) { ulmk_sched_dequeue(t); }
 void ulmk_sched_resched(void)           { g_schedule_count++; }
 
 /* ── Thread registry stub ──────────────────────────────────────────────── */
