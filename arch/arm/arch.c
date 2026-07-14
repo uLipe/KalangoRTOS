@@ -43,18 +43,27 @@ void *g_arm_first_launch;
  * CPU control
  * ========================================================================= */
 
+#define ULMK_IRQ_KEY_SKIP	(1u << 31)
+
 ulmk_arch_irq_key_t ulmk_arch_cpu_irq_save(void)
 {
 	uint32_t primask;
 
 	__asm__ volatile("mrs %0, primask" : "=r"(primask));
+	/* PRIMASK==1 ⇒ IRQs already masked (syscall / nested). */
+	if (primask & 1u)
+		return (ulmk_arch_irq_key_t)(primask | ULMK_IRQ_KEY_SKIP);
 	__asm__ volatile("cpsid i" ::: "memory");
 	return primask;
 }
 
 void ulmk_arch_cpu_irq_restore(ulmk_arch_irq_key_t key)
 {
-	__asm__ volatile("msr primask, %0" :: "r"(key) : "memory");
+	uint32_t primask = (uint32_t)key;
+
+	if (primask & ULMK_IRQ_KEY_SKIP)
+		return;
+	__asm__ volatile("msr primask, %0" :: "r"(primask) : "memory");
 }
 
 void ulmk_arch_cpu_irq_enable(void)

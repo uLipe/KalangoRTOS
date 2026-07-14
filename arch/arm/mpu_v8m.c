@@ -181,11 +181,18 @@ static bool covered_by_static(uintptr_t base, uintptr_t size)
 	return false;
 }
 
+static const ulmk_arch_region_t *g_mpu_regions;
+static uint8_t g_mpu_count;
+static uint8_t g_mpu_prs = 0xFFu;
+
 void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 			  uint8_t prs)
 {
 	uint8_t slot;
 	uint8_t i;
+
+	if (prs == g_mpu_prs && regions == g_mpu_regions && count == g_mpu_count)
+		return;
 
 	/* Reprogram with the MPU off so the update is atomic w.r.t. running code. */
 	__asm__ volatile("dsb" ::: "memory");
@@ -213,6 +220,10 @@ void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 	REG32(ULMK_ARCH_MPU_CTRL) = ULMK_ARCH_MPU_CTRL_ENABLE |
 				    ULMK_ARCH_MPU_CTRL_PRIVDEFENA;
 	__asm__ volatile("dsb\n\tisb" ::: "memory");
+
+	g_mpu_prs     = prs;
+	g_mpu_regions = regions;
+	g_mpu_count   = count;
 }
 
 bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)

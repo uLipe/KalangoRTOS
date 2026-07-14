@@ -196,17 +196,26 @@ static uint32_t user_mstatus_init(void)
  * CPU control
  * ========================================================================= */
 
+#define ULMK_IRQ_KEY_SKIP	(1u << 31)
+
 ulmk_arch_irq_key_t ulmk_arch_cpu_irq_save(void)
 {
 	uint32_t mstatus = read_mstatus();
 
+	/* Syscall / nested path already has MIE clear — skip csr traffic. */
+	if ((mstatus & MSTATUS_MIE_BIT) == 0u)
+		return (ulmk_arch_irq_key_t)(mstatus | ULMK_IRQ_KEY_SKIP);
 	clear_mstatus_mie();
 	return mstatus;
 }
 
 void ulmk_arch_cpu_irq_restore(ulmk_arch_irq_key_t key)
 {
-	write_mstatus((uint32_t)key);
+	uint32_t mstatus = (uint32_t)key;
+
+	if (mstatus & ULMK_IRQ_KEY_SKIP)
+		return;
+	write_mstatus(mstatus);
 }
 
 void ulmk_arch_cpu_irq_enable(void)
@@ -462,13 +471,24 @@ void ulmk_arch_mpu_configure(uint8_t prs, const ulmk_arch_region_t *regions,
 	(void)count;
 }
 
+static const ulmk_arch_region_t *g_pmp_regions;
+static uint8_t g_pmp_count;
+static uint8_t g_pmp_prs = 0xFFu;
+
 void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 			uint8_t prs)
 {
+	if (prs == g_pmp_prs && regions == g_pmp_regions && count == g_pmp_count)
+		return;
+
 	if (prs == ULMK_ARCH_PRS_KERNEL)
 		pmp_kernel_layout();
 	else
 		pmp_user_layout(regions, count);
+
+	g_pmp_prs     = prs;
+	g_pmp_regions = regions;
+	g_pmp_count   = count;
 }
 
 bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
