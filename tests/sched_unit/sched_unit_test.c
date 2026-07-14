@@ -259,6 +259,60 @@ static void test_self_switch_guard(void)
 	      "from==to guard skips switch when only one thread");
 }
 
+static void test_trap_dispatch_blocked(void)
+{
+	ulmk_thread_t a, b, idle;
+
+	printf("\n[test_trap_dispatch_blocked]\n");
+	sched_reset();
+	make_thread(&a,    5);
+	make_thread(&b,    3);
+	make_thread(&idle, 255);
+
+	ulmk_sched_enqueue(&idle);
+	ulmk_sched_enqueue(&a);
+	ulmk_sched_start();
+	switch_count = 0;
+
+	/* Simulate deferred block: a leaves READY queue, b is woken. */
+	a.state = UL_THREAD_STATE_BLOCKED;
+	ulmk_sched_dequeue(&a);
+	ulmk_sched_enqueue(&b);
+
+	ulmk_sched_trap_dispatch(false);
+
+	CHECK(switch_count == 1, "blocked current → switch at trap exit");
+	CHECK(ulmk_sched_current() == &b, "switched to higher-prio ready b");
+	CHECK(b.state == UL_THREAD_STATE_RUNNING, "b is RUNNING");
+}
+
+static void test_trap_dispatch_request_resched(void)
+{
+	ulmk_thread_t a, b, idle;
+
+	printf("\n[test_trap_dispatch_request_resched]\n");
+	sched_reset();
+	make_thread(&a,    5);
+	make_thread(&b,    5);
+	make_thread(&idle, 255);
+
+	ulmk_sched_enqueue(&idle);
+	ulmk_sched_enqueue(&a);
+	ulmk_sched_enqueue(&b);
+	ulmk_sched_start();
+	switch_count = 0;
+
+	/* Yield rotation at equal prio — request_resched forces pick. */
+	a.state = UL_THREAD_STATE_READY;
+	ulmk_sched_dequeue(&a);
+	ulmk_sched_enqueue(&a);
+	ulmk_sched_request_resched();
+	ulmk_sched_trap_dispatch(false);
+
+	CHECK(switch_count == 1, "request_resched → switch at trap exit");
+	CHECK(ulmk_sched_current() == &b, "FIFO peer b runs next");
+}
+
 /* =========================================================================
  * Main
  * ========================================================================= */
@@ -277,6 +331,8 @@ int main(void)
 	test_sched_start();
 	test_schedule_to_idle_on_empty();
 	test_self_switch_guard();
+	test_trap_dispatch_blocked();
+	test_trap_dispatch_request_resched();
 
 	printf("\n=== results: %d/%d passed ===\n",
 	       tests_run - tests_failed, tests_run);

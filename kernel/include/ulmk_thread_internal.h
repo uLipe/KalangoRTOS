@@ -62,7 +62,7 @@ typedef struct ulmk_thread {
 	/*
 	 * Userspace staging pointer:
 	 *   ep_call  — in/out buffer (request on entry, reply on return)
-	 *   ep_recv  — filled before handoff when a caller rendezvous arrives
+	 *   ep_recv  — filled before wake when a caller rendezvous arrives
 	 */
 	ulmk_msg_t         *ipc_msg_outptr;
 	ulmk_tid_t         *ipc_sender_outptr;
@@ -73,8 +73,15 @@ typedef struct ulmk_thread {
 	/*
 	 * Status returned by a blocking syscall after wakeup.
 	 * 0 = normal completion; ULMK_EINVAL = object destroyed under us.
+	 * Applied by ulmk_kern_syscall_ret_resolve() after trap-exit switch.
 	 */
 	int32_t           block_status;
+	/*
+	 * Optional success return override (e.g. recv_or_notif notif path → 1).
+	 * Valid when syscall_wake_ret_valid != 0; cleared on resolve.
+	 */
+	int32_t           syscall_wake_ret;
+	uint8_t           syscall_wake_ret_valid;
 	/* MPU regions owned by this thread (configured by mpu_switch on dispatch) */
 	ulmk_arch_region_t  regions[ULMK_ARCH_MAX_REGIONS];
 	uint8_t           region_count;

@@ -82,6 +82,8 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 	th->notif_received = 0u;
 	th->notif_wait_mask = 0u;
 	th->block_status    = 0;
+	th->syscall_wake_ret = 0;
+	th->syscall_wake_ret_valid = 0;
 	th->ipc_msg_outptr    = NULL;
 	th->ipc_sender_outptr = NULL;
 	th->notif_bits_outptr  = NULL;
@@ -157,16 +159,10 @@ void ulmk_thread_set_state(ulmk_thread_t *th, uint8_t state)
  */
 void ulmk_thread_free(ulmk_thread_t *th)
 {
-	ulmk_arch_irq_key_t key;
-
-	key = ulmk_arch_cpu_irq_save();
-
 	if (sys_dnode_is_linked(&th->reg_node)) {
 		sys_dlist_remove(&th->reg_node);
 		sys_dnode_init(&th->reg_node);
 	}
-
-	ulmk_arch_cpu_irq_restore(key);
 
 	/*
 	 * Static threads (idle, root) have slab_base == NULL; their TCB and
@@ -203,13 +199,14 @@ uint32_t ulmk_kern_yield(void)
 		cur->state = UL_THREAD_STATE_READY;
 		ulmk_sched_dequeue(cur);
 		ulmk_sched_enqueue(cur);
+		/* Equal-prio FIFO rotation — enqueue alone may not preempt. */
+		ulmk_sched_request_resched();
 	}
-	ulmk_sched_resched();
 	return 0;
 }
 
 /*
- * exit — mark thread dead and schedule the next one.
+ * exit — mark thread dead; switch at trap exit.
  *
  * Context chain and stack cannot be freed here: the thread is still
  * executing and its context chain is live.  Register for deferred cleanup.
@@ -223,9 +220,7 @@ uint32_t ulmk_kern_exit(void)
 		ulmk_sched_dequeue(cur);
 		ulmk_sched_set_dead_for_cleanup(cur);
 	}
-	ulmk_sched_resched();
-	for (;;)
-		;
+	return 0;
 }
 
 /*
@@ -318,9 +313,8 @@ uint32_t ulmk_kern_get_thread_heap(uint32_t info_ptr)
 
 uint32_t ulmk_kern_thread_kill(uint32_t tid)
 {
-	ulmk_thread_t      *th = ulmk_thread_by_tid((ulmk_tid_t)tid);
-	ulmk_thread_t      *peer;
-	ulmk_arch_irq_key_t key;
+	ulmk_thread_t *th = ulmk_thread_by_tid((ulmk_tid_t)tid);
+	ulmk_thread_t *peer;
 
 	if (!th || th->state == UL_THREAD_STATE_DEAD)
 		return (uint32_t)(int32_t)ULMK_ESRCH;
@@ -367,13 +361,11 @@ uint32_t ulmk_kern_thread_kill(uint32_t tid)
 	ulmk_sched_dequeue(th);
 
 	if (th != ulmk_sched_current()) {
-		key = ulmk_arch_cpu_irq_save();
 		ulmk_arch_ctx_free(&th->ctx);
-		ulmk_arch_cpu_irq_restore(key);
 		ulmk_thread_free(th);
 	} else {
+		/* Trap exit switches away (state == DEAD). */
 		ulmk_sched_set_dead_for_cleanup(th);
-		ulmk_sched_resched();
 	}
 
 	return 0;
@@ -390,9 +382,7 @@ uint32_t ulmk_kern_thread_suspend(uint32_t tid)
 
 	th->state = UL_THREAD_STATE_SUSPENDED;
 	ulmk_sched_dequeue(th);
-
-	if (th == ulmk_sched_current())
-		ulmk_sched_resched();
+	/* Self-suspend: trap exit sees !RUNNING and switches. */
 
 	return 0;
 }

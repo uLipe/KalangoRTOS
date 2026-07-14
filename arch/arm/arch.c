@@ -226,6 +226,7 @@ void _arm_svc_dispatch(uint32_t *frame)
 
 	ret = ulmk_kern_trap_syscall(nr, args);
 	ulmk_kern_sched_dispatch(false);
+	ret = ulmk_kern_syscall_ret_resolve(ret);
 	frame[0] = ret;
 	ulmk_kern_trap_mpu_restore();
 }

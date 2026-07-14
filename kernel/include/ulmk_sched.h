@@ -8,6 +8,7 @@
 #ifndef UL_SCHED_H
 #define UL_SCHED_H
 
+#include <stdbool.h>
 #include <kernel/include/ulmk_thread_internal.h>
 #include <ulmk_arch.h>
 
@@ -38,17 +39,18 @@ extern const ulmk_sched_class_t ulmk_bitmap_rt_class;
 
 /* =========================================================================
  * Scheduler core (kernel/sched/sched.c)
+ *
+ * Hot-path model (FreeRTOS/Zephyr-style deferred reschedule):
+ *   handlers enqueue / block and return; ulmk_sched_trap_dispatch() at
+ *   syscall/ISR exit performs the only context switch.
  * ========================================================================= */
 
 /*
- * ulmk_sched_init     — initialise scheduler state; call before set_class/start.
+ * ulmk_sched_init      — initialise scheduler state; call before set_class/start.
  * ulmk_sched_set_class — install a scheduling policy and run its init hook.
- * ulmk_sched_start    — perform the first context switch from the startup frame
- *                     to the highest-priority ready thread.  Does not return.
- * ulmk_sched_resched — pick the highest-priority ready thread and switch to it.
- *                     The caller must have already arranged for the current
- *                     thread to be either blocked/dead (dequeued) or READY
- *                     (in queue) before calling.
+ * ulmk_sched_start     — first switch from the startup frame; does not return.
+ * ulmk_sched_resched   — immediate pick+switch (cold paths only: boot, panic).
+ *                        Prefer trap-exit dispatch for syscall/IRQ handlers.
  */
 void		 ulmk_sched_init(void);
 void		 ulmk_sched_set_class(const ulmk_sched_class_t *cls);
@@ -56,15 +58,17 @@ void		 ulmk_sched_start(void);
 void		 ulmk_sched_resched(void);
 
 /*
- * ulmk_sched_handoff — switch directly to @next (not in the ready queue).
- * Current thread must already be BLOCKED/DEAD/SUSPENDED and dequeued.
- * Used by IPC rendezvous to avoid enqueue+pick_next of a known partner.
+ * Mark that trap/ISR exit must switch (yield rotation, explicit preempt).
+ * Enqueue of a higher-priority thread also sets this automatically.
  */
-void		 ulmk_sched_handoff(ulmk_thread_t *next);
+void		 ulmk_sched_request_resched(void);
 
 void		 ulmk_sched_enqueue(ulmk_thread_t *t);
 void		 ulmk_sched_dequeue(ulmk_thread_t *t);
-/* Caller already serialised IRQs — no nested irq_save. */
+/*
+ * Same as enqueue/dequeue — kernel/ISR gateways already mask IRQs.
+ * Kept as explicit aliases for call sites that used to nest irq_save.
+ */
 void		 ulmk_sched_enqueue_locked(ulmk_thread_t *t);
 void		 ulmk_sched_dequeue_locked(ulmk_thread_t *t);
 ulmk_thread_t	*ulmk_sched_current(void);
@@ -73,16 +77,15 @@ ulmk_thread_t	*ulmk_sched_peek_next(void);
 /*
  * ulmk_sched_trap_dispatch — called from arch trap/ISR exit.  from_isr=true
  * runs ISR preemption; from_isr=false runs syscall-exit preemption.
+ *
+ * Switches when current is not RUNNING (blocked/dead/suspended) or when
+ * needs_resched / a higher-priority ready thread is present.
  */
 void		 ulmk_sched_trap_dispatch(bool from_isr);
 
 /*
  * ulmk_sched_set_dead_for_cleanup — register a dead thread for deferred
- * resource release.  Called from ulmk_kern_exit() and ulmk_kern_thread_kill()
- * when the target is the currently-running thread; in that case the context
- * chain is still active and must not be freed until after the next context
- * switch.  ulmk_sched_resched() performs the actual release at its next
- * invocation, when the dead thread is no longer on the CPU.
+ * resource release after the next context switch.
  */
 void		 ulmk_sched_set_dead_for_cleanup(ulmk_thread_t *th);
 

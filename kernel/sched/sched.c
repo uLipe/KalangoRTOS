@@ -4,6 +4,12 @@
  *
  * Scheduler core — kernel/sched/sched.c
  * Dispatches through ulmk_sched_class_t vtable; manages current/idle state.
+ *
+ * Context switches from syscall/IRQ hot paths happen only in
+ * ulmk_sched_trap_dispatch() (deferred reschedule).
+ *
+ * IRQs are already masked for the whole kernel/ISR gateway on every arch;
+ * this file does not nest irq_save/restore.
  */
 
 #include <stddef.h>
@@ -12,7 +18,6 @@
 #include <kernel/include/ulmk_sched.h>
 #include <kernel/include/ulmk_thread_internal.h>
 #include <kernel/include/ulmk_mem_internal.h>
-#include <kernel/include/ulmk_syscall_wcet_internal.h>
 #include <ulmk_arch.h>
 
 static const ulmk_sched_class_t * UL_KERNEL_BSS sched_class;
@@ -36,17 +41,27 @@ static ulmk_thread_t * UL_KERNEL_BSS g_sched_dead;
 
 static ulmk_arch_ctx_t UL_KERNEL_BSS startup_ctx;
 
-static uint8_t sched_thread_prs(const ulmk_thread_t *t)
+/* Set by enqueue of higher-prio ready work or ulmk_sched_request_resched(). */
+static bool UL_KERNEL_BSS needs_resched;
+
+static inline __attribute__((always_inline))
+uint8_t sched_thread_prs(const ulmk_thread_t *t)
 {
 	if (t && t->privilege == ULMK_PRIV_KERNEL)
 		return 0u;
 	return 1u;
 }
 
+static inline __attribute__((always_inline))
+void sched_mark_preempt_if_higher(const ulmk_thread_t *t)
+{
+	if (sched_current && t != sched_current &&
+	    t->priority < sched_current->priority)
+		needs_resched = true;
+}
+
 static void sched_reap_dead(ulmk_thread_t *prev)
 {
-	ulmk_arch_irq_key_t key;
-
 	/*
 	 * The guard `g_sched_dead != prev` is critical: when a thread calls
 	 * ulmk_kern_exit() it sets g_sched_dead = self and then immediately
@@ -57,27 +72,24 @@ static void sched_reap_dead(ulmk_thread_t *prev)
 	if (!g_sched_dead || g_sched_dead == prev)
 		return;
 
-	key = ulmk_arch_cpu_irq_save();
 	ulmk_arch_ctx_free(&g_sched_dead->ctx);
 	ulmk_thread_free(g_sched_dead);
 	g_sched_dead = NULL;
-	ulmk_arch_cpu_irq_restore(key);
 }
 
 /*
  * Commit @next as current and switch from @prev's context.
  * Skips MPU reprogramming when the hardware context does not change.
+ * Interrupt mask is left as the gateway left it (masked) — no irq_restore
+ * that could enable IRQs mid-syscall after a resume.
  */
 static void sched_switch_to(ulmk_thread_t *prev, ulmk_thread_t *next)
 {
-	ulmk_arch_ctx_t    *from;
-	ulmk_arch_ctx_t    *to;
-	ulmk_arch_irq_key_t key;
+	ulmk_arch_ctx_t *from;
+	ulmk_arch_ctx_t *to;
 
 	from = prev ? &prev->ctx : &startup_ctx;
 	to   = &next->ctx;
-
-	key = ulmk_arch_cpu_irq_save();
 
 	if (from == to) {
 		sched_current = next;
@@ -91,48 +103,32 @@ static void sched_switch_to(ulmk_thread_t *prev, ulmk_thread_t *next)
 			sched_class->dequeue(prev);
 			prev->state = UL_THREAD_STATE_RUNNING;
 		}
-		ulmk_arch_cpu_irq_restore(key);
 		return;
 	}
 
 	ulmk_arch_mpu_switch(next->regions, next->region_count,
 			     sched_thread_prs(next));
 
-	/*
-	 * Pause WCET on @prev before publishing @next as current — otherwise
-	 * the cycle mark is attributed to the incoming thread.
-	 */
-	ulmk_syscall_wcet_block_begin_th(prev);
 	sched_current = next;
 	next->state   = UL_THREAD_STATE_RUNNING;
 	ulmk_arch_ctx_switch(from, to);
-	ulmk_syscall_wcet_block_end_th(prev);
-
-	/*
-	 * Resumed here when THIS thread (prev) is re-scheduled.  Restore the
-	 * mask saved at entry — keeps syscall CCPN/PRIMASK masking instead of
-	 * unconditionally enabling IRQs mid-handler.
-	 */
-	ulmk_arch_cpu_irq_restore(key);
+	/* Resumed here when THIS thread (prev) is re-scheduled. */
 }
 
 void ulmk_sched_set_dead_for_cleanup(ulmk_thread_t *th)
 {
-	ulmk_arch_irq_key_t key;
-
-	key = ulmk_arch_cpu_irq_save();
 	if (g_sched_dead) {
 		ulmk_arch_ctx_free(&g_sched_dead->ctx);
 		ulmk_thread_free(g_sched_dead);
 	}
 	g_sched_dead = th;
-	ulmk_arch_cpu_irq_restore(key);
 }
 
 void ulmk_sched_init(void)
 {
 	sched_current = NULL;
 	sched_class   = NULL;
+	needs_resched = false;
 }
 
 void ulmk_sched_set_class(const ulmk_sched_class_t *cls)
@@ -147,9 +143,15 @@ void ulmk_sched_start(void)
 
 	sched_current          = first;
 	first->state           = UL_THREAD_STATE_RUNNING;
+	needs_resched          = false;
 	ulmk_arch_mpu_switch(first->regions, first->region_count,
 			     sched_thread_prs(first));
 	ulmk_arch_ctx_switch(&startup_ctx, &first->ctx);
+}
+
+void ulmk_sched_request_resched(void)
+{
+	needs_resched = true;
 }
 
 void ulmk_sched_resched(void)
@@ -157,54 +159,35 @@ void ulmk_sched_resched(void)
 	ulmk_thread_t *prev = sched_current;
 	ulmk_thread_t *next;
 
+	needs_resched = false;
 	sched_reap_dead(prev);
 	next = sched_class->pick_next();
 	sched_switch_to(prev, next);
 }
 
-void ulmk_sched_handoff(ulmk_thread_t *next)
-{
-	ulmk_thread_t *prev = sched_current;
-
-	if (!next || !sched_class)
-		return;
-
-	sched_reap_dead(prev);
-	if (sys_dnode_is_linked(&next->sched_node))
-		sched_class->dequeue(next);
-	sched_switch_to(prev, next);
-}
-
 void ulmk_sched_enqueue(ulmk_thread_t *t)
 {
-	ulmk_arch_irq_key_t key;
-
-	key = ulmk_arch_cpu_irq_save();
 	sched_class->enqueue(t);
-	ulmk_arch_cpu_irq_restore(key);
+	sched_mark_preempt_if_higher(t);
 }
 
 void ulmk_sched_dequeue(ulmk_thread_t *t)
 {
-	ulmk_arch_irq_key_t key;
-
-	key = ulmk_arch_cpu_irq_save();
 	sched_class->dequeue(t);
-	ulmk_arch_cpu_irq_restore(key);
 }
 
 /*
- * Unlocked variants — caller already holds the IRQ key (e.g. notif critical
- * section) so nested irq_save/restore is avoided.
+ * Locked aliases — same as unlocked under the kernel-masked-IRQ contract.
+ * Kept so existing callers (notif critical sections) stay readable.
  */
 void ulmk_sched_enqueue_locked(ulmk_thread_t *t)
 {
-	sched_class->enqueue(t);
+	ulmk_sched_enqueue(t);
 }
 
 void ulmk_sched_dequeue_locked(ulmk_thread_t *t)
 {
-	sched_class->dequeue(t);
+	ulmk_sched_dequeue(t);
 }
 
 ulmk_thread_t *ulmk_sched_current(void)
@@ -222,17 +205,21 @@ ulmk_thread_t *ulmk_sched_peek_next(void)
  *
  * If the current thread is no longer RUNNING (blocked/dead/ready-requeued by
  * a syscall that deferred the switch), pick the next thread immediately.
- * Otherwise apply classic priority preemption against peek_next().
+ * Otherwise apply classic priority preemption / requested resched.
  */
 void ulmk_sched_trap_dispatch(bool from_isr)
 {
 	ulmk_thread_t *cur;
 	ulmk_thread_t *next;
+	bool           want;
 
 	cur = sched_current;
 
 	if (!cur || !sched_class)
 		return;
+
+	want = needs_resched;
+	needs_resched = false;
 
 	if (cur->state != UL_THREAD_STATE_RUNNING) {
 		sched_reap_dead(cur);
@@ -241,9 +228,11 @@ void ulmk_sched_trap_dispatch(bool from_isr)
 		return;
 	}
 
-	next = sched_class->peek_next();
-	if (!next || next == cur || next->priority >= cur->priority)
-		return;
+	if (!want) {
+		next = sched_class->peek_next();
+		if (!next || next == cur || next->priority >= cur->priority)
+			return;
+	}
 
 	if (from_isr) {
 		cur->state = UL_THREAD_STATE_READY;

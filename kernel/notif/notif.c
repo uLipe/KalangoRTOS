@@ -16,7 +16,6 @@
 #include <kernel/include/ulmk_ep_internal.h>
 #include <kernel/include/ulmk_sched.h>
 #include <kernel/syscall/syscall_router.h>
-#include <ulmk_arch.h>
 
 #ifndef UL_UNIT_TEST
 #include <kernel/include/ulmk_mem_internal.h>
@@ -61,73 +60,71 @@ ulmk_notif_obj_t *ulmk_notif_by_id(ulmk_notif_t id)
 
 int notif_signal_impl(ulmk_notif_t notif_id, uint32_t bits)
 {
-	ulmk_arch_irq_key_t  key;
-	ulmk_notif_obj_t    *n = ulmk_notif_by_id(notif_id);
-	ulmk_thread_t       *w;
-	uint32_t           delivered;
+	ulmk_notif_obj_t *n = ulmk_notif_by_id(notif_id);
+	ulmk_thread_t    *w;
+	uint32_t          delivered;
 
 	if (!n)
 		return -ULMK_EINVAL;
 
-	key = ulmk_arch_cpu_irq_save();
-
 	n->bits |= bits;
 
 	w = n->waiter;
-	if (!w || w->state != UL_THREAD_STATE_BLOCKED) {
-		ulmk_arch_cpu_irq_restore(key);
+	if (!w || w->state != UL_THREAD_STATE_BLOCKED)
 		return 0;
-	}
 
 	delivered = n->bits & w->notif_wait_mask;
-	if (!delivered) {
-		ulmk_arch_cpu_irq_restore(key);
+	if (!delivered)
 		return 0;
-	}
 
 	n->bits          &= ~delivered;
 	n->waiter         = NULL;
 	w->notif_received = delivered;
 
 	if (w->blocked_reason == UL_BLOCKED_IPC_OR_NOTIF) {
+		ulmk_recv_or_notif_result_t *rn = w->rn_result_outptr;
+
 		ulmk_ep_recv_queue_remove(w);
 		w->blocked_notif = ULMK_NOTIF_INVALID;
+		if (rn) {
+			rn->is_notif   = 1;
+			rn->notif_bits = delivered;
+			rn->sender     = ULMK_TID_INVALID;
+			w->rn_result_outptr = NULL;
+		}
+		w->syscall_wake_ret       = 1;
+		w->syscall_wake_ret_valid = 1;
+	} else if (w->notif_bits_outptr) {
+		*w->notif_bits_outptr = delivered;
+		w->notif_bits_outptr  = NULL;
 	}
 
 	w->blocked_reason = UL_BLOCKED_NONE;
 	w->state          = UL_THREAD_STATE_READY;
 	ulmk_sched_enqueue_locked(w);
 
-	ulmk_arch_cpu_irq_restore(key);
-
 	return 0;
 }
 
 int notif_wait_impl(ulmk_notif_t notif_id, uint32_t mask, uint32_t *out)
 {
-	ulmk_arch_irq_key_t  key;
-	ulmk_notif_obj_t    *n = ulmk_notif_by_id(notif_id);
-	ulmk_thread_t       *cur;
-	uint32_t           matched;
+	ulmk_notif_obj_t *n = ulmk_notif_by_id(notif_id);
+	ulmk_thread_t    *cur;
+	uint32_t          matched;
 
 	if (!n || !out)
 		return -ULMK_EINVAL;
 
-	key = ulmk_arch_cpu_irq_save();
-
 	matched = n->bits & mask;
 	if (matched) {
 		n->bits &= ~matched;
-		ulmk_arch_cpu_irq_restore(key);
 		*out = matched;
 		return 0;
 	}
 
 	cur = ulmk_sched_current();
-	if (!cur) {
-		ulmk_arch_cpu_irq_restore(key);
+	if (!cur)
 		return -ULMK_EINVAL;
-	}
 
 	cur->blocked_reason    = UL_BLOCKED_NOTIF;
 	cur->notif_wait_mask   = mask;
@@ -149,47 +146,24 @@ int notif_wait_impl(ulmk_notif_t notif_id, uint32_t mask, uint32_t *out)
 		cur->blocked_reason = UL_BLOCKED_NONE;
 		cur->blocked_notif  = ULMK_NOTIF_INVALID;
 		ulmk_sched_enqueue_locked(cur);
-		ulmk_arch_cpu_irq_restore(key);
 		*out = matched;
 		return 0;
 	}
 
-	ulmk_arch_cpu_irq_restore(key);
-
-	ulmk_sched_resched();
-
-	/* Re-fetch cur: local var may be stale after context switch. */
-	cur = ulmk_sched_current();
-	if (!cur)
-		return -ULMK_EINVAL;
-	if (cur->block_status != 0) {
-		int st = cur->block_status;
-
-		cur->block_status      = 0;
-		cur->notif_bits_outptr = NULL;
-		return st;
-	}
-
-	if (cur->notif_bits_outptr) {
-		*cur->notif_bits_outptr = cur->notif_received;
-		cur->notif_bits_outptr  = NULL;
-	}
+	/* Wake writes *notif_bits_outptr; switch deferred to trap exit. */
 	return 0;
 }
 
 uint32_t notif_poll_impl(ulmk_notif_t notif_id, uint32_t mask)
 {
-	ulmk_arch_irq_key_t  key;
-	ulmk_notif_obj_t    *n = ulmk_notif_by_id(notif_id);
-	uint32_t           matched;
+	ulmk_notif_obj_t *n = ulmk_notif_by_id(notif_id);
+	uint32_t          matched;
 
 	if (!n)
 		return 0;
 
-	key = ulmk_arch_cpu_irq_save();
 	matched  = n->bits & mask;
 	n->bits &= ~matched;
-	ulmk_arch_cpu_irq_restore(key);
 
 	return matched;
 }

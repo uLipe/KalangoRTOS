@@ -89,7 +89,8 @@ void ulmk_ep_recv_queue_remove(ulmk_thread_t *th)
  * Helpers
  * ========================================================================= */
 
-static ulmk_thread_t *ipc_pop_head(sys_dlist_t *queue)
+static inline __attribute__((always_inline))
+ulmk_thread_t *ipc_pop_head(sys_dlist_t *queue)
 {
 	sys_dnode_t     *dn;
 	ulmk_thread_t   *th;
@@ -103,19 +104,22 @@ static ulmk_thread_t *ipc_pop_head(sys_dlist_t *queue)
 	return th;
 }
 
-static void ipc_enqueue_tail(sys_dlist_t *queue, ulmk_thread_t *th)
+static inline __attribute__((always_inline))
+void ipc_enqueue_tail(sys_dlist_t *queue, ulmk_thread_t *th)
 {
 	sys_dlist_append(queue, &th->ipc_node);
 }
 
-static void apply_prio_inherit(ulmk_thread_t *server, ulmk_thread_t *caller)
+static inline __attribute__((always_inline))
+void apply_prio_inherit(ulmk_thread_t *server, ulmk_thread_t *caller)
 {
 	server->saved_prio = server->priority;
 	if (caller->priority < server->priority)
 		server->priority = caller->priority;
 }
 
-static void clear_server_block(ulmk_thread_t *server)
+static inline __attribute__((always_inline))
+void clear_server_block(ulmk_thread_t *server)
 {
 	server->blocked_reason = UL_BLOCKED_NONE;
 	server->blocked_ep     = ULMK_EP_INVALID;
@@ -130,7 +134,8 @@ static void clear_server_block(ulmk_thread_t *server)
 }
 
 /* Caller's request buffer: staged pointer, else TCB bounce. */
-static const ulmk_msg_t *caller_request(const ulmk_thread_t *caller)
+static inline __attribute__((always_inline))
+const ulmk_msg_t *caller_request(const ulmk_thread_t *caller)
 {
 	if (caller->ipc_msg_outptr)
 		return caller->ipc_msg_outptr;
@@ -141,11 +146,15 @@ static const ulmk_msg_t *caller_request(const ulmk_thread_t *caller)
  * Deliver one request copy into the waiting server and apply PI.
  * Prefer the server's userspace outptr (single hop); fall back to TCB
  * bounce for recv_or_notif / tests.  Does not touch the ready queue.
+ * Fills rn_result_outptr when the waiter used ep_recv_or_notif.
  */
-static void prepare_server_delivery(ulmk_thread_t *server,
-				    ulmk_thread_t *caller,
-				    const ulmk_msg_t *msg)
+static inline __attribute__((always_inline))
+void prepare_server_delivery(ulmk_thread_t *server,
+			     ulmk_thread_t *caller,
+			     const ulmk_msg_t *msg)
 {
+	ulmk_recv_or_notif_result_t *rn;
+
 	server->ipc_sender = caller->tid;
 	apply_prio_inherit(server, caller);
 	clear_server_block(server);
@@ -160,6 +169,15 @@ static void prepare_server_delivery(ulmk_thread_t *server,
 	if (server->ipc_sender_outptr) {
 		*server->ipc_sender_outptr = caller->tid;
 		server->ipc_sender_outptr  = NULL;
+	}
+
+	rn = server->rn_result_outptr;
+	if (rn) {
+		rn->is_notif    = 0;
+		rn->msg         = *msg;
+		rn->sender      = caller->tid;
+		rn->notif_bits  = 0;
+		server->rn_result_outptr = NULL;
 	}
 }
 
@@ -215,33 +233,24 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 
 	if (!sys_dlist_is_empty(&ep->recv_queue)) {
 		/*
-		 * Fast path: server already waiting — one message copy and a
-		 * direct handoff (no ready-queue enqueue/pick_next).
+		 * Fast path: server already waiting — deliver and enqueue; the
+		 * switch happens at trap exit (caller is BLOCKED).
 		 */
 		srv = ipc_pop_head(&ep->recv_queue);
 		prepare_server_delivery(srv, cur, msg);
-		cur->state = UL_THREAD_STATE_BLOCKED;
-		ulmk_sched_handoff(srv);
+		srv->state = UL_THREAD_STATE_READY;
+		ulmk_sched_enqueue(srv);
 	} else {
 		ipc_enqueue_tail(&ep->send_queue, cur);
-		cur->state = UL_THREAD_STATE_BLOCKED;
-		ulmk_sched_dequeue_locked(cur);
-		ulmk_sched_resched();
 	}
 
-	/* Re-fetch cur: local var may be stale after context switch. */
-	cur = ulmk_sched_current();
-	if (!cur)
-		return -ULMK_EINVAL;
-	if (cur->block_status != 0) {
-		int st = cur->block_status;
-
-		cur->block_status   = 0;
-		cur->ipc_msg_outptr = NULL;
-		return st;
-	}
-	/* Reply already written into *ipc_msg_outptr by ep_reply. */
-	cur->ipc_msg_outptr = NULL;
+	cur->state = UL_THREAD_STATE_BLOCKED;
+	ulmk_sched_dequeue_locked(cur);
+	/*
+	 * Reply (or destroy error) is resolved after trap-exit switch: reply
+	 * writes *ipc_msg_outptr; ulmk_kern_syscall_ret_resolve() picks up
+	 * block_status on resume.
+	 */
 	return 0;
 }
 
@@ -283,22 +292,7 @@ int ep_recv_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, ulmk_tid_t *sender)
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
 	ulmk_sched_dequeue_locked(cur);
-	ulmk_sched_resched();
-
-	cur = ulmk_sched_current();
-	if (!cur)
-		return -ULMK_EINVAL;
-	if (cur->block_status != 0) {
-		int st = cur->block_status;
-
-		cur->block_status      = 0;
-		cur->ipc_msg_outptr    = NULL;
-		cur->ipc_sender_outptr = NULL;
-		return st;
-	}
-	/* prepare_server_delivery already filled outptrs before handoff. */
-	cur->ipc_msg_outptr    = NULL;
-	cur->ipc_sender_outptr = NULL;
+	/* Delivery / errors completed at wake + trap-exit resume. */
 	return 0;
 }
 
@@ -318,10 +312,12 @@ int ep_reply_impl(ulmk_tid_t sender_tid, const ulmk_msg_t *reply)
 		cur->priority = cur->saved_prio;
 
 	/* One hop into the caller's staged buffer (or TCB bounce fallback). */
-	if (caller->ipc_msg_outptr)
+	if (caller->ipc_msg_outptr) {
 		*caller->ipc_msg_outptr = *reply;
-	else
+		caller->ipc_msg_outptr  = NULL;
+	} else {
 		caller->ipc_msg = *reply;
+	}
 
 	caller->state          = UL_THREAD_STATE_READY;
 	caller->blocked_reason = UL_BLOCKED_NONE;
@@ -440,38 +436,12 @@ int ep_recv_or_notif_impl(ulmk_ep_t ep_id, ulmk_notif_t notif_id,
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
 	ulmk_sched_dequeue_locked(cur);
-	ulmk_sched_resched();
-
-	/* Re-fetch cur: local var may be stale after context switch. */
-	cur = ulmk_sched_current();
-	if (!cur)
-		return -ULMK_EINVAL;
-	if (cur->block_status != 0) {
-		int st = cur->block_status;
-
-		cur->block_status     = 0;
-		cur->rn_result_outptr = NULL;
-		return st;
-	}
-
-	res = cur->rn_result_outptr;
-	cur->rn_result_outptr = NULL;
-
-	if (!res)
-		return -ULMK_EINVAL;
-
-	if (cur->ipc_sender != ULMK_TID_INVALID) {
-		res->is_notif   = 0;
-		res->msg        = cur->ipc_msg;
-		res->sender     = cur->ipc_sender;
-		res->notif_bits = 0;
-		return 0;
-	} else {
-		res->is_notif   = 1;
-		res->notif_bits = cur->notif_received;
-		res->sender     = ULMK_TID_INVALID;
-		return 1;
-	}
+	/*
+	 * Wake paths fill *rn_result_outptr (IPC via prepare_server_delivery,
+	 * notif via notif_signal).  Return 0 here; userspace sees the staged
+	 * result after trap-exit resume.  Destroy errors use block_status.
+	 */
+	return 0;
 }
 
 int ep_destroy_impl(ulmk_ep_t ep_id)

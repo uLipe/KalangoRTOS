@@ -16,13 +16,11 @@
 /*
  * Thread context handle.
  *
- * The kernel expects a synchronous coroutine context switch (see
- * kernel/ipc/ep.c: ulmk_sched_resched() must return only when the thread is
- * re-scheduled).  On Cortex-M exceptions always run on MSP, so a shared kernel
- * stack cannot host several suspended coroutines.  Each thread therefore owns a
- * private kernel stack, carved from the top of its thread stack; the invariant
- * MSP == current-thread kernel SP is maintained by ulmk_arch_ctx_switch, which
- * swaps MSP the same way the RISC-V port swaps its single SP.
+ * Syscall/IRQ handlers defer the context switch to trap/ISR exit
+ * (ulmk_kern_sched_dispatch).  Suspension therefore happens on the per-thread
+ * kernel stack while still inside the arch trap prologue — MSP == that
+ * thread's ksp.  ulmk_arch_ctx_switch swaps MSP the same way the RISC-V port
+ * swaps its single SP.
  *
  * Fields (offsets mirrored by .equ in ctx_switch.S — keep in sync):
  *   ksp         saved kernel SP (MSP) of a suspended coroutine
@@ -133,6 +131,7 @@ void ulmk_printk_char_out(char c);
 
 void ulmk_kern_irq_dispatch(uint8_t srpn);
 void ulmk_kern_sched_dispatch(bool from_isr);
+uint32_t ulmk_kern_syscall_ret_resolve(uint32_t ret);
 uint32_t ulmk_kern_trap_syscall(uint8_t tin, uint32_t args[4]);
 void ulmk_kern_trap_recoverable(void);
 void ulmk_kern_trap_panic(void);

@@ -1116,13 +1116,11 @@ void ulmk_arch_syscall_entry(uint32_t frame_ptr)
 	ret = ulmk_kern_trap_syscall((uint8_t)tin, args);
 
 	/*
-	 * If the syscall unblocked a higher-priority thread, perform a
-	 * cooperative switch now rather than waiting for the next tick.
-	 * Execution resumes here when this thread is rescheduled; at that
-	 * point CCPN has been restored to 0 by the context-switch RFE and
-	 * interrupts are enabled, so the return path is unprotected but brief.
+	 * Deferred reschedule: handlers only enqueue/block; the unique
+	 * context switch is here — after the WCET window around the router.
 	 */
 	ulmk_kern_sched_dispatch(false);
+	ret = ulmk_kern_syscall_ret_resolve(ret);
 
 	__asm__ volatile("mov %%d2, %0" : : "d"(ret));
 }

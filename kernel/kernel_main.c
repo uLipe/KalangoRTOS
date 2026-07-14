@@ -33,6 +33,35 @@ void ulmk_kern_sched_dispatch(bool from_isr)
 	ulmk_sched_trap_dispatch(from_isr);
 }
 
+/*
+ * After trap-exit switch, pick up destroy errors / recv_or_notif notif rc
+ * that were staged while this thread was blocked.
+ */
+uint32_t ulmk_kern_syscall_ret_resolve(uint32_t ret)
+{
+	ulmk_thread_t *cur = ulmk_sched_current();
+
+	if (!cur)
+		return ret;
+
+	if (cur->block_status != 0) {
+		ret = (uint32_t)(int32_t)cur->block_status;
+		cur->block_status            = 0;
+		cur->syscall_wake_ret_valid  = 0;
+		cur->ipc_msg_outptr          = NULL;
+		cur->ipc_sender_outptr       = NULL;
+		cur->notif_bits_outptr       = NULL;
+		cur->rn_result_outptr        = NULL;
+		return ret;
+	}
+
+	if (cur->syscall_wake_ret_valid) {
+		ret = (uint32_t)(int32_t)cur->syscall_wake_ret;
+		cur->syscall_wake_ret_valid = 0;
+	}
+	return ret;
+}
+
 void ulmk_kern_trap_mpu_restore(void)
 {
 	ulmk_thread_t *cur = ulmk_sched_current();

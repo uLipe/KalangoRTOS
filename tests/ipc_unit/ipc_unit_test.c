@@ -6,11 +6,11 @@
  * Compiles both modules against stub implementations of the scheduler,
  * thread registry, and arch layer.  No QEMU or hardware required.
  *
- * Since ulmk_sched_resched() is a no-op here, blocking paths return
+ * Since context switches are deferred to trap exit, blocking paths return
  * immediately without switching context.  Tests verify state machine
  * transitions (BLOCKED_IPC_CALL, BLOCKED_IPC_RECV, queues, etc.) rather
  * than actual rendezvous execution.  Full rendezvous is covered by the
- * ipc_integ QEMU test.
+ * ipc SDK suite.
  *
  * Test plan:
  *  ep_create:
@@ -126,12 +126,7 @@ void ulmk_sched_dequeue(ulmk_thread_t *t) { (void)t; g_dequeue_count++; }
 void ulmk_sched_enqueue_locked(ulmk_thread_t *t) { ulmk_sched_enqueue(t); }
 void ulmk_sched_dequeue_locked(ulmk_thread_t *t) { ulmk_sched_dequeue(t); }
 void ulmk_sched_resched(void)           { g_schedule_count++; }
-void ulmk_sched_handoff(ulmk_thread_t *next)
-{
-	if (next)
-		next->state = UL_THREAD_STATE_READY;
-	g_schedule_count++;
-}
+void ulmk_sched_request_resched(void)   { g_schedule_count++; }
 
 /* ── Thread registry stub ──────────────────────────────────────────────── */
 
@@ -283,7 +278,7 @@ static void test_ep_call_fast_path_server_waiting(void)
 	ipc_test_enqueue_recv(ep, server);
 
 	g_current = caller;
-	ep_call_impl(0, &msg);
+	ASSERT(ep_call_impl(0, &msg) == 0);
 
 	ASSERT(server->state == UL_THREAD_STATE_READY);
 	/* Single hop into the server's staged buffer — not TCB bounce. */
@@ -295,14 +290,11 @@ static void test_ep_call_fast_path_server_waiting(void)
 	ASSERT(server->priority == 5);    /* priority inheritance */
 	ASSERT(caller->state == UL_THREAD_STATE_BLOCKED);
 	ASSERT(caller->blocked_reason == UL_BLOCKED_IPC_CALL);
-	/*
-	 * Mock handoff returns without a real block, so ep_call clears the
-	 * staging pointer on the "resume" path (as after a real reply).
-	 */
-	ASSERT(caller->ipc_msg_outptr == NULL);
-	/* Direct handoff — no ready-queue enqueue of the server. */
-	ASSERT(g_enqueue_count == 0);
-	ASSERT(g_schedule_count == 1);
+	/* Staging stays until reply — switch deferred to trap exit. */
+	ASSERT(caller->ipc_msg_outptr == &msg);
+	/* Server enqueued for trap-exit switch (no mid-handler handoff). */
+	ASSERT(g_enqueue_count == 1);
+	ASSERT(g_schedule_count == 0);
 }
 
 static void test_ep_call_slow_path_no_server(void)
@@ -317,13 +309,14 @@ static void test_ep_call_slow_path_no_server(void)
 	caller = make_thread(10);
 
 	g_current = caller;
-	ep_call_impl(0, &msg);
+	ASSERT(ep_call_impl(0, &msg) == 0);
 
 	ASSERT(caller->state == UL_THREAD_STATE_BLOCKED);
 	ASSERT(caller->blocked_reason == UL_BLOCKED_IPC_CALL);
 	ASSERT(SYS_DLIST_PEEK_HEAD_CONTAINER_OF(&ep->send_queue, ulmk_thread_t,
 						ipc_node) == caller);
-	ASSERT(g_schedule_count == 1);
+	/* Deferred switch — no mid-handler resched. */
+	ASSERT(g_schedule_count == 0);
 }
 
 /* ── ep_recv ───────────────────────────────────────────────────────────── */
@@ -399,7 +392,7 @@ static void test_ep_recv_slow_path_no_caller(void)
 	ASSERT(server->blocked_reason == UL_BLOCKED_IPC_RECV);
 	ASSERT(SYS_DLIST_PEEK_HEAD_CONTAINER_OF(&ep->recv_queue, ulmk_thread_t,
 						ipc_node) == server);
-	ASSERT(g_schedule_count == 1);
+	ASSERT(g_schedule_count == 0);
 }
 
 /* ── ep_reply ──────────────────────────────────────────────────────────── */
@@ -654,7 +647,7 @@ static void test_notif_wait_slow_path(void)
 	ASSERT(waiter->state == UL_THREAD_STATE_BLOCKED);
 	ASSERT(waiter->blocked_reason == UL_BLOCKED_NOTIF);
 	ASSERT(n->waiter == waiter);
-	ASSERT(g_schedule_count == 1);
+	ASSERT(g_schedule_count == 0);
 }
 
 /* ── notif_poll ────────────────────────────────────────────────────────── */

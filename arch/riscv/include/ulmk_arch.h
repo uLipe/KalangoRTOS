@@ -108,6 +108,7 @@ void ulmk_printk_char_out(char c);
 
 void ulmk_kern_irq_dispatch(uint8_t srpn);
 void ulmk_kern_sched_dispatch(bool from_isr);
+uint32_t ulmk_kern_syscall_ret_resolve(uint32_t ret);
 uint32_t ulmk_kern_trap_syscall(uint8_t tin, uint32_t args[4]);
 void ulmk_kern_trap_recoverable(void);
 void ulmk_kern_trap_panic(void);

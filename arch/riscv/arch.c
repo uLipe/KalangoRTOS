@@ -580,6 +580,7 @@ void _ulmk_trap_dispatch(struct riscv_trap_frame *frame)
 		clear_mstatus_mie();
 		ret = ulmk_kern_trap_syscall((uint8_t)frame->regs[TF_A7 / 4u], args);
 		ulmk_kern_sched_dispatch(false);
+		ret = ulmk_kern_syscall_ret_resolve(ret);
 		frame->regs[TF_A0 / 4u] = ret;
 		frame->regs[TF_MSTATUS / 4u] = mstatus | MSTATUS_MIE_BIT;
 		ulmk_kern_trap_mpu_restore();

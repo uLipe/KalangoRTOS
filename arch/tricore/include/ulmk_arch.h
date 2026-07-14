@@ -240,6 +240,12 @@ void ulmk_kern_irq_dispatch(uint8_t srpn);
 void ulmk_kern_sched_dispatch(bool from_isr);
 
 /*
+ * ulmk_kern_syscall_ret_resolve — after trap-exit switch, apply staged
+ * block_status / wake return overrides for the resumed thread.
+ */
+uint32_t ulmk_kern_syscall_ret_resolve(uint32_t ret);
+
+/*
  * ulmk_kern_trap_syscall — dispatch a SYSCALL trap (class 6).
  * @tin:  trap identification number (= syscall number, 0–127)
  * @args: arguments read from D4–D7 by ulmk_arch_syscall_entry()
