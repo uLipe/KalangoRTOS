@@ -35,21 +35,17 @@ void ulmk_irq_table_init(void)
 
 int ulmk_irq_binding_add(uint8_t srpn, ulmk_notif_obj_t *notif, uint32_t bit)
 {
-	int               i;
-	ulmk_arch_irq_key_t key;
+	int i;
 
-	key = ulmk_arch_cpu_irq_save();
 	for (i = 0; i < ULMK_CONFIG_MAX_IRQ_BINDINGS; i++) {
 		if (!irq_table[i].notif) {
 			irq_table[i].srpn    = srpn;
 			irq_table[i].notif   = notif;
 			irq_table[i].bit     = bit;
 			irq_table[i].enabled = false;
-			ulmk_arch_cpu_irq_restore(key);
 			return i;
 		}
 	}
-	ulmk_arch_cpu_irq_restore(key);
 	return -1;
 }
 
@@ -111,20 +107,15 @@ uint32_t ulmk_kern_irq_bind_hw(uint32_t srpn, uint32_t notif_id,
 
 uint32_t ulmk_kern_irq_enable(uint32_t srpn)
 {
-	ulmk_arch_irq_key_t  key;
-	ulmk_irq_binding_t  *b;
+	ulmk_irq_binding_t *b;
 
 	if (srpn == 0u || srpn >= 256u)
 		return (uint32_t)(int32_t)ULMK_EINVAL;
 
-	key = ulmk_arch_cpu_irq_save();
 	b = ulmk_irq_binding_by_srpn((uint8_t)srpn);
-	if (!b) {
-		ulmk_arch_cpu_irq_restore(key);
+	if (!b)
 		return (uint32_t)(int32_t)ULMK_EINVAL;
-	}
 	b->enabled = true;
-	ulmk_arch_cpu_irq_restore(key);
 
 	ulmk_arch_irq_src_enable((uint8_t)srpn);
 	return 0u;
@@ -132,20 +123,15 @@ uint32_t ulmk_kern_irq_enable(uint32_t srpn)
 
 uint32_t ulmk_kern_irq_disable(uint32_t srpn)
 {
-	ulmk_arch_irq_key_t  key;
-	ulmk_irq_binding_t  *b;
+	ulmk_irq_binding_t *b;
 
 	if (srpn == 0u || srpn >= 256u)
 		return (uint32_t)(int32_t)ULMK_EINVAL;
 
-	key = ulmk_arch_cpu_irq_save();
 	b = ulmk_irq_binding_by_srpn((uint8_t)srpn);
-	if (!b) {
-		ulmk_arch_cpu_irq_restore(key);
+	if (!b)
 		return (uint32_t)(int32_t)ULMK_EINVAL;
-	}
 	b->enabled = false;
-	ulmk_arch_cpu_irq_restore(key);
 
 	ulmk_arch_irq_src_disable((uint8_t)srpn);
 	ulmk_arch_irq_src_ack((uint8_t)srpn);
