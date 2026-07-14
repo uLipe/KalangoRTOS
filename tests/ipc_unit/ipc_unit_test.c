@@ -260,7 +260,9 @@ static void test_ep_call_null_msg(void)
 
 static void test_ep_call_fast_path_server_waiting(void)
 {
-	ulmk_msg_t      msg    = { .label = 0xBEEF };
+	ulmk_msg_t      msg     = { .label = 0xBEEF };
+	ulmk_msg_t      srv_buf = {0};
+	ulmk_tid_t      srv_tid = ULMK_TID_INVALID;
 	ulmk_endpoint_t *ep;
 	ulmk_thread_t   *caller;
 	ulmk_thread_t   *server;
@@ -273,21 +275,31 @@ static void test_ep_call_fast_path_server_waiting(void)
 	server = make_thread(20);
 	caller = make_thread(5);
 
-	server->state          = UL_THREAD_STATE_BLOCKED;
-	server->blocked_reason = UL_BLOCKED_IPC_RECV;
-	server->blocked_ep     = 0;
+	server->state              = UL_THREAD_STATE_BLOCKED;
+	server->blocked_reason     = UL_BLOCKED_IPC_RECV;
+	server->blocked_ep         = 0;
+	server->ipc_msg_outptr     = &srv_buf;
+	server->ipc_sender_outptr  = &srv_tid;
 	ipc_test_enqueue_recv(ep, server);
 
 	g_current = caller;
 	ep_call_impl(0, &msg);
 
 	ASSERT(server->state == UL_THREAD_STATE_READY);
-	ASSERT(server->ipc_msg.label == 0xBEEF);
+	/* Single hop into the server's staged buffer — not TCB bounce. */
+	ASSERT(srv_buf.label == 0xBEEF);
+	ASSERT(srv_tid == caller->tid);
+	ASSERT(server->ipc_msg_outptr == NULL);
 	ASSERT(server->ipc_sender == caller->tid);
 	ASSERT(sys_dlist_is_empty(&ep->recv_queue));
 	ASSERT(server->priority == 5);    /* priority inheritance */
 	ASSERT(caller->state == UL_THREAD_STATE_BLOCKED);
 	ASSERT(caller->blocked_reason == UL_BLOCKED_IPC_CALL);
+	/*
+	 * Mock handoff returns without a real block, so ep_call clears the
+	 * staging pointer on the "resume" path (as after a real reply).
+	 */
+	ASSERT(caller->ipc_msg_outptr == NULL);
 	/* Direct handoff — no ready-queue enqueue of the server. */
 	ASSERT(g_enqueue_count == 0);
 	ASSERT(g_schedule_count == 1);
@@ -337,6 +349,7 @@ static void test_ep_recv_null_msg(void)
 
 static void test_ep_recv_fast_path_caller_waiting(void)
 {
+	ulmk_msg_t      req        = { .label = 0x1234 };
 	ulmk_msg_t      msg_out    = {0};
 	ulmk_tid_t      sender_out = ULMK_TID_INVALID;
 	ulmk_endpoint_t *ep;
@@ -352,7 +365,7 @@ static void test_ep_recv_fast_path_caller_waiting(void)
 
 	caller->state          = UL_THREAD_STATE_BLOCKED;
 	caller->blocked_reason = UL_BLOCKED_IPC_CALL;
-	caller->ipc_msg.label  = 0x1234;
+	caller->ipc_msg_outptr = &req;
 	ipc_test_enqueue_send(ep, caller);
 
 	g_current = server;
@@ -415,7 +428,8 @@ static void test_ep_reply_non_blocked_caller(void)
 
 static void test_ep_reply_wakes_caller_restores_prio(void)
 {
-	ulmk_msg_t     reply  = { .label = 0xDEAD };
+	ulmk_msg_t     reply   = { .label = 0xDEAD };
+	ulmk_msg_t     call_buf = {0};
 	ulmk_thread_t *server;
 	ulmk_thread_t *caller;
 
@@ -427,11 +441,12 @@ static void test_ep_reply_wakes_caller_restores_prio(void)
 	server->priority       = 5;
 	caller->state          = UL_THREAD_STATE_BLOCKED;
 	caller->blocked_reason = UL_BLOCKED_IPC_CALL;
+	caller->ipc_msg_outptr = &call_buf;
 
 	g_current = server;
 	ASSERT(ep_reply_impl(caller->tid, &reply) == 0);
 
-	ASSERT(caller->ipc_msg.label == 0xDEAD);
+	ASSERT(call_buf.label == 0xDEAD);
 	ASSERT(caller->state == UL_THREAD_STATE_READY);
 	ASSERT(caller->blocked_reason == UL_BLOCKED_NONE);
 	ASSERT(server->priority == 20);
@@ -452,6 +467,7 @@ static void test_ep_reply_recv_null_args(void)
 
 static void test_ep_reply_recv_skip_reply_on_invalid_tid(void)
 {
+	ulmk_msg_t      req        = { .label = 0x5678 };
 	ulmk_msg_t      msg_out    = {0};
 	ulmk_tid_t      sender_out = ULMK_TID_INVALID;
 	ulmk_endpoint_t *ep;
@@ -467,7 +483,7 @@ static void test_ep_reply_recv_skip_reply_on_invalid_tid(void)
 
 	caller->state          = UL_THREAD_STATE_BLOCKED;
 	caller->blocked_reason = UL_BLOCKED_IPC_CALL;
-	caller->ipc_msg.label  = 0x5678;
+	caller->ipc_msg_outptr = &req;
 	ipc_test_enqueue_send(ep, caller);
 
 	g_current = server;
@@ -728,6 +744,7 @@ static void test_prio_inherit_restore_on_reply(void)
 
 static void test_prio_inherit_boost_on_recv(void)
 {
+	ulmk_msg_t      req     = { .label = 1 };
 	ulmk_msg_t      msg_out = {0};
 	ulmk_endpoint_t *ep;
 	ulmk_thread_t   *server;
@@ -742,7 +759,7 @@ static void test_prio_inherit_boost_on_recv(void)
 
 	caller->state          = UL_THREAD_STATE_BLOCKED;
 	caller->blocked_reason = UL_BLOCKED_IPC_CALL;
-	caller->ipc_msg.label  = 1;
+	caller->ipc_msg_outptr = &req;
 	ipc_test_enqueue_send(ep, caller);
 
 	g_current = server;

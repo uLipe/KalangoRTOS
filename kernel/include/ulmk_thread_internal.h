@@ -52,12 +52,17 @@ typedef struct ulmk_thread {
 	sys_dnode_t        sched_node;      /* run-queue linkage */
 	sys_dnode_t        ipc_node;        /* IPC send or recv queue linkage */
 	sys_dnode_t        reg_node;        /* global TCB registry linkage */
-	ulmk_msg_t          ipc_msg;        /* in-flight message buffer */
+	/*
+	 * Bounce buffer — fallback when the peer has no userspace staging
+	 * pointer (recv_or_notif result, destroy paths, unit tests).  Hot
+	 * paths stage via ipc_msg_outptr to avoid TCB→TCB→user double copies.
+	 */
+	ulmk_msg_t          ipc_msg;
 	ulmk_tid_t          ipc_sender;     /* sender TID stored by recv for reply */
 	/*
-	 * Output pointers saved in the TCB before a blocking recv.  Written
-	 * back after wakeup so the result survives the context restore on
-	 * re-schedule.
+	 * Userspace staging pointer:
+	 *   ep_call  — in/out buffer (request on entry, reply on return)
+	 *   ep_recv  — filled before handoff when a caller rendezvous arrives
 	 */
 	ulmk_msg_t         *ipc_msg_outptr;
 	ulmk_tid_t         *ipc_sender_outptr;

@@ -129,18 +129,38 @@ static void clear_server_block(ulmk_thread_t *server)
 	}
 }
 
+/* Caller's request buffer: staged pointer, else TCB bounce. */
+static const ulmk_msg_t *caller_request(const ulmk_thread_t *caller)
+{
+	if (caller->ipc_msg_outptr)
+		return caller->ipc_msg_outptr;
+	return &caller->ipc_msg;
+}
+
 /*
- * Fill the waiting server's message + priority inheritance.  Does not
- * touch the ready queue — caller chooses enqueue vs direct handoff.
+ * Deliver one request copy into the waiting server and apply PI.
+ * Prefer the server's userspace outptr (single hop); fall back to TCB
+ * bounce for recv_or_notif / tests.  Does not touch the ready queue.
  */
 static void prepare_server_delivery(ulmk_thread_t *server,
 				    ulmk_thread_t *caller,
 				    const ulmk_msg_t *msg)
 {
-	server->ipc_msg    = *msg;
 	server->ipc_sender = caller->tid;
 	apply_prio_inherit(server, caller);
 	clear_server_block(server);
+
+	if (server->ipc_msg_outptr) {
+		*server->ipc_msg_outptr = *msg;
+		server->ipc_msg_outptr  = NULL;
+	} else {
+		server->ipc_msg = *msg;
+	}
+
+	if (server->ipc_sender_outptr) {
+		*server->ipc_sender_outptr = caller->tid;
+		server->ipc_sender_outptr  = NULL;
+	}
 }
 
 static void wake_blocked_on_destroy(ulmk_thread_t *th, int status)
@@ -189,6 +209,7 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 	cur->ipc_sender     = ULMK_TID_INVALID;
 	cur->blocked_reason = UL_BLOCKED_IPC_CALL;
 	cur->blocked_ep     = ep_id;
+	/* Stage request/reply in the caller's userspace buffer (no TCB copy). */
 	cur->ipc_msg_outptr = msg;
 	cur->block_status   = 0;
 
@@ -202,7 +223,6 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 		cur->state = UL_THREAD_STATE_BLOCKED;
 		ulmk_sched_handoff(srv);
 	} else {
-		cur->ipc_msg = *msg;
 		ipc_enqueue_tail(&ep->send_queue, cur);
 		cur->state = UL_THREAD_STATE_BLOCKED;
 		ulmk_sched_dequeue_locked(cur);
@@ -220,10 +240,8 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 		cur->ipc_msg_outptr = NULL;
 		return st;
 	}
-	if (cur->ipc_msg_outptr) {
-		*cur->ipc_msg_outptr = cur->ipc_msg;
-		cur->ipc_msg_outptr  = NULL;
-	}
+	/* Reply already written into *ipc_msg_outptr by ep_reply. */
+	cur->ipc_msg_outptr = NULL;
 	return 0;
 }
 
@@ -246,7 +264,7 @@ int ep_recv_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, ulmk_tid_t *sender)
 	if (!sys_dlist_is_empty(&ep->send_queue)) {
 		ulmk_thread_t *caller = ipc_pop_head(&ep->send_queue);
 
-		*msg = caller->ipc_msg;
+		*msg = *caller_request(caller);
 		cur->ipc_sender = caller->tid;
 		apply_prio_inherit(cur, caller);
 
@@ -278,15 +296,9 @@ int ep_recv_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, ulmk_tid_t *sender)
 		cur->ipc_sender_outptr = NULL;
 		return st;
 	}
-
-	if (cur->ipc_msg_outptr) {
-		*cur->ipc_msg_outptr = cur->ipc_msg;
-		cur->ipc_msg_outptr  = NULL;
-	}
-	if (cur->ipc_sender_outptr) {
-		*cur->ipc_sender_outptr = cur->ipc_sender;
-		cur->ipc_sender_outptr  = NULL;
-	}
+	/* prepare_server_delivery already filled outptrs before handoff. */
+	cur->ipc_msg_outptr    = NULL;
+	cur->ipc_sender_outptr = NULL;
 	return 0;
 }
 
@@ -305,7 +317,12 @@ int ep_reply_impl(ulmk_tid_t sender_tid, const ulmk_msg_t *reply)
 	if (cur)
 		cur->priority = cur->saved_prio;
 
-	caller->ipc_msg        = *reply;
+	/* One hop into the caller's staged buffer (or TCB bounce fallback). */
+	if (caller->ipc_msg_outptr)
+		*caller->ipc_msg_outptr = *reply;
+	else
+		caller->ipc_msg = *reply;
+
 	caller->state          = UL_THREAD_STATE_READY;
 	caller->blocked_reason = UL_BLOCKED_NONE;
 	caller->blocked_ep     = ULMK_EP_INVALID;
@@ -342,7 +359,7 @@ int ep_reply_recv_impl(ulmk_ep_t ep_id, ulmk_tid_t sender_tid,
 
 	if (!sys_dlist_is_empty(&ep->send_queue)) {
 		caller = ipc_pop_head(&ep->send_queue);
-		*next = caller->ipc_msg;
+		*next = *caller_request(caller);
 		cur->ipc_sender = caller->tid;
 		apply_prio_inherit(cur, caller);
 		if (next_sender)
@@ -399,7 +416,7 @@ int ep_recv_or_notif_impl(ulmk_ep_t ep_id, ulmk_notif_t notif_id,
 
 		apply_prio_inherit(cur, caller);
 		cur->ipc_sender = caller->tid;
-		cur->ipc_msg    = caller->ipc_msg;
+		cur->ipc_msg    = *caller_request(caller);
 
 		res->is_notif = 0;
 		res->msg      = cur->ipc_msg;

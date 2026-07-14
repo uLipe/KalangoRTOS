@@ -83,8 +83,13 @@ typedef struct {
 } ulmk_msg_t;
 ```
 
-Total inline payload: 28 bytes per message (label + 6 words).  For larger
-transfers use `ulmk_mem_grant()` to share a memory region.
+Total inline payload: 28 bytes per message (label + 6 words).  This is the
+**control-plane envelope** only — the kernel stages it by pointer between the
+caller's and server's userspace buffers (one copy each way on the hot path).
+
+For larger payloads, put a pointer/length (or buffer id) in `words[]` and let
+userspace share the data region (`ulmk_mem_grant()` or a buffer both sides can
+already reach).  The kernel does **not** copy bulk data on IPC.
 
 ### Thread attributes
 
@@ -320,7 +325,8 @@ int ulmk_ep_call(ulmk_ep_t ep, ulmk_msg_t *msg);
 ```
 
 Sends `*msg` to the endpoint and blocks until the server calls `ulmk_ep_reply()`.
-The reply overwrites `*msg` in place.
+The reply overwrites `*msg` in place.  The kernel keeps a pointer to `msg` while
+the caller is blocked (no TCB bounce of the envelope on the slow path).
 
 Returns `ULMK_OK` or `ULMK_EINVAL` (bad endpoint).
 

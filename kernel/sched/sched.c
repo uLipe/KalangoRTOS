@@ -109,12 +109,11 @@ static void sched_switch_to(ulmk_thread_t *prev, ulmk_thread_t *next)
 	ulmk_syscall_wcet_block_end_th(prev);
 
 	/*
-	 * We return here when THIS thread (prev) is re-scheduled.
-	 * ctx_switch leaves IE cleared; re-enable for the resumed thread.
-	 * (from==to uses irq_restore above so syscall CCPN masking is kept.)
+	 * Resumed here when THIS thread (prev) is re-scheduled.  Restore the
+	 * mask saved at entry — keeps syscall CCPN/PRIMASK masking instead of
+	 * unconditionally enabling IRQs mid-handler.
 	 */
-	(void)key;
-	ulmk_arch_cpu_irq_enable();
+	ulmk_arch_cpu_irq_restore(key);
 }
 
 void ulmk_sched_set_dead_for_cleanup(ulmk_thread_t *th)
