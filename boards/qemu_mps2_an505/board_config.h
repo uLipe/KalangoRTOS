@@ -43,4 +43,8 @@
 #define BOARD_TIMER_NVIC_IRQ		3u
 #define BOARD_TIMER_HW_CLOCK_HZ		25000000u
 
+/* Generic MMIO window for ULMK_MMAP_PERIPH tests (CMSDK timer0). */
+#define ULMK_BOARD_PERIPH_BASE		0x50000000u
+#define ULMK_BOARD_PERIPH_SIZE		0x1000u
+
 #endif /* ULMK_BOARD_CONFIG_H */

@@ -45,4 +45,8 @@
 #define ULMK_ARCH_IDLE_IS_WFI		0
 #endif
 
+/* Generic MMIO window for ULMK_MMAP_PERIPH tests (UART0). */
+#define ULMK_BOARD_PERIPH_BASE		0x10000000u
+#define ULMK_BOARD_PERIPH_SIZE		0x1000u
+
 #endif /* ULMK_BOARD_CONFIG_H */
