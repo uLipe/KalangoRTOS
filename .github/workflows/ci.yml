@@ -113,7 +113,15 @@ jobs:
           docker tag  "$IMG" ulipe-microkernel:dev
 
       - name: Run unit tests
-        run: python3 tools/dev.py tests unit
+        run: python3 tools/dev.py tests unit --json-dir ci-results/unit
+
+      - name: Upload unit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-unit
+          path: ci-results/unit/
+          if-no-files-found: warn
 
   # ── SDK suite (black-box QEMU, replaces legacy integ Makefile suites) ─────
   integ-tests:
@@ -141,10 +149,18 @@ jobs:
           docker tag  "$IMG" ulipe-microkernel:dev
 
       - name: Run SDK suite
-        run: python3 tools/dev.py tests e2e
+        run: python3 tools/dev.py tests e2e --json-dir ci-results/e2e-tricore
 
       - name: Run arch whitebox (TriCore CSA early)
-        run: python3 tools/dev.py tests integ --test sdk_suite/arch_whitebox/ctx_early_tricore
+        run: python3 tools/dev.py tests integ --test sdk_suite/arch_whitebox/ctx_early_tricore --json-dir ci-results/e2e-tricore
+
+      - name: Upload TriCore results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-tricore
+          path: ci-results/e2e-tricore/
+          if-no-files-found: warn
 
   # ── RISC-V: build ─────────────────────────────────────────────────────────
   build-riscv:
@@ -202,7 +218,15 @@ jobs:
           docker tag  "$IMG" ulipe-microkernel:dev
 
       - name: Run SDK suite
-        run: python3 tools/dev.py tests e2e --board boards/qemu_riscv_virt
+        run: python3 tools/dev.py tests e2e --board boards/qemu_riscv_virt --json-dir ci-results/e2e-riscv
+
+      - name: Upload RISC-V results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-riscv
+          path: ci-results/e2e-riscv/
+          if-no-files-found: warn
 
   # ── ARM Cortex-M: build (mps2-an500 M7 + mps2-an505 M33) ──────────────────
   build-arm:
@@ -268,4 +292,46 @@ jobs:
           docker tag  "$IMG" ulipe-microkernel:dev
 
       - name: Run SDK suite
-        run: python3 tools/dev.py tests e2e --board boards/${{ matrix.board }}
+        run: python3 tools/dev.py tests e2e --board boards/${{ matrix.board }} --json-dir ci-results/e2e-arm-${{ matrix.board }}
+
+      - name: Upload ARM results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-arm-${{ matrix.board }}
+          path: ci-results/e2e-arm-${{ matrix.board }}/
+          if-no-files-found: warn
+
+  # ── Aggregate markdown report (PASS/FAIL/PARTIAL + coverage matrix) ─────
+  coverage-report:
+    name: Test coverage report
+    needs: [unit-tests, integ-tests, integ-tests-riscv, integ-tests-arm]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all result artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-*
+          path: ci-results
+
+      - name: Install PyYAML
+        run: pip3 install --user pyyaml
+
+      - name: Generate markdown report
+        run: |
+          python3 tools/gen_ci_test_report.py \
+            --manifest tools/coverage_manifest.yaml \
+            --results-dir ci-results \
+            --out test-report.md
+          cat test-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test-report.md
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: test-report.md

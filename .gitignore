@@ -55,3 +55,6 @@ __pycache__/
 # Internal personal design notes — kept locally, not tracked
 docs/microkernel_book_tricore.md
 build-riscv/
+
+# SDK suite object leftovers
+tests/sdk_suite/**/*.o

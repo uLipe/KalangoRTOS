@@ -39,6 +39,7 @@ See also: python3 tools/dev.py --help
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -699,8 +700,32 @@ def _filter_integ_tests(tests: list[str], arch: str) -> list[str]:
             and t not in ARCH_TRICORE_ONLY_TESTS]
 
 
+def _json_record(kind: str, name: str, arch: str, board: str,
+                 status: str) -> str:
+    """Append one JSONL row when ULMK_TEST_JSON_DIR is set."""
+    payload = json.dumps(
+        {
+            "case": name,
+            "kind": kind,
+            "arch": arch,
+            "board": board or "",
+            "status": status,
+        },
+        separators=(",", ":"),
+    )
+    # Single-quoted JSON is safe: our fields have no single quotes.
+    return (
+        "if [ -n \"${ULMK_TEST_JSON_DIR:-}\" ]; then "
+        f"printf '%s\\n' '{payload}' "
+        ">> \"${ULMK_TEST_JSON_DIR}/results.jsonl\"; "
+        f"fi; echo '{payload}'"
+    )
+
+
 def _run_all_shell(kind: str, tests: list[str], arch: str,
-                   make_extra: str = "") -> str:
+                   make_extra: str = "", board: str = "",
+                   result_arch: str | None = None) -> str:
+    rec_arch = result_arch if result_arch is not None else arch
     lines = [CONTAINER_PATH, "FAILED=''"]
     if kind == "e2e" and tests:
         cache = _sdk_cache_vars(arch, make_extra)
@@ -714,9 +739,11 @@ def _run_all_shell(kind: str, tests: list[str], arch: str,
         )
     for name in tests:
         snippet = _run_one_shell(kind, name, arch, make_extra, with_path=False)
+        rec_ok = _json_record(kind, name, rec_arch, board, "PASS")
+        rec_bad = _json_record(kind, name, rec_arch, board, "FAIL")
         lines.append(
-            f"if ( {snippet} ); then :; "
-            f"else FAILED=\"$FAILED {name}\"; fi"
+            f"if ( {snippet} ); then {rec_ok}; "
+            f"else FAILED=\"$FAILED {name}\"; {rec_bad}; fi"
         )
     lines.append(
         "if [ -z \"$FAILED\" ]; then "
@@ -740,6 +767,16 @@ def _run_tests(args: argparse.Namespace) -> None:
     # ARM ships two QEMU boards (mps2-an500 / mps2-an505) under one arch; the
     # test Makefiles pick the board via ARM_BOARD, so forward the selected one.
     make_extra = f"ARM_BOARD={board_host.name}" if arch == "arm" else ""
+    board_name = board_host.name
+    json_arch = "host" if kind == "unit" else arch
+    json_board = "" if kind == "unit" else board_name
+
+    json_dir = getattr(args, "json_dir", None)
+    docker_env: list[str] = []
+    if json_dir:
+        json_path = Path(json_dir).resolve()
+        json_path.mkdir(parents=True, exist_ok=True)
+        docker_env = ["-e", "ULMK_TEST_JSON_DIR=/test-results"]
 
     if args.list:
         tests = _discover_tests(kind)
@@ -760,8 +797,22 @@ def _run_tests(args: argparse.Namespace) -> None:
                 f"Available: {', '.join(available)}"
             )
         print(f"Running {kind} test: {test_name} (ARCH={arch})")
-        shell_cmd = _run_one_shell(kind, test_name, arch, make_extra)
+        inner = _run_one_shell(kind, test_name, arch, make_extra)
+        if json_dir:
+            shell_cmd = (
+                f"{CONTAINER_PATH}; "
+                f"if ( {inner} ); then "
+                f"{_json_record(kind, test_name, json_arch, json_board, 'PASS')}; "
+                f"else "
+                f"{_json_record(kind, test_name, json_arch, json_board, 'FAIL')}; "
+                f"exit 1; fi"
+            )
+        else:
+            shell_cmd = inner
         cmd = _base_docker_cmd(interactive=False)
+        if json_dir:
+            cmd += ["--volume", f"{Path(json_dir).resolve()}:/test-results"]
+            cmd += docker_env
         cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
         os.execvp("docker", cmd)
     else:
@@ -771,8 +822,14 @@ def _run_tests(args: argparse.Namespace) -> None:
         if not tests:
             sys.exit(f"No {kind} tests found under {TESTS_DIR}")
         print(f"Running {len(tests)} {kind} test(s) [ARCH={arch}]: {', '.join(tests)}")
-        shell_cmd = _run_all_shell(kind, tests, arch, make_extra)
+        shell_cmd = _run_all_shell(
+            kind, tests, arch, make_extra, json_board,
+            result_arch=json_arch,
+        )
         cmd = _base_docker_cmd(interactive=False)
+        if json_dir:
+            cmd += ["--volume", f"{Path(json_dir).resolve()}:/test-results"]
+            cmd += docker_env
         cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
         os.execvp("docker", cmd)
 
@@ -964,6 +1021,12 @@ examples:
         "--list",
         action="store_true",
         help="List available tests of the given kind and exit",
+    )
+    tests_p.add_argument(
+        "--json-dir",
+        metavar="DIR",
+        default=None,
+        help="Append per-case JSONL results under DIR (for CI report)",
     )
 
     return parser.parse_args()

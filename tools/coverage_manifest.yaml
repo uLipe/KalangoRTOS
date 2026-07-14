@@ -1,0 +1,195 @@
+# Coverage areas for CI markdown report (tools/gen_ci_test_report.py).
+# status per arch is derived: covered | partial | missing
+# - covered: listed case exists and is expected on that arch
+# - partial: happy-path only / unit-only / arch-limited / known gap
+# - missing: area not exercised on that arch
+
+version: 1
+
+arches:
+  - tricore
+  - riscv
+  - arm
+
+# Unit tests run once on host; report marks them kind=unit (not per-arch QEMU).
+areas:
+  - id: thread.basic
+    title: Thread create/yield/prio/suspend
+    cases: [thread_unit, sdk_suite/thread_lifecycle, sdk_suite/abi_smoke]
+    tricore: covered
+    riscv: covered
+    arm: covered
+
+  - id: sched.order
+    title: Scheduler ordering / preempt
+    cases: [sched_unit, sdk_suite/sched_order, sdk_suite/preempt]
+    tricore: covered
+    riscv: covered
+    arm: covered
+
+  - id: ipc.basic
+    title: IPC call/recv/reply
+    cases: [ipc_unit, sdk_suite/ipc, sdk_suite/abi_smoke]
+    tricore: covered
+    riscv: covered
+    arm: covered
+
+  - id: ipc.priority_inherit
+    title: Priority inheritance (observable)
+    cases: [ipc_unit, sdk_suite/ipc_pi]
+    tricore: covered
+    riscv: covered
+    arm: covered
+    note: silicon_ipc_pi + sdk_suite/ipc_pi
+
+  - id: mem.heap
+    title: Per-thread heap / extend
+    cases: [mem_unit, sdk_suite/mem_heap, sdk_suite/abi_smoke]
+    tricore: covered
+    riscv: covered
+    arm: covered
+
+  - id: mem.isolation
+    title: MPU isolation
+    cases: [sdk_suite/mem_isolation]
+    tricore: covered
+    riscv: covered
+    arm: partial
+    note: ARM mem_grant livelock risk
+
+  - id: cap.eperm_neg
+    title: CAP/privilege EPERM matrix
+    cases: [sdk_suite/cap_neg]
+    tricore: covered
+    riscv: covered
+    arm: covered
+    note: silicon_cap_neg HIL PASS; sdk_suite/cap_neg
+
+  - id: mem.grant
+    title: mem_grant peer access
+    cases: [sdk_suite/mem_grant]
+    tricore: covered
+    riscv: covered
+    arm: covered
+    note: silicon_mem_grant HIL PASS; sdk_suite/mem_grant
+
+  - id: fault.policy
+    title: Fault kill vs panic policy
+    cases: [sdk_suite/fault_policy]
+    tricore: covered
+    riscv: covered
+    arm: covered
+    note: userspace MPU fault kills thread; system continues
+
+  - id: irq.sw
+    title: Software IRQ bind/enable/ack
+    cases: [sdk_suite/irq_sw, sdk_suite/abi_smoke]
+    tricore: covered
+    riscv: covered
+    arm: covered
+
+  - id: irq.stress
+    title: IRQ rebind/flood/out-of-order ack
+    cases: [sdk_suite/irq_stress]
+    tricore: covered
+    riscv: covered
+    arm: covered
+    note: silicon_irq_stress HIL + sdk_suite/irq_stress
+
+  - id: wcet.syscall_o1
+    title: Syscall WCET O(1) via kernel CCNT slot
+    cases: []
+    tricore: covered
+    riscv: n/a
+    arm: n/a
+    note: silicon_wcet HIL only (ULMK_CONFIG_SYSCALL_WCET); QEMU out of scope
+
+  - id: proc.mgmt
+    title: Process CREATE/DESTROY/ADD_REGION/GRANT_IRQ
+    cases: []
+    tricore: missing
+    riscv: missing
+    arm: missing
+    note: out of scope this cycle — process model TBD; GRANT_CAP is ulmk_cap_grant
+
+  - id: atomic
+    title: Atomics
+    cases: [atomic_unit, sdk_suite/atomic_stress]
+    tricore: covered
+    riscv: covered
+    arm: covered
+
+  - id: sleep.timer
+    title: Board timer sleep
+    cases: [sdk_suite/sleep_timer]
+    tricore: covered
+    riscv: covered
+    arm: covered
+
+  - id: boot.bss
+    title: Boot / BSS
+    cases: [sdk_suite/boot_bss]
+    tricore: covered
+    riscv: covered
+    arm: covered
+
+  - id: ctx.switch
+    title: Context switch
+    cases: [sdk_suite/ctx_switch]
+    tricore: covered
+    riscv: covered
+    arm: covered
+
+  - id: resource.leak
+    title: Resource leak / reclaim
+    cases: [sdk_suite/resource_leak]
+    tricore: covered
+    riscv: covered
+    arm: covered
+
+  - id: abi.smoke
+    title: Public syscall smoke
+    cases: [sdk_suite/abi_smoke]
+    tricore: covered
+    riscv: covered
+    arm: covered
+
+  - id: arch.ctx_early_tricore
+    title: TriCore CSA early whitebox
+    cases: [sdk_suite/arch_whitebox/ctx_early_tricore]
+    tricore: covered
+    riscv: missing
+    arm: missing
+    note: arch-only
+
+  - id: ipc.destroy_waiters
+    title: ep/notif destroy with waiters
+    cases: [ipc_unit, sdk_suite/destroy_waiters]
+    tricore: missing
+    riscv: missing
+    arm: missing
+    note: silicon_destroy_waiters + sdk_suite/destroy_waiters
+
+  - id: ipc.kill_rendezvous
+    title: Kill/exit mid IPC rendezvous
+    cases: [sdk_suite/kill_rendezvous]
+    tricore: missing
+    riscv: missing
+    arm: missing
+    note: silicon_kill_rendezvous + sdk_suite/kill_rendezvous
+
+  - id: pool.exhaust
+    title: TCB/EP/notif pool exhaustion
+    cases: [sdk_suite/pool_exhaust]
+    tricore: missing
+    riscv: missing
+    arm: missing
+    note: silicon_pool_exhaust + sdk_suite/pool_exhaust
+
+  - id: ipc.recv_or_notif_race
+    title: recv_or_notif IPC vs notif race
+    cases: [sdk_suite/recv_or_notif_race]
+    tricore: missing
+    riscv: missing
+    arm: missing
+    note: silicon_recv_or_notif_race + sdk_suite/recv_or_notif_race
