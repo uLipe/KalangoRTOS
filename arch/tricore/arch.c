@@ -71,6 +71,38 @@ uint32_t ulmk_arch_cpu_clz(uint32_t val)
 	return result;
 }
 
+#if ULMK_CONFIG_SYSCALL_WCET
+/* CCTRL: CM=bit0, CE=bit1 (TC1.6 Vol1 §12.11). Normal free-run: CE=1. */
+#define CCTRL_CE	(1u << 1)
+
+void ulmk_arch_cycle_enable(void)
+{
+	uint32_t cctrl;
+
+	__asm__ volatile("mfcr %0, 0xFC00" : "=d"(cctrl));
+	cctrl |= CCTRL_CE;
+	__asm__ volatile("mtcr 0xFC00, %0" :: "d"(cctrl));
+	__asm__ volatile("isync" ::: "memory");
+}
+
+uint32_t ulmk_arch_cycle_read(void)
+{
+	uint32_t v;
+
+	__asm__ volatile("mfcr %0, 0xFC04" : "=d"(v));
+	return v;
+}
+#else
+void ulmk_arch_cycle_enable(void)
+{
+}
+
+uint32_t ulmk_arch_cycle_read(void)
+{
+	return 0u;
+}
+#endif
+
 /* =========================================================================
  * CSA helpers — used by context init only; not part of the public API.
  *

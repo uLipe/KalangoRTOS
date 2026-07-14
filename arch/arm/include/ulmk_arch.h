@@ -66,6 +66,9 @@ void              ulmk_arch_cpu_idle(void);
 void              ulmk_arch_cpu_halt(void);
 uint32_t          ulmk_arch_cpu_clz(uint32_t val);
 
+void     ulmk_arch_cycle_enable(void);
+uint32_t ulmk_arch_cycle_read(void);
+
 void ulmk_arch_csa_pool_init(uintptr_t pool_base, size_t pool_size);
 
 void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,

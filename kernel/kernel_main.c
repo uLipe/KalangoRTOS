@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <ulmk/microkernel.h>
 #include <ulmk/config.h>
+#include <ulmk/syscall_wcet.h>
 #include <ulmk_arch.h>
 #include <kernel/include/ulmk_sched.h>
 #include <kernel/include/ulmk_thread_internal.h>
@@ -44,7 +45,25 @@ void ulmk_kern_trap_mpu_restore(void)
 
 uint32_t ulmk_kern_trap_syscall(uint8_t tin, uint32_t args[4])
 {
+#if ULMK_CONFIG_SYSCALL_WCET
+	uint32_t begin;
+	uint32_t end;
+	uint32_t ret;
+
+	begin = ulmk_arch_cycle_read();
+	ret   = ulmk_syscall_router(tin, args[0], args[1], args[2], args[3]);
+	end   = ulmk_arch_cycle_read();
+
+	g_ulmk_syscall_wcet.magic = ULMK_SYSCALL_WCET_MAGIC;
+	g_ulmk_syscall_wcet.nr    = tin;
+	g_ulmk_syscall_wcet.begin = begin;
+	g_ulmk_syscall_wcet.end   = end;
+	g_ulmk_syscall_wcet.delta = end - begin;
+	g_ulmk_syscall_wcet.seq++;
+	return ret;
+#else
 	return ulmk_syscall_router(tin, args[0], args[1], args[2], args[3]);
+#endif
 }
 
 void ulmk_kern_trap_recoverable(void)
@@ -123,6 +142,12 @@ void ulmk_kern_main(const ulmk_boot_info_t *info)
 
 	ulmk_irq_table_init();
 	UL_LOG_DBG("irq table init done");
+
+#if ULMK_CONFIG_SYSCALL_WCET
+	ulmk_arch_cycle_enable();
+	g_ulmk_syscall_wcet.magic = ULMK_SYSCALL_WCET_MAGIC;
+	g_ulmk_syscall_wcet.seq   = 0u;
+#endif
 
 	ulmk_arch_mpu_init();
 	ulmk_arch_cpu_irq_enable();

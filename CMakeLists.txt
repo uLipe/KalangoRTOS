@@ -77,6 +77,7 @@ execute_process(
         --board-config "${ULMK_CHIP_DIR}/board_config.h"
         --set "ULMK_CONFIG_MAX_IRQ_BINDINGS=${ULMK_CONFIG_MAX_IRQ_BINDINGS}"
         --set "ULMK_CONFIG_DEBUG_PRINTK=${ULMK_CONFIG_DEBUG_PRINTK}"
+        --set "ULMK_CONFIG_SYSCALL_WCET=${ULMK_CONFIG_SYSCALL_WCET}"
     RESULT_VARIABLE _ulmk_gen_rc)
 if(NOT _ulmk_gen_rc EQUAL 0)
     message(FATAL_ERROR "gen_config.py failed (rc=${_ulmk_gen_rc})")
@@ -104,6 +105,7 @@ add_library(ulmk_kernel STATIC
     kernel/mem/mem.c
     kernel/mem/tlsf.c
     kernel/irq/irq.c
+    kernel/syscall/syscall_wcet.c
     ${ULMK_ARCH_KERNEL_SOURCES})
 
 if(EXISTS "${ULMK_CHIP_DIR}/qemu_printk_hook.c")

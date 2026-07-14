@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <ulmk/microkernel.h>
+#include <ulmk/config.h>
 #include <ulmk_arch.h>
 #include "irq_internal.h"
 
@@ -239,6 +240,30 @@ uint32_t ulmk_arch_cpu_clz(uint32_t val)
 		return 32u;
 	return (uint32_t)__builtin_clz(val);
 }
+
+#if ULMK_CONFIG_SYSCALL_WCET
+void ulmk_arch_cycle_enable(void)
+{
+	/* mcycle is free-running from reset; nothing to unlock in M-mode. */
+}
+
+uint32_t ulmk_arch_cycle_read(void)
+{
+	uint32_t v;
+
+	__asm__ volatile("csrr %0, mcycle" : "=r"(v));
+	return v;
+}
+#else
+void ulmk_arch_cycle_enable(void)
+{
+}
+
+uint32_t ulmk_arch_cycle_read(void)
+{
+	return 0u;
+}
+#endif
 
 /* =========================================================================
  * Context management

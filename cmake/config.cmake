@@ -6,3 +6,5 @@
 
 set(ULMK_CONFIG_MAX_IRQ_BINDINGS 16 CACHE STRING "Max IRQ-to-notification bindings")
 set(ULMK_CONFIG_DEBUG_PRINTK     1  CACHE STRING "Enable kernel printk (0 = production no-op)")
+set(ULMK_CONFIG_SYSCALL_WCET     0  CACHE STRING
+	"Syscall cycle-counter slot (0=off, 1=WCET HIL / silicon_wcet)")

@@ -89,6 +89,35 @@ uint32_t ulmk_arch_cpu_clz(uint32_t val)
 	return (uint32_t)__builtin_clz(val);
 }
 
+#if ULMK_CONFIG_SYSCALL_WCET
+#define DEMCR		0xE000EDFCu
+#define DWT_CTRL	0xE0001000u
+#define DWT_CYCCNT	0xE0001004u
+#define DEMCR_TRCENA	(1u << 24)
+#define DWT_CYCCNTENA	(1u << 0)
+
+void ulmk_arch_cycle_enable(void)
+{
+	REG32(DEMCR) |= DEMCR_TRCENA;
+	REG32(DWT_CYCCNT) = 0u;
+	REG32(DWT_CTRL) |= DWT_CYCCNTENA;
+}
+
+uint32_t ulmk_arch_cycle_read(void)
+{
+	return REG32(DWT_CYCCNT);
+}
+#else
+void ulmk_arch_cycle_enable(void)
+{
+}
+
+uint32_t ulmk_arch_cycle_read(void)
+{
+	return 0u;
+}
+#endif
+
 /* =========================================================================
  * Context management
  * ========================================================================= */
@@ -289,6 +318,11 @@ void ulmk_arch_trap_dump(uint8_t trap_class, uint8_t tin)
 
 void ulmk_arch_trap_entry(uint8_t trap_class, uint8_t tin)
 {
+	/*
+	 * HardFault / unexpected paths: policy is panic.  MemManage / Bus /
+	 * Usage from Thread+PSP are recovered in _arm_fault_dispatch before
+	 * reaching here (kill via ulmk_user_thread_entry / thread_exit).
+	 */
 	dump_puts("TRAP class=");
 	dump_hex8((uint32_t)trap_class);
 	dump_puts(" exc=");

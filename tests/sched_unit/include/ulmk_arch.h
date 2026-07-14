@@ -15,6 +15,9 @@ static inline void ulmk_arch_cpu_irq_restore(ulmk_arch_irq_key_t k)  { (void)k; 
 static inline void ulmk_arch_cpu_irq_enable(void)                   { }
 static inline void ulmk_arch_cpu_irq_disable(void)                  { }
 
+static inline void ulmk_arch_cycle_enable(void) { }
+static inline uint32_t ulmk_arch_cycle_read(void) { return 0u; }
+
 /* CLZ — GCC built-in equivalent for host x86 */
 static inline uint32_t ulmk_arch_cpu_clz(uint32_t v)
 {

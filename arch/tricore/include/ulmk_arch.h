@@ -72,6 +72,9 @@ void              ulmk_arch_cpu_idle(void);
 void              ulmk_arch_cpu_halt(void);
 uint32_t          ulmk_arch_cpu_clz(uint32_t val);
 
+void     ulmk_arch_cycle_enable(void);
+uint32_t ulmk_arch_cycle_read(void);
+
 /* =========================================================================
  * Context management (arch_api_spec.md §6)
  * ========================================================================= */
