@@ -573,6 +573,8 @@ def _run_build(args: argparse.Namespace) -> None:
         getattr(args, "no_components", False),
     )
     component_flags = _component_cmake_flags(enabled, board_host)
+    if "silicon_wcet" in enabled:
+        component_flags.append("-DULMK_CONFIG_SYSCALL_WCET=1")
 
     elf = BUILD_DIR / build_subdir / "ulmk"
     if run_qemu and not args.clean and elf.is_file():
