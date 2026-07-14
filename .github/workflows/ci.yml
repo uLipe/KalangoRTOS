@@ -25,8 +25,11 @@ jobs:
       - name: Compute image name
         id: info
         run: |
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "image=ghcr.io/${OWNER}/ulmk-dev" >> "$GITHUB_OUTPUT"
+          # Repo-scoped package (ghcr.io/<owner>/<repo>) so GITHUB_TOKEN can
+          # create and write it. A renamed/orphaned user package such as
+          # ghcr.io/ulipe/ulmk-dev rejects pushes with write_package.
+          image=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -54,7 +57,9 @@ jobs:
           target: dev
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=registry,ref=${{ steps.info.outputs.image }}:buildcache
           cache-to: type=registry,ref=${{ steps.info.outputs.image }}:buildcache,mode=max
 
