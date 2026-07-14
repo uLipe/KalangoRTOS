@@ -702,10 +702,27 @@ static void mpu_write_user_slot(uint8_t idx, const ulmk_arch_region_t *r,
 }
 
 /*
- * Configure dynamic DPR slots for the given PRS from @regions.
- * Preserves the static minimum-isolation enables programmed at boot.
+ * Dynamic DPR slots for the given PRS from @regions.
+ * STACK is covered by the static URAM window — skip it so typical IPC
+ * (stack-only AS) programs zero dynamic slots and can early-exit.
  * Regions that do not fit (QEMU: USER_DPR_BASE == NUM_DPR) are ignored.
  */
+static uint8_t mpu_dyn_count(const ulmk_arch_region_t *regions, uint8_t count,
+			     uint8_t max_dyn)
+{
+	uint8_t n = 0u;
+	uint8_t i;
+
+	if (!regions || max_dyn == 0u)
+		return 0u;
+
+	for (i = 0u; i < count && n < max_dyn; i++) {
+		if (regions[i].type != ULMK_REGION_STACK)
+			n++;
+	}
+	return n;
+}
+
 static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 				uint8_t count)
 {
@@ -716,6 +733,7 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 	uint8_t  i;
 	uint8_t  prog;
 	uint8_t  max_dyn;
+	uint8_t  eff;
 	uintptr_t utext_lo;
 	uintptr_t utext_hi;
 
@@ -744,10 +762,9 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 	}
 
 	max_dyn = (uint8_t)(ULMK_ARCH_MPU_NUM_DPR - ULMK_ARCH_MPU_USER_DPR_BASE);
-	if (count > max_dyn)
-		count = max_dyn;
 	if (!regions)
 		count = 0u;
+	eff = mpu_dyn_count(regions, count, max_dyn);
 
 	/*
 	 * Unchanged domain (typical self-yield / same thread): no CSFR writes.
@@ -755,18 +772,30 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 	if (prs == g_mpu_prs && regions == g_mpu_regions && count == g_mpu_count)
 		return;
 
+	/*
+	 * IPC hot path: both sides stack-only → static URAM already covers
+	 * stacks; no dynamic slots live and none requested.
+	 */
+	if (prs == g_mpu_prs && eff == 0u && g_mpu_live == 0u) {
+		g_mpu_regions = regions;
+		g_mpu_count   = count;
+		return;
+	}
+
 	mpu_prs1_static_enables(&dpre, &dpwe, &cpre, &cpxe);
 
 	/*
-	 * Fast append: mem_map / heap_extend grew the region table by one.
-	 * Only program the new slot and refresh enables.
+	 * Fast append: mem_map grew the table by one non-STACK region and the
+	 * prior layout had no STACK holes (dense slot == region index).
 	 */
 	if (prs == g_mpu_prs && regions == g_mpu_regions &&
-	    count == (uint8_t)(g_mpu_count + 1u) && count > 0u) {
+	    count == (uint8_t)(g_mpu_count + 1u) && count > 0u &&
+	    regions[count - 1u].type != ULMK_REGION_STACK &&
+	    mpu_dyn_count(regions, (uint8_t)(count - 1u), max_dyn) ==
+		    (uint8_t)(count - 1u)) {
 		mpu_write_user_slot((uint8_t)(count - 1u), &regions[count - 1u],
 				    &dpre, &dpwe);
-		/* Re-apply bits for already-live slots. */
-		for (i = 0u; i < g_mpu_count; i++) {
+		for (i = 0u; i < (uint8_t)(count - 1u); i++) {
 			uint8_t d_slot =
 				(uint8_t)(ULMK_ARCH_MPU_USER_DPR_BASE + i);
 
@@ -781,7 +810,13 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 		return;
 	}
 
-	prog = count;
+	prog = 0u;
+	for (i = 0u; i < count && prog < max_dyn; i++) {
+		if (regions[i].type == ULMK_REGION_STACK)
+			continue;
+		mpu_write_user_slot(prog, &regions[i], &dpre, &dpwe);
+		prog++;
+	}
 
 	/* Clear only previously live dynamic slots that are no longer used. */
 	for (i = prog; i < g_mpu_live; i++) {
@@ -790,9 +825,6 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 		if (d_slot < ULMK_ARCH_MPU_NUM_DPR)
 			mpu_write_dpr(d_slot, 0u, 0u);
 	}
-
-	for (i = 0u; i < prog; i++)
-		mpu_write_user_slot(i, &regions[i], &dpre, &dpwe);
 
 	mpu_write_enables(prs, dpre, dpwe, cpre, cpxe);
 

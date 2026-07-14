@@ -184,15 +184,45 @@ static bool covered_by_static(uintptr_t base, uintptr_t size)
 static const ulmk_arch_region_t *g_mpu_regions;
 static uint8_t g_mpu_count;
 static uint8_t g_mpu_prs = 0xFFu;
+static uint8_t g_mpu_dyn; /* dynamic slots last programmed */
+
+static uint8_t mpu_dyn_needed(const ulmk_arch_region_t *regions, uint8_t count)
+{
+	uint8_t n = 0u;
+	uint8_t i;
+
+	if (!regions)
+		return 0u;
+	for (i = 0u; i < count; i++) {
+		if (regions[i].type == ULMK_REGION_STACK)
+			continue;
+		if (regions[i].size == 0u ||
+		    covered_by_static(regions[i].base, regions[i].size))
+			continue;
+		n++;
+	}
+	return n;
+}
 
 void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 			  uint8_t prs)
 {
 	uint8_t slot;
 	uint8_t i;
+	uint8_t eff;
 
 	if (prs == g_mpu_prs && regions == g_mpu_regions && count == g_mpu_count)
 		return;
+
+	eff = (prs != ULMK_ARCH_PRS_KERNEL) ? mpu_dyn_needed(regions, count) : 0u;
+
+	/* No unique dynamic regions — static windows already grant access. */
+	if (prs == g_mpu_prs && eff == 0u && g_mpu_dyn == 0u &&
+	    prs != ULMK_ARCH_PRS_KERNEL) {
+		g_mpu_regions = regions;
+		g_mpu_count   = count;
+		return;
+	}
 
 	/* Reprogram with the MPU off so the update is atomic w.r.t. running code. */
 	__asm__ volatile("dsb" ::: "memory");
@@ -204,6 +234,8 @@ void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 	slot = ULMK_ARCH_MPU_USER_BASE;
 	if (prs != ULMK_ARCH_PRS_KERNEL && regions) {
 		for (i = 0u; i < count && slot < ULMK_ARCH_MPU_REGIONS; i++) {
+			if (regions[i].type == ULMK_REGION_STACK)
+				continue;
 			if (regions[i].size == 0u ||
 			    covered_by_static(regions[i].base, regions[i].size))
 				continue;
@@ -213,6 +245,7 @@ void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 			slot++;
 		}
 	}
+	eff = (uint8_t)(slot - ULMK_ARCH_MPU_USER_BASE);
 	for (; slot < ULMK_ARCH_MPU_REGIONS; slot++)
 		region_disable(slot);
 
@@ -224,6 +257,7 @@ void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 	g_mpu_prs     = prs;
 	g_mpu_regions = regions;
 	g_mpu_count   = count;
+	g_mpu_dyn     = eff;
 }
 
 bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)

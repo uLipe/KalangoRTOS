@@ -430,10 +430,17 @@ static void pmp_user_layout(const ulmk_arch_region_t *regions, uint8_t count)
 		pmp_set_napot(ULMK_ARCH_PMP_MMIO, mmio_lo, mmio_hi - mmio_lo,
 			      PMP_R | PMP_W);
 
+	/*
+	 * STACK sits inside the static URAM NAPOT window — skip it.  Remaining
+	 * dynamic entries (heap / shared / spare) use TOR slots.
+	 */
 	slot = ULMK_ARCH_PMP_USER_BASE;
 	if (regions && count > 0u) {
 		for (i = 0u; i < count && slot < ULMK_ARCH_PMP_NUM; i++) {
 			uint8_t perm = 0u;
+
+			if (regions[i].type == ULMK_REGION_STACK)
+				continue;
 
 			if (regions[i].perms & ULMK_PERM_READ)
 				perm |= PMP_R;
@@ -474,12 +481,39 @@ void ulmk_arch_mpu_configure(uint8_t prs, const ulmk_arch_region_t *regions,
 static const ulmk_arch_region_t *g_pmp_regions;
 static uint8_t g_pmp_count;
 static uint8_t g_pmp_prs = 0xFFu;
+static uint8_t g_pmp_dyn; /* non-STACK dynamic slots last programmed */
+
+static uint8_t pmp_dyn_count(const ulmk_arch_region_t *regions, uint8_t count)
+{
+	uint8_t n = 0u;
+	uint8_t i;
+
+	if (!regions)
+		return 0u;
+	for (i = 0u; i < count; i++) {
+		if (regions[i].type != ULMK_REGION_STACK)
+			n++;
+	}
+	return n;
+}
 
 void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 			uint8_t prs)
 {
+	uint8_t eff;
+
 	if (prs == g_pmp_prs && regions == g_pmp_regions && count == g_pmp_count)
 		return;
+
+	eff = (prs == ULMK_ARCH_PRS_KERNEL) ? 0u : pmp_dyn_count(regions, count);
+
+	/* Stack-only AS: static URAM covers stacks — skip full PMP rewrite. */
+	if (prs == g_pmp_prs && eff == 0u && g_pmp_dyn == 0u &&
+	    prs != ULMK_ARCH_PRS_KERNEL) {
+		g_pmp_regions = regions;
+		g_pmp_count   = count;
+		return;
+	}
 
 	if (prs == ULMK_ARCH_PRS_KERNEL)
 		pmp_kernel_layout();
@@ -489,6 +523,7 @@ void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 	g_pmp_prs     = prs;
 	g_pmp_regions = regions;
 	g_pmp_count   = count;
+	g_pmp_dyn     = eff;
 }
 
 bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)

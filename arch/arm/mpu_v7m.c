@@ -179,15 +179,44 @@ void ulmk_arch_mpu_configure(uint8_t prs, const ulmk_arch_region_t *regions,
 static const ulmk_arch_region_t *g_mpu_regions;
 static uint8_t g_mpu_count;
 static uint8_t g_mpu_prs = 0xFFu;
+static uint8_t g_mpu_dyn; /* non-STACK dynamic slots last programmed */
+
+static uint8_t mpu_dyn_count(const ulmk_arch_region_t *regions, uint8_t count)
+{
+	uint8_t n = 0u;
+	uint8_t i;
+
+	if (!regions)
+		return 0u;
+	for (i = 0u; i < count; i++) {
+		if (regions[i].type != ULMK_REGION_STACK)
+			n++;
+	}
+	return n;
+}
 
 void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 			  uint8_t prs)
 {
 	uint8_t slot;
 	uint8_t i;
+	uint8_t eff;
 
 	if (prs == g_mpu_prs && regions == g_mpu_regions && count == g_mpu_count)
 		return;
+
+	eff = (prs != ULMK_ARCH_PRS_KERNEL) ? mpu_dyn_count(regions, count) : 0u;
+
+	/*
+	 * STACK is inside the static URAM window.  Stack-only address spaces
+	 * share that window — avoid tear-down/reprogram on every IPC switch.
+	 */
+	if (prs == g_mpu_prs && eff == 0u && g_mpu_dyn == 0u &&
+	    prs != ULMK_ARCH_PRS_KERNEL) {
+		g_mpu_regions = regions;
+		g_mpu_count   = count;
+		return;
+	}
 
 	/*
 	 * Reprogram with the MPU off.  A per-thread region's power-of-two
@@ -205,11 +234,14 @@ void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 	slot = ULMK_ARCH_MPU_USER_BASE;
 	if (prs != ULMK_ARCH_PRS_KERNEL && regions) {
 		for (i = 0u; i < count && slot < ULMK_ARCH_MPU_REGIONS; i++) {
+			if (regions[i].type == ULMK_REGION_STACK)
+				continue;
 			region_program(slot, regions[i].base, regions[i].size,
 				       perm_to_attr(regions[i].perms, false));
 			slot++;
 		}
 	}
+	eff = (uint8_t)(slot - ULMK_ARCH_MPU_USER_BASE);
 	for (; slot < ULMK_ARCH_MPU_REGIONS; slot++)
 		region_disable(slot);
 
@@ -221,6 +253,7 @@ void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 	g_mpu_prs     = prs;
 	g_mpu_regions = regions;
 	g_mpu_count   = count;
+	g_mpu_dyn     = eff;
 }
 
 bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)

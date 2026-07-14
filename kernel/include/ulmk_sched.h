@@ -55,6 +55,13 @@ void		 ulmk_sched_set_class(const ulmk_sched_class_t *cls);
 void		 ulmk_sched_start(void);
 void		 ulmk_sched_resched(void);
 
+/*
+ * ulmk_sched_handoff — switch directly to @next (not in the ready queue).
+ * Current thread must already be BLOCKED/DEAD/SUSPENDED and dequeued.
+ * Used by IPC rendezvous to avoid enqueue+pick_next of a known partner.
+ */
+void		 ulmk_sched_handoff(ulmk_thread_t *next);
+
 void		 ulmk_sched_enqueue(ulmk_thread_t *t);
 void		 ulmk_sched_dequeue(ulmk_thread_t *t);
 /* Caller already serialised IRQs — no nested irq_save. */

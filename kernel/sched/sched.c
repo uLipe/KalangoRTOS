@@ -163,6 +163,19 @@ void ulmk_sched_resched(void)
 	sched_switch_to(prev, next);
 }
 
+void ulmk_sched_handoff(ulmk_thread_t *next)
+{
+	ulmk_thread_t *prev = sched_current;
+
+	if (!next || !sched_class)
+		return;
+
+	sched_reap_dead(prev);
+	if (sys_dnode_is_linked(&next->sched_node))
+		sched_class->dequeue(next);
+	sched_switch_to(prev, next);
+}
+
 void ulmk_sched_enqueue(ulmk_thread_t *t)
 {
 	ulmk_arch_irq_key_t key;

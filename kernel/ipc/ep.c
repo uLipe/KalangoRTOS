@@ -115,6 +115,34 @@ static void apply_prio_inherit(ulmk_thread_t *server, ulmk_thread_t *caller)
 		server->priority = caller->priority;
 }
 
+static void clear_server_block(ulmk_thread_t *server)
+{
+	server->blocked_reason = UL_BLOCKED_NONE;
+	server->blocked_ep     = ULMK_EP_INVALID;
+
+	if (server->blocked_notif != ULMK_NOTIF_INVALID) {
+		ulmk_notif_obj_t *n = ulmk_notif_by_id(server->blocked_notif);
+
+		if (n && n->waiter == server)
+			n->waiter = NULL;
+		server->blocked_notif = ULMK_NOTIF_INVALID;
+	}
+}
+
+/*
+ * Fill the waiting server's message + priority inheritance.  Does not
+ * touch the ready queue — caller chooses enqueue vs direct handoff.
+ */
+static void prepare_server_delivery(ulmk_thread_t *server,
+				    ulmk_thread_t *caller,
+				    const ulmk_msg_t *msg)
+{
+	server->ipc_msg    = *msg;
+	server->ipc_sender = caller->tid;
+	apply_prio_inherit(server, caller);
+	clear_server_block(server);
+}
+
 static void wake_blocked_on_destroy(ulmk_thread_t *th, int status)
 {
 	if (sys_dnode_is_linked(&th->ipc_node)) {
@@ -137,29 +165,6 @@ static void wake_blocked_on_destroy(ulmk_thread_t *th, int status)
 	ulmk_sched_enqueue(th);
 }
 
-static void deliver_to_server(ulmk_thread_t *server, ulmk_thread_t *caller,
-			      const ulmk_msg_t *msg)
-{
-	server->ipc_msg    = *msg;
-	server->ipc_sender = caller->tid;
-
-	apply_prio_inherit(server, caller);
-
-	server->state          = UL_THREAD_STATE_READY;
-	server->blocked_reason = UL_BLOCKED_NONE;
-	server->blocked_ep     = ULMK_EP_INVALID;
-
-	if (server->blocked_notif != ULMK_NOTIF_INVALID) {
-		ulmk_notif_obj_t *n = ulmk_notif_by_id(server->blocked_notif);
-
-		if (n && n->waiter == server)
-			n->waiter = NULL;
-		server->blocked_notif = ULMK_NOTIF_INVALID;
-	}
-
-	ulmk_sched_enqueue(server);
-}
-
 /* =========================================================================
  * Core implementation (_impl functions — native pointer types)
  * ========================================================================= */
@@ -168,6 +173,7 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 {
 	ulmk_endpoint_t *ep;
 	ulmk_thread_t   *cur;
+	ulmk_thread_t   *srv;
 
 	if (!msg)
 		return -ULMK_EINVAL;
@@ -180,29 +186,28 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 	if (!cur)
 		return -ULMK_EINVAL;
 
-	cur->ipc_msg           = *msg;
-	cur->ipc_sender        = ULMK_TID_INVALID;
-	cur->blocked_reason    = UL_BLOCKED_IPC_CALL;
-	cur->blocked_ep        = ep_id;
-	cur->ipc_msg_outptr    = msg;
-	cur->block_status      = 0;
+	cur->ipc_sender     = ULMK_TID_INVALID;
+	cur->blocked_reason = UL_BLOCKED_IPC_CALL;
+	cur->blocked_ep     = ep_id;
+	cur->ipc_msg_outptr = msg;
+	cur->block_status   = 0;
 
 	if (!sys_dlist_is_empty(&ep->recv_queue)) {
-		ulmk_thread_t *srv = ipc_pop_head(&ep->recv_queue);
-
-		deliver_to_server(srv, cur, &cur->ipc_msg);
+		/*
+		 * Fast path: server already waiting — one message copy and a
+		 * direct handoff (no ready-queue enqueue/pick_next).
+		 */
+		srv = ipc_pop_head(&ep->recv_queue);
+		prepare_server_delivery(srv, cur, msg);
+		cur->state = UL_THREAD_STATE_BLOCKED;
+		ulmk_sched_handoff(srv);
 	} else {
+		cur->ipc_msg = *msg;
 		ipc_enqueue_tail(&ep->send_queue, cur);
+		cur->state = UL_THREAD_STATE_BLOCKED;
+		ulmk_sched_dequeue_locked(cur);
+		ulmk_sched_resched();
 	}
-
-	cur->state = UL_THREAD_STATE_BLOCKED;
-	ulmk_sched_dequeue(cur);
-	/*
-	 * Must switch here (not defer to trap_dispatch): after wakeup the
-	 * reply payload is copied out below, which has to run in this
-	 * syscall frame before returning to userspace.
-	 */
-	ulmk_sched_resched();
 
 	/* Re-fetch cur: local var may be stale after context switch. */
 	cur = ulmk_sched_current();
@@ -259,7 +264,7 @@ int ep_recv_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, ulmk_tid_t *sender)
 	ipc_enqueue_tail(&ep->recv_queue, cur);
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
-	ulmk_sched_dequeue(cur);
+	ulmk_sched_dequeue_locked(cur);
 	ulmk_sched_resched();
 
 	cur = ulmk_sched_current();
@@ -304,7 +309,7 @@ int ep_reply_impl(ulmk_tid_t sender_tid, const ulmk_msg_t *reply)
 	caller->state          = UL_THREAD_STATE_READY;
 	caller->blocked_reason = UL_BLOCKED_NONE;
 	caller->blocked_ep     = ULMK_EP_INVALID;
-	ulmk_sched_enqueue(caller);
+	ulmk_sched_enqueue_locked(caller);
 
 	return 0;
 }
@@ -313,11 +318,37 @@ int ep_reply_recv_impl(ulmk_ep_t ep_id, ulmk_tid_t sender_tid,
 		       const ulmk_msg_t *reply, ulmk_msg_t *next,
 		       ulmk_tid_t *next_sender)
 {
+	ulmk_endpoint_t *ep;
+	ulmk_thread_t   *cur;
+	ulmk_thread_t   *caller;
+
 	if (!next)
 		return -ULMK_EINVAL;
 
 	if (sender_tid != ULMK_TID_INVALID)
 		ep_reply_impl(sender_tid, reply);
+
+	/*
+	 * Hot path: next client already waiting — deliver without blocking.
+	 * Avoids a second pass through ep_recv_impl's full prologue.
+	 */
+	ep = ulmk_ep_by_id(ep_id);
+	if (!ep)
+		return -ULMK_EINVAL;
+
+	cur = ulmk_sched_current();
+	if (!cur)
+		return -ULMK_EINVAL;
+
+	if (!sys_dlist_is_empty(&ep->send_queue)) {
+		caller = ipc_pop_head(&ep->send_queue);
+		*next = caller->ipc_msg;
+		cur->ipc_sender = caller->tid;
+		apply_prio_inherit(cur, caller);
+		if (next_sender)
+			*next_sender = caller->tid;
+		return 0;
+	}
 
 	return ep_recv_impl(ep_id, next, next_sender);
 }
@@ -391,7 +422,7 @@ int ep_recv_or_notif_impl(ulmk_ep_t ep_id, ulmk_notif_t notif_id,
 	n->wait_mask = mask;
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
-	ulmk_sched_dequeue(cur);
+	ulmk_sched_dequeue_locked(cur);
 	ulmk_sched_resched();
 
 	/* Re-fetch cur: local var may be stale after context switch. */

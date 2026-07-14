@@ -126,6 +126,12 @@ void ulmk_sched_dequeue(ulmk_thread_t *t) { (void)t; g_dequeue_count++; }
 void ulmk_sched_enqueue_locked(ulmk_thread_t *t) { ulmk_sched_enqueue(t); }
 void ulmk_sched_dequeue_locked(ulmk_thread_t *t) { ulmk_sched_dequeue(t); }
 void ulmk_sched_resched(void)           { g_schedule_count++; }
+void ulmk_sched_handoff(ulmk_thread_t *next)
+{
+	if (next)
+		next->state = UL_THREAD_STATE_READY;
+	g_schedule_count++;
+}
 
 /* ── Thread registry stub ──────────────────────────────────────────────── */
 
@@ -282,7 +288,8 @@ static void test_ep_call_fast_path_server_waiting(void)
 	ASSERT(server->priority == 5);    /* priority inheritance */
 	ASSERT(caller->state == UL_THREAD_STATE_BLOCKED);
 	ASSERT(caller->blocked_reason == UL_BLOCKED_IPC_CALL);
-	ASSERT(g_enqueue_count == 1);
+	/* Direct handoff — no ready-queue enqueue of the server. */
+	ASSERT(g_enqueue_count == 0);
 	ASSERT(g_schedule_count == 1);
 }
 
