@@ -17,6 +17,10 @@
  * and updates PCXI.  SVLCX saves the lower context to another CSA frame
  * (UL=0) on top of that.  RSLCX+RFE free both frames on the way out.
  *
+ * Canonical hot path (book / Zephyr-style — no C mid-switch):
+ *   disable → svlcx → store PCXI → load PCXI → dsync → mtcr PCXI →
+ *   isync → (cdc_zero) → rslcx → rfe
+ *
  * Suspension of "from":
  *   CALL → pushes upper-context frame (UL=1), PCXI = link to it
  *   SVLCX → pushes lower-context frame (UL=0), PCXI = link to it
@@ -60,7 +64,6 @@
  */
 
     .extern ulmk_arch_cpu_halt
-    .extern ulmk_arch_ctx_post_save
     .extern ulmk_user_thread_entry
 
 /* ---------------------------------------------------------------------------
@@ -83,13 +86,10 @@ ulmk_arch_ctx_switch:
      */
     disable
     svlcx                        /* save lower context → new CSA frame     */
-    dsync
     mfcr    %d0, 0xFE00          /* d0 = PCXI: head of "from" CSA chain    */
     st.w    [%a4] 0, %d0         /* from->pcxi = PCXI                      */
-    dsync
-    call    ulmk_arch_ctx_post_save
     ld.w    %d0, [%a5] 0         /* d0 = to->pcxi                          */
-    dsync                        /* ensure CSA writes visible before MTCR  */
+    dsync                        /* CSA stores visible before MTCR PCXI    */
     mtcr    0xFE00, %d0          /* PCXI = to->pcxi                        */
     isync
     /*

@@ -273,20 +273,11 @@ void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,
 }
 
 /*
- * O(1) post-save sync — called from ctx_switch.S / vectors.S after pcxi is
- * stored.  One volatile read of the head CSA link + dsync; no chain walk.
+ * O(1) post-save sync used to live here and was called via CALL from
+ * ctx_switch / ISR preempt — costing an entire Upper CSA per switch for a
+ * volatile load + dsync.  The book path keeps a single dsync before
+ * mtcr PCXI in asm; this helper is gone from the hot path.
  */
-void ulmk_arch_ctx_post_save(ulmk_arch_ctx_t *ctx)
-{
-	volatile uint32_t dummy;
-
-	if (!ctx || ctx->pcxi == 0u)
-		return;
-
-	dummy = csa_link_to_addr(ctx->pcxi)[0];
-	(void)dummy;
-	__asm__ volatile("dsync" ::: "memory");
-}
 
 static uint32_t csa_chain_tail_link(uint32_t head_link)
 {
@@ -1107,28 +1098,20 @@ void ulmk_arch_syscall_entry(uint32_t frame_ptr)
 	args[3] = frame[4];
 
 	/*
-	 * Raise CCPN to 255, masking all IRQs for the duration of kernel
-	 * execution.  The TRAP hardware already saved PCXI.PCPN = 0 (the
-	 * caller's CPU priority) before entry; the RFE in _trap_class6
-	 * automatically restores CCPN = 0, so any pending IRQs fire via
-	 * tail-chaining immediately after kernel exit — no manual restore
-	 * needed here.
+	 * Raise CCPN to 255 (mask IRQs) and switch to kernel PRS 0.
+	 * One isync after both CSFRs — RFE in _trap_class6 restores the
+	 * caller's ICR/PSW from the Upper CSA.
 	 */
 	__asm__ volatile("mfcr %0, 0xFE2C" : "=d"(icr));
 	icr |= 0xFFu;	/* CCPN = 255 */
-	__asm__ volatile("mtcr 0xFE2C, %0\n\t"
-			 "isync"
-			 :: "d"(icr) : "memory");
-
-	/*
-	 * Switch to kernel protection set. The caller's PSW (with its PRS
-	 * field) is preserved in the saved upper context; RFE restores it.
-	 */
 	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
 	psw &= ~0x3000u;	/* PSW.PRS [13:12] = 0 (kernel PRS) */
-	__asm__ volatile("mtcr 0xFE04, %0\n\t"
+	__asm__ volatile("mtcr 0xFE2C, %0\n\t"
+			 "mtcr 0xFE04, %1\n\t"
 			 "isync"
-			 :: "d"(psw) : "memory");
+			 :
+			 : "d"(icr), "d"(psw)
+			 : "memory");
 
 	ret = ulmk_kern_trap_syscall((uint8_t)tin, args);
 
