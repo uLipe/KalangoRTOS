@@ -53,9 +53,9 @@ static inline void sdk_msleep_yield(uint32_t ms)
 		ulmk_thread_yield();
 }
 
-static inline ulmk_tid_t sdk_spawn(const char *name, void (*entry)(void *),
-				   void *arg, uint8_t prio, size_t stack,
-				   size_t heap)
+static inline ulmk_tid_t sdk_spawn_priv(const char *name, void (*entry)(void *),
+					void *arg, uint8_t prio, size_t stack,
+					size_t heap, ulmk_privilege_t priv)
 {
 	ulmk_thread_attr_t a;
 
@@ -64,9 +64,17 @@ static inline ulmk_tid_t sdk_spawn(const char *name, void (*entry)(void *),
 	a.arg        = arg;
 	a.priority   = prio;
 	a.stack_size = stack;
-	a.privilege  = ULMK_PRIV_DRIVER;
+	a.privilege  = priv;
 	a.heap_size  = heap;
 	return ulmk_thread_create(&a);
+}
+
+static inline ulmk_tid_t sdk_spawn(const char *name, void (*entry)(void *),
+				   void *arg, uint8_t prio, size_t stack,
+				   size_t heap)
+{
+	return sdk_spawn_priv(name, entry, arg, prio, stack, heap,
+			      ULMK_PRIV_DRIVER);
 }
 
 #endif /* SDK_TEST_UTIL_H */
