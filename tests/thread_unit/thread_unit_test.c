@@ -114,6 +114,13 @@ void ulmk_sched_set_dead_for_cleanup(ulmk_thread_t *t) { (void)t; }
 
 void ulmk_ep_recv_queue_remove(ulmk_thread_t *t) { g_recv_removed = t; }
 
+typedef struct ulmk_notif_obj ulmk_notif_obj_t;
+ulmk_notif_obj_t *ulmk_notif_by_id(ulmk_notif_t id)
+{
+	(void)id;
+	return NULL;
+}
+
 /* ── Mock reset & helpers ───────────────────────────────────────────────────── */
 
 /*

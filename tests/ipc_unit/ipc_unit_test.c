@@ -354,6 +354,8 @@ static void test_ep_recv_fast_path_caller_waiting(void)
 	ASSERT(server->ipc_sender == caller->tid);
 	ASSERT(sys_dlist_is_empty(&ep->send_queue));
 	ASSERT(caller->blocked_reason == UL_BLOCKED_IPC_CALL);
+	ASSERT(server->priority == 5);    /* PI on recv fast path */
+	ASSERT(server->saved_prio == 20);
 	ASSERT(g_schedule_count == 0);
 }
 
@@ -715,6 +717,101 @@ static void test_prio_inherit_restore_on_reply(void)
 	ASSERT(server->priority == 50);
 }
 
+static void test_prio_inherit_boost_on_recv(void)
+{
+	ulmk_msg_t      msg_out = {0};
+	ulmk_endpoint_t *ep;
+	ulmk_thread_t   *server;
+	ulmk_thread_t   *caller;
+
+	reset_pools();
+	ulmk_kern_ep_create();
+	ep = ulmk_ep_by_id(0);
+
+	caller = make_thread(2);
+	server = make_thread(50);
+
+	caller->state          = UL_THREAD_STATE_BLOCKED;
+	caller->blocked_reason = UL_BLOCKED_IPC_CALL;
+	caller->ipc_msg.label  = 1;
+	ipc_test_enqueue_send(ep, caller);
+
+	g_current = server;
+	ep_recv_impl(0, &msg_out, NULL);
+
+	ASSERT(server->priority == 2);
+	ASSERT(server->saved_prio == 50);
+}
+
+/* ── destroy + waiters ─────────────────────────────────────────────────── */
+
+static void test_ep_destroy_wakes_recv_waiter(void)
+{
+	ulmk_endpoint_t *ep;
+	ulmk_thread_t   *srv;
+
+	reset_pools();
+	ulmk_kern_ep_create();
+	ep = ulmk_ep_by_id(0);
+
+	srv = make_thread(10);
+	srv->state          = UL_THREAD_STATE_BLOCKED;
+	srv->blocked_reason = UL_BLOCKED_IPC_RECV;
+	srv->blocked_ep     = 0;
+	ipc_test_enqueue_recv(ep, srv);
+
+	ASSERT(ep_destroy_impl(0) == 0);
+	ASSERT(srv->state == UL_THREAD_STATE_READY);
+	ASSERT(srv->block_status == ULMK_EINVAL);
+	ASSERT(sys_dlist_is_empty(&ep->recv_queue));
+	ASSERT(!ep->active);
+	ASSERT(g_enqueue_count == 1);
+}
+
+static void test_ep_destroy_wakes_send_waiter(void)
+{
+	ulmk_endpoint_t *ep;
+	ulmk_thread_t   *caller;
+
+	reset_pools();
+	ulmk_kern_ep_create();
+	ep = ulmk_ep_by_id(0);
+
+	caller = make_thread(5);
+	caller->state          = UL_THREAD_STATE_BLOCKED;
+	caller->blocked_reason = UL_BLOCKED_IPC_CALL;
+	caller->blocked_ep     = 0;
+	ipc_test_enqueue_send(ep, caller);
+
+	ASSERT(ep_destroy_impl(0) == 0);
+	ASSERT(caller->state == UL_THREAD_STATE_READY);
+	ASSERT(caller->block_status == ULMK_EINVAL);
+	ASSERT(sys_dlist_is_empty(&ep->send_queue));
+}
+
+static void test_notif_destroy_wakes_waiter(void)
+{
+	ulmk_notif_obj_t *n;
+	ulmk_thread_t    *waiter;
+
+	reset_pools();
+	ulmk_kern_notif_create();
+	n = ulmk_notif_by_id(0);
+
+	waiter = make_thread(10);
+	waiter->state           = UL_THREAD_STATE_BLOCKED;
+	waiter->blocked_reason  = UL_BLOCKED_NOTIF;
+	waiter->blocked_notif   = 0;
+	waiter->notif_wait_mask = 0x1;
+	n->waiter = waiter;
+
+	ASSERT(notif_destroy_impl(0) == 0);
+	ASSERT(waiter->state == UL_THREAD_STATE_READY);
+	ASSERT(waiter->block_status == ULMK_EINVAL);
+	ASSERT(!n->active);
+	ASSERT(g_enqueue_count == 1);
+}
+
 /* ── kill cleanup ──────────────────────────────────────────────────────── */
 
 static void test_kill_removes_from_recv_queue(void)
@@ -787,6 +884,11 @@ int main(void)
 
 	RUN(test_prio_inherit_boost);
 	RUN(test_prio_inherit_restore_on_reply);
+	RUN(test_prio_inherit_boost_on_recv);
+
+	RUN(test_ep_destroy_wakes_recv_waiter);
+	RUN(test_ep_destroy_wakes_send_waiter);
+	RUN(test_notif_destroy_wakes_waiter);
 
 	RUN(test_kill_removes_from_recv_queue);
 

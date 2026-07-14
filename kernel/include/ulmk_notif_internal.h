@@ -30,5 +30,6 @@ ulmk_notif_obj_t *ulmk_notif_by_id(ulmk_notif_t id);
 int      notif_signal_impl(ulmk_notif_t id, uint32_t bits);
 int      notif_wait_impl(ulmk_notif_t id, uint32_t mask, uint32_t *out);
 uint32_t notif_poll_impl(ulmk_notif_t id, uint32_t mask);
+int      notif_destroy_impl(ulmk_notif_t id);
 
 #endif /* UL_NOTIF_INTERNAL_H */

@@ -14,6 +14,7 @@
 #include <kernel/include/ulmk_sched.h>
 #include <kernel/include/ulmk_mem_internal.h>
 #include <kernel/include/ulmk_ep_internal.h>
+#include <kernel/include/ulmk_notif_internal.h>
 #include <kernel/syscall/syscall_router.h>
 #include <ulmk_arch.h>
 #include <kernel/include/list.h>
@@ -80,6 +81,7 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 	th->ipc_sender  = ULMK_TID_INVALID;
 	th->notif_received = 0u;
 	th->notif_wait_mask = 0u;
+	th->block_status    = 0;
 	th->ipc_msg_outptr    = NULL;
 	th->ipc_sender_outptr = NULL;
 	th->notif_bits_outptr  = NULL;
@@ -261,19 +263,19 @@ uint32_t ulmk_kern_thread_spawn(uint32_t attr_ptr)
 
 	th = (ulmk_thread_t *)ulmk_heap_alloc(sizeof(ulmk_thread_t));
 	if (!th)
-		return (uint32_t)(int32_t)ULMK_ENOMEM;
+		return (uint32_t)ULMK_TID_INVALID;
 
 	slab = ulmk_heap_alloc(slab_size);
 	if (!slab) {
 		ulmk_heap_free(th);
-		return (uint32_t)(int32_t)ULMK_ENOMEM;
+		return (uint32_t)ULMK_TID_INVALID;
 	}
 
 	ret = ulmk_thread_init(th, &attr, slab);
 	if (ret != ULMK_OK) {
 		ulmk_heap_free(slab);
 		ulmk_heap_free(th);
-		return (uint32_t)(int32_t)ret;
+		return (uint32_t)ULMK_TID_INVALID;
 	}
 
 	th->slab_base = slab;
@@ -317,29 +319,59 @@ uint32_t ulmk_kern_get_thread_heap(uint32_t info_ptr)
 uint32_t ulmk_kern_thread_kill(uint32_t tid)
 {
 	ulmk_thread_t      *th = ulmk_thread_by_tid((ulmk_tid_t)tid);
+	ulmk_thread_t      *peer;
 	ulmk_arch_irq_key_t key;
 
 	if (!th || th->state == UL_THREAD_STATE_DEAD)
 		return (uint32_t)(int32_t)ULMK_ESRCH;
 
-	/* Remove from IPC recv_queue if the thread was waiting for a message. */
-	if (th->blocked_reason == UL_BLOCKED_IPC_RECV ||
+	/*
+	 * Drop from IPC queues (send or recv share ipc_node) and clear any
+	 * notif waiter slot before the TCB disappears.
+	 */
+	if (th->blocked_reason == UL_BLOCKED_IPC_CALL ||
+	    th->blocked_reason == UL_BLOCKED_IPC_RECV ||
 	    th->blocked_reason == UL_BLOCKED_IPC_OR_NOTIF)
 		ulmk_ep_recv_queue_remove(th);
+
+	if (th->blocked_notif != ULMK_NOTIF_INVALID) {
+		ulmk_notif_obj_t *n = ulmk_notif_by_id(th->blocked_notif);
+
+		if (n && n->waiter == th)
+			n->waiter = NULL;
+		th->blocked_notif = ULMK_NOTIF_INVALID;
+	}
+
+	/*
+	 * Mid-rendezvous: this thread already received a call and has not
+	 * replied — unblock the caller so it does not wait forever.
+	 */
+	if (th->ipc_sender != ULMK_TID_INVALID) {
+		peer = ulmk_thread_by_tid(th->ipc_sender);
+		if (peer && peer->state == UL_THREAD_STATE_BLOCKED &&
+		    peer->blocked_reason == UL_BLOCKED_IPC_CALL) {
+			if (sys_dnode_is_linked(&peer->ipc_node)) {
+				sys_dlist_remove(&peer->ipc_node);
+				sys_dnode_init(&peer->ipc_node);
+			}
+			peer->block_status   = ULMK_ESRCH;
+			peer->blocked_reason = UL_BLOCKED_NONE;
+			peer->blocked_ep     = ULMK_EP_INVALID;
+			peer->state          = UL_THREAD_STATE_READY;
+			ulmk_sched_enqueue(peer);
+		}
+		th->ipc_sender = ULMK_TID_INVALID;
+	}
 
 	th->state = UL_THREAD_STATE_DEAD;
 	ulmk_sched_dequeue(th);
 
 	if (th != ulmk_sched_current()) {
-		/*
-		 * Target is not on the CPU: context chain is not live, free now.
-		 */
 		key = ulmk_arch_cpu_irq_save();
 		ulmk_arch_ctx_free(&th->ctx);
 		ulmk_arch_cpu_irq_restore(key);
 		ulmk_thread_free(th);
 	} else {
-		/* Self-kill: defer cleanup to reaper. */
 		ulmk_sched_set_dead_for_cleanup(th);
 		ulmk_sched_resched();
 	}

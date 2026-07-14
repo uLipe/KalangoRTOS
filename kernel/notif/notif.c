@@ -133,6 +133,7 @@ int notif_wait_impl(ulmk_notif_t notif_id, uint32_t mask, uint32_t *out)
 	cur->notif_wait_mask   = mask;
 	cur->blocked_notif     = notif_id;
 	cur->notif_bits_outptr = out;
+	cur->block_status      = 0;
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
 	ulmk_sched_dequeue(cur);
@@ -161,6 +162,13 @@ int notif_wait_impl(ulmk_notif_t notif_id, uint32_t mask, uint32_t *out)
 	cur = ulmk_sched_current();
 	if (!cur)
 		return -ULMK_EINVAL;
+	if (cur->block_status != 0) {
+		int st = cur->block_status;
+
+		cur->block_status      = 0;
+		cur->notif_bits_outptr = NULL;
+		return st;
+	}
 
 	if (cur->notif_bits_outptr) {
 		*cur->notif_bits_outptr = cur->notif_received;
@@ -186,6 +194,35 @@ uint32_t notif_poll_impl(ulmk_notif_t notif_id, uint32_t mask)
 	return matched;
 }
 
+int notif_destroy_impl(ulmk_notif_t notif_id)
+{
+	ulmk_notif_obj_t *n = ulmk_notif_by_id(notif_id);
+	ulmk_thread_t    *w;
+
+	if (!n)
+		return -ULMK_EINVAL;
+
+	w = n->waiter;
+	n->waiter = NULL;
+	if (w) {
+		if (w->blocked_reason == UL_BLOCKED_IPC_OR_NOTIF)
+			ulmk_ep_recv_queue_remove(w);
+
+		w->blocked_notif  = ULMK_NOTIF_INVALID;
+		w->blocked_ep     = ULMK_EP_INVALID;
+		w->block_status   = ULMK_EINVAL;
+		w->blocked_reason = UL_BLOCKED_NONE;
+		w->state          = UL_THREAD_STATE_READY;
+		ulmk_sched_enqueue(w);
+	}
+
+	n->active = false;
+#ifndef UL_UNIT_TEST
+	ulmk_heap_free(n);
+#endif
+	return 0;
+}
+
 /* =========================================================================
  * Syscall ABI wrappers
  * ========================================================================= */
@@ -206,7 +243,7 @@ uint32_t ulmk_kern_notif_create(void)
 	ulmk_notif_obj_t *n = (ulmk_notif_obj_t *)ulmk_heap_alloc(sizeof(ulmk_notif_obj_t));
 
 	if (!n)
-		return (uint32_t)(int32_t)(-ULMK_ENOMEM);
+		return (uint32_t)ULMK_NOTIF_INVALID;
 	ulmk_notif_obj_init(n, (ulmk_notif_t)(uintptr_t)n);
 	return (uint32_t)(uintptr_t)n;
 #endif
@@ -214,22 +251,7 @@ uint32_t ulmk_kern_notif_create(void)
 
 uint32_t ulmk_kern_notif_destroy(uint32_t notif_id)
 {
-#ifdef UL_UNIT_TEST
-	uint32_t i = notif_id;
-
-	if (i >= ULMK_CONFIG_MAX_NOTIFS || !notif_pool[i].active)
-		return (uint32_t)(int32_t)(-ULMK_EINVAL);
-	notif_pool[i].active = false;
-	return 0u;
-#else
-	ulmk_notif_obj_t *n = (ulmk_notif_obj_t *)(uintptr_t)notif_id;
-
-	if (!n || !n->active)
-		return (uint32_t)(int32_t)(-ULMK_EINVAL);
-	n->active = false;
-	ulmk_heap_free(n);
-	return 0u;
-#endif
+	return (uint32_t)(int32_t)notif_destroy_impl((ulmk_notif_t)notif_id);
 }
 
 uint32_t ulmk_kern_notif_signal(uint32_t notif_id, uint32_t bits)

@@ -43,5 +43,6 @@ int  ep_reply_recv_impl(ulmk_ep_t ep_id, ulmk_tid_t sender_tid,
 int  ep_grant_impl(ulmk_ep_t ep_id, ulmk_tid_t target_tid);
 int  ep_recv_or_notif_impl(ulmk_ep_t ep_id, ulmk_notif_t notif_id,
 			   uint32_t mask, ulmk_recv_or_notif_result_t *res);
+int  ep_destroy_impl(ulmk_ep_t ep_id);
 
 #endif /* UL_EP_INTERNAL_H */

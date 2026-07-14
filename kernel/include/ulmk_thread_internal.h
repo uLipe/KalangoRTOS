@@ -65,6 +65,11 @@ typedef struct ulmk_thread {
 	ulmk_recv_or_notif_result_t *rn_result_outptr;
 	uint32_t          notif_wait_mask;
 	uint32_t          notif_received; /* bits consumed on notif wakeup */
+	/*
+	 * Status returned by a blocking syscall after wakeup.
+	 * 0 = normal completion; ULMK_EINVAL = object destroyed under us.
+	 */
+	int32_t           block_status;
 	/* MPU regions owned by this thread (configured by mpu_switch on dispatch) */
 	ulmk_arch_region_t  regions[ULMK_ARCH_MAX_REGIONS];
 	uint8_t           region_count;
