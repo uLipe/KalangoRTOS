@@ -10,7 +10,7 @@
 #include <ulmk_arch.h>
 #include "irq_internal.h"
 
-#define TF_SIZE		128u
+#define TF_SIZE		144u
 #define TF_RA		0u
 #define TF_S0		28u
 #define TF_S1		32u
@@ -509,14 +509,13 @@ void _ulmk_trap_dispatch(struct riscv_trap_frame *frame)
 	/*
 	 * U-mode fetch of kernel text may raise INST_FAULT (PMP deny) or,
 	 * when a NAPOT user RX window overlaps and the first insn is a
-	 * privileged CSR (-O1+), ILLEGAL_INST.  Both mean the thread must
-	 * die; only panic if the fault came from M-mode.
+	 * privileged CSR (-O1+), ILLEGAL_INST.  Userspace load/store/fetch
+	 * faults are recoverable (kill thread).  M-mode faults panic.
 	 */
 	mstatus = frame->regs[TF_MSTATUS / 4u];
-	if (code == MCAUSE_LOAD_FAULT || code == MCAUSE_STORE_FAULT ||
-	    code == MCAUSE_INST_FAULT ||
-	    (code == MCAUSE_ILLEGAL_INST &&
-	     ((mstatus >> MSTATUS_MPP_SHIFT) & 3u) == 0u))
+	if (((mstatus >> MSTATUS_MPP_SHIFT) & 3u) == 0u &&
+	    (code == MCAUSE_LOAD_FAULT || code == MCAUSE_STORE_FAULT ||
+	     code == MCAUSE_INST_FAULT || code == MCAUSE_ILLEGAL_INST))
 		ulmk_arch_trap_entry(0u, (uint8_t)code);
 	else
 		ulmk_arch_trap_entry(mcause_to_trap_class(mcause), (uint8_t)code);

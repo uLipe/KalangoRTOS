@@ -3,7 +3,12 @@
  * RISC-V trap entry — arch/riscv/trap.S
  */
 
-	.equ TF_SIZE, 128
+	/*
+	 * Must save t3–t6: GCC keeps lui bases for .bss/.data in temps across
+	 * ecall; leaving them live lets the callee (or IRQ C path) clobber them
+	 * and userspace reloads as `lw rd, %lo(sym)(zero)` → mtval=lo12.
+	 */
+	.equ TF_SIZE, 144
 	.equ TF_RA, 0
 	.equ TF_SP, 4
 	.equ TF_GP, 8
@@ -33,6 +38,10 @@
 	.equ TF_S11, 104
 	.equ TF_MEPC, 108
 	.equ TF_MSTATUS, 112
+	.equ TF_T3, 116
+	.equ TF_T4, 120
+	.equ TF_T5, 124
+	.equ TF_T6, 128
 
 	.extern _ulmk_trap_dispatch
 	.extern g_trap_sp
@@ -51,6 +60,10 @@ _trap_handler:
 	sw      t0, TF_T0(sp)
 	sw      t1, TF_T1(sp)
 	sw      t2, TF_T2(sp)
+	sw      t3, TF_T3(sp)
+	sw      t4, TF_T4(sp)
+	sw      t5, TF_T5(sp)
+	sw      t6, TF_T6(sp)
 	sw      s0, TF_S0(sp)
 	sw      s1, TF_S1(sp)
 	sw      a0, TF_A0(sp)
@@ -91,6 +104,10 @@ _trap_handler:
 	lw      t0, TF_T0(sp)
 	lw      t1, TF_T1(sp)
 	lw      t2, TF_T2(sp)
+	lw      t3, TF_T3(sp)
+	lw      t4, TF_T4(sp)
+	lw      t5, TF_T5(sp)
+	lw      t6, TF_T6(sp)
 	lw      s0, TF_S0(sp)
 	lw      s1, TF_S1(sp)
 	lw      a0, TF_A0(sp)
