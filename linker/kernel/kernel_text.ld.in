@@ -14,7 +14,12 @@
 
     .kernel_text : ALIGN(32) {
         _ulmk_kernel_text_start = .;
-        *libulmk_kernel.a:(.text.* .rodata.* .rodata)
+        /*
+         * Include bare .text as well as .text.* — RISC-V/ARM asm stubs use
+         * `.text` (e.g. ctx_switch trampolines with mret).  Leaving them to
+         * .user_runtime makes mret fetchable from U-mode (illegal tin=2).
+         */
+        *libulmk_kernel.a:(.text .text.* .rodata.* .rodata)
         _ulmk_kernel_text_end = .;
         _ulmk_kernel_exec_end = .;
     } > KERNEL_FLASH

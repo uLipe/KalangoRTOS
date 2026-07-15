@@ -19,6 +19,7 @@
 #include <kernel/syscall/syscall_router.h>
 #include <kernel/include/ulmk_sched.h>
 #include <kernel/include/ulmk_thread_internal.h>
+#include <kernel/include/ulmk_syscall_wcet_internal.h>
 
 /* Shorthand: fetch caller's privilege from the scheduler. */
 static inline ulmk_privilege_t _caller_priv(void)
@@ -80,6 +81,12 @@ uint32_t ulmk_syscall_router(uint32_t nr,
 	/* ── Thread query (any privilege) ────────────────────────────── */
 	case ULMK_SYS_THREAD_SELF:
 		return ulmk_kern_thread_self();
+
+	case ULMK_SYS_CPU_ID:
+		return ulmk_arch_cpu_id();
+
+	case ULMK_SYS_WCET_BIND:
+		return ulmk_kern_wcet_bind(a0);
 
 	/* ── IPC endpoints (any privilege) ──────────────────────────── */
 	case ULMK_SYS_EP_CREATE:
@@ -145,8 +152,12 @@ uint32_t ulmk_syscall_router(uint32_t nr,
 		REQUIRE_CAP(ULMK_CAP_IRQ);
 		return ulmk_kern_irq_bind_hw(a0, a1, a2, a3);
 
-	/* ── Thread management (requires ULMK_PRIV_DRIVER) ─────────────── */
+	/* ── Thread management (requires IO >= 1 / ULMK_PRIV_DRIVER) ─── */
 	case ULMK_SYS_THREAD_SPAWN:
+		/*
+		 * Return ULMK_EPERM (negative) in the TID word on gate
+		 * failure — sdk_suite/silicon_cap_neg check tid_is_eperm().
+		 */
 		REQUIRE_DRIVER(a0);
 		REQUIRE_CAP(ULMK_CAP_SPAWN);
 		return ulmk_kern_thread_spawn(a0);

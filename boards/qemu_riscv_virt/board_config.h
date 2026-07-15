@@ -9,7 +9,15 @@
 #ifndef ULMK_BOARD_CONFIG_H
 #define ULMK_BOARD_CONFIG_H
 
-/* CLINT for MSIP soft-IRQ tests; tick stays on Goldfish RTC via PLIC. */
+/*
+ * QEMU -machine virt can run multiple harts (-smp N).  SMP builds use 2;
+ * UP builds still compile with this constant but only hart 0 is started.
+ */
+#ifndef ULMK_ARCH_NUM_CPU
+#define ULMK_ARCH_NUM_CPU		2
+#endif
+
+/* CLINT for MSIP soft-IRQ / IPI; board timer stays on Goldfish RTC via PLIC. */
 #ifndef ULMK_ARCH_HAVE_CLINT
 #define ULMK_ARCH_HAVE_CLINT		1
 #endif

@@ -42,7 +42,8 @@ struct riscv_trap_frame {
 	uint32_t regs[TF_SIZE / 4u];
 };
 
-uintptr_t g_trap_sp;
+/* Indexed by mhartid — trap.S stores the frame pointer per hart. */
+uintptr_t g_trap_sp[ULMK_ARCH_NUM_CPU];
 
 static inline uint32_t read_mstatus(void)
 {
@@ -478,10 +479,23 @@ void ulmk_arch_mpu_configure(uint8_t prs, const ulmk_arch_region_t *regions,
 	(void)count;
 }
 
-static const ulmk_arch_region_t *g_pmp_regions;
-static uint8_t g_pmp_count;
-static uint8_t g_pmp_prs = 0xFFu;
-static uint8_t g_pmp_dyn; /* non-STACK dynamic slots last programmed */
+/*
+ * PMP CSRs are per-hart.  The "last programmed" cache must not be global or
+ * one CPU's switch causes another's mpu_switch to skip a real rewrite.
+ */
+struct pmp_cpu_cache {
+	const ulmk_arch_region_t *regions;
+	uint8_t count;
+	uint8_t prs;
+	uint8_t dyn;
+};
+
+static struct pmp_cpu_cache g_pmp_cache[ULMK_ARCH_NUM_CPU] = {
+	[0] = { .prs = 0xFFu },
+#if ULMK_ARCH_NUM_CPU > 1
+	[1] = { .prs = 0xFFu },
+#endif
+};
 
 static uint8_t pmp_dyn_count(const ulmk_arch_region_t *regions, uint8_t count)
 {
@@ -500,30 +514,44 @@ static uint8_t pmp_dyn_count(const ulmk_arch_region_t *regions, uint8_t count)
 void ulmk_arch_mpu_switch(const ulmk_arch_region_t *regions, uint8_t count,
 			uint8_t prs)
 {
-	uint8_t eff;
+	struct pmp_cpu_cache *c;
+	uint32_t              cpu;
+	uint8_t               eff;
 
-	if (prs == g_pmp_prs && regions == g_pmp_regions && count == g_pmp_count)
+	cpu = ulmk_arch_cpu_id();
+	if (cpu >= (uint32_t)ULMK_ARCH_NUM_CPU)
+		cpu = 0u;
+	c = &g_pmp_cache[cpu];
+
+	/*
+	 * On SMP only skip when this hart already has the exact same layout.
+	 * The stack-only fast path was UP-friendly but races badly when another
+	 * hart's view of "already programmed" is assumed.
+	 */
+	if (prs == c->prs && regions == c->regions && count == c->count)
 		return;
 
 	eff = (prs == ULMK_ARCH_PRS_KERNEL) ? 0u : pmp_dyn_count(regions, count);
 
+#if !ULMK_CONFIG_ENABLE_SMP
 	/* Stack-only AS: static URAM covers stacks — skip full PMP rewrite. */
-	if (prs == g_pmp_prs && eff == 0u && g_pmp_dyn == 0u &&
+	if (prs == c->prs && eff == 0u && c->dyn == 0u &&
 	    prs != ULMK_ARCH_PRS_KERNEL) {
-		g_pmp_regions = regions;
-		g_pmp_count   = count;
+		c->regions = regions;
+		c->count   = count;
 		return;
 	}
+#endif
 
 	if (prs == ULMK_ARCH_PRS_KERNEL)
 		pmp_kernel_layout();
 	else
 		pmp_user_layout(regions, count);
 
-	g_pmp_prs     = prs;
-	g_pmp_regions = regions;
-	g_pmp_count   = count;
-	g_pmp_dyn     = eff;
+	c->prs     = prs;
+	c->regions = regions;
+	c->count   = count;
+	c->dyn     = eff;
 }
 
 bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
@@ -717,5 +745,9 @@ void ulmk_arch_init(ulmk_boot_info_t *info)
 
 	ulmk_arch_irq_vectors_init((uintptr_t)_trap_handler, 0u, 0u);
 	ulmk_arch_mpu_init();
+#if ULMK_CONFIG_ENABLE_SMP
+	/* Accept CLINT MSIP reschedule IPIs on every hart. */
+	__asm__ volatile("csrs mie, %0" :: "r"(1u << 3));
+#endif
 	(void)user_mstatus_init;
 }

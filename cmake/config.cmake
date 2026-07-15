@@ -8,3 +8,12 @@ set(ULMK_CONFIG_MAX_IRQ_BINDINGS 16 CACHE STRING "Max IRQ-to-notification bindin
 set(ULMK_CONFIG_DEBUG_PRINTK     1  CACHE STRING "Enable kernel printk (0 = production no-op)")
 set(ULMK_CONFIG_SYSCALL_WCET     0  CACHE STRING
 	"Syscall cycle-counter slot (0=off, 1=WCET HIL / silicon_wcet)")
+set(ULMK_CONFIG_ENABLE_SMP       0  CACHE STRING
+	"Enable SMP (0=UP, 1=multi-CPU; requires ULMK_ARCH_NUM_CPU>1)")
+
+if("${ULMK_CONFIG_ENABLE_SMP}" STREQUAL "1")
+	if("${ULMK_ARCH}" STREQUAL "arm")
+		message(FATAL_ERROR
+			"ULMK_CONFIG_ENABLE_SMP=1 is not supported on ARM Cortex-M")
+	endif()
+endif()

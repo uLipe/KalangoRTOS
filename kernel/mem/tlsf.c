@@ -28,6 +28,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <ulmk_arch.h>
+#include <kernel/include/ulmk_klock.h>
 #include <string.h>
 #include <kernel/include/ulmk_mem_internal.h>
 
@@ -229,19 +231,24 @@ void ulmk_heap_init(uintptr_t base, size_t size)
 
 void *ulmk_heap_alloc(size_t size)
 {
+	ulmk_arch_irq_key_t key;
 	uint32_t  rounded;
 	blk_t    *blk;
 	blk_t    *rem;
 	blk_t    *nxt;
+	void     *ret;
 
 	if (size == 0u)
 		return NULL;
 
+	key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_mem);
 	rounded = (uint32_t)(((size + TLSF_HDR - 1u) / TLSF_HDR) * TLSF_HDR);
 
 	blk = find_free_block(rounded);
-	if (!blk)
+	if (!blk) {
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_mem, key);
 		return NULL;
+	}
 
 	remove_free(blk);
 
@@ -263,11 +270,14 @@ void *ulmk_heap_alloc(size_t size)
 		insert_free(rem);
 	}
 
-	return (uint8_t *)blk + TLSF_HDR;
+	ret = (uint8_t *)blk + TLSF_HDR;
+	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_mem, key);
+	return ret;
 }
 
 void ulmk_heap_free(void *ptr)
 {
+	ulmk_arch_irq_key_t key;
 	blk_t *blk;
 	blk_t *nxt;
 	blk_t *prv;
@@ -275,6 +285,7 @@ void ulmk_heap_free(void *ptr)
 	if (!ptr)
 		return;
 
+	key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_mem);
 	blk = (blk_t *)((uint8_t *)ptr - TLSF_HDR);
 
 	/* Coalesce forward. */
@@ -299,6 +310,7 @@ void ulmk_heap_free(void *ptr)
 	}
 
 	insert_free(blk);
+	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_mem, key);
 }
 
 /*

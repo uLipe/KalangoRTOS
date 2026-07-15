@@ -12,6 +12,11 @@
 #ifndef ULMK_BOARD_CONFIG_H
 #define ULMK_BOARD_CONFIG_H
 
+/* QEMU TriCore emulates CPU0 only. */
+#ifndef ULMK_ARCH_NUM_CPU
+#define ULMK_ARCH_NUM_CPU		1
+#endif
+
 /* ── IRQ: AURIX Service Request (SRC) block ─────────────────────────────── */
 
 #define ULMK_BOARD_SRC_BASE		0xF0038000u

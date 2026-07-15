@@ -9,6 +9,7 @@
 #define UL_SCHED_H
 
 #include <stdbool.h>
+#include <ulmk/config.h>
 #include <kernel/include/ulmk_thread_internal.h>
 #include <ulmk_arch.h>
 
@@ -65,6 +66,12 @@ void		 ulmk_sched_request_resched(void);
 
 void		 ulmk_sched_enqueue(ulmk_thread_t *t);
 void		 ulmk_sched_dequeue(ulmk_thread_t *t);
+#if ULMK_CONFIG_ENABLE_SMP
+/* Send deferred remote IPIs (call after releasing IPC locks). */
+void		 ulmk_sched_kick_pending(void);
+#else
+static inline void ulmk_sched_kick_pending(void) { }
+#endif
 /*
  * Same as enqueue/dequeue — kernel/ISR gateways already mask IRQs.
  * Kept as explicit aliases for call sites that used to nest irq_save.

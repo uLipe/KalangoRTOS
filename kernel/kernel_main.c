@@ -16,6 +16,7 @@
 #include <kernel/include/ulmk_thread_internal.h>
 #include <kernel/include/ulmk_irq_internal.h>
 #include <kernel/include/ulmk_mem_internal.h>
+#include <kernel/include/ulmk_percpu.h>
 #include <kernel/include/ulmk_printk.h>
 #include <kernel/include/ulmk_syscall_wcet_internal.h>
 #include <kernel/syscall/syscall_router.h>
@@ -32,6 +33,27 @@ void ulmk_kern_sched_dispatch(bool from_isr)
 {
 	ulmk_sched_trap_dispatch(from_isr);
 }
+
+void ulmk_kern_ipi_resched(void)
+{
+	ulmk_sched_request_resched();
+}
+
+#if ULMK_CONFIG_ENABLE_SMP
+void ulmk_kern_ipi_from_isr(void)
+{
+	ulmk_sched_request_resched();
+	/*
+	 * Early IPI before sched_start publishes current: leave the soft
+	 * mailbox alone so idle can drain it.  Clearing here permanently
+	 * loses the kick (needs_resched may also be wiped by sched_start).
+	 */
+	if (!ulmk_percpu()->current)
+		return;
+	ulmk_arch_ipi_note_enter();
+	ulmk_kern_sched_dispatch(true);
+}
+#endif
 
 /*
  * After trap-exit switch, pick up destroy errors / recv_or_notif notif rc
@@ -91,13 +113,34 @@ uint32_t ulmk_kern_trap_syscall(uint8_t tin, uint32_t args[4])
 	if (blocked > wall)
 		blocked = wall;
 
-	g_ulmk_syscall_wcet.magic   = ULMK_SYSCALL_WCET_MAGIC;
-	g_ulmk_syscall_wcet.nr      = tin;
-	g_ulmk_syscall_wcet.begin   = begin;
-	g_ulmk_syscall_wcet.end     = end;
-	g_ulmk_syscall_wcet.blocked = blocked;
-	g_ulmk_syscall_wcet.delta   = wall - blocked;
-	g_ulmk_syscall_wcet.seq++;
+	{
+		ulmk_thread_t *cur = ulmk_sched_current();
+		uint32_t cpu = ulmk_arch_cpu_id();
+		volatile struct ulmk_syscall_wcet_slot *slot;
+		volatile struct ulmk_syscall_wcet_slot *out;
+
+		if (cpu >= ULMK_SYSCALL_WCET_MAX_CPUS)
+			cpu = 0u;
+		slot = &g_ulmk_syscall_wcet[cpu];
+		slot->magic   = ULMK_SYSCALL_WCET_MAGIC;
+		slot->nr      = tin;
+		slot->begin   = begin;
+		slot->end     = end;
+		slot->blocked = blocked;
+		slot->delta   = wall - blocked;
+		slot->seq++;
+
+		out = cur ? cur->wcet_out : NULL;
+		if (out && out != slot) {
+			out->magic   = ULMK_SYSCALL_WCET_MAGIC;
+			out->nr      = tin;
+			out->begin   = begin;
+			out->end     = end;
+			out->blocked = blocked;
+			out->delta   = wall - blocked;
+			out->seq++;
+		}
+	}
 	return ret;
 #else
 	return ulmk_syscall_router(tin, args[0], args[1], args[2], args[3]);
@@ -143,26 +186,59 @@ static void idle_thread_entry(void *arg)
  * Static thread storage
  * ========================================================================= */
 
-/*
- * Idle only loops on ulmk_arch_cpu_idle(), so its user stack need is trivial,
- * but on ports that carve a private per-thread kernel stack from the top of the
- * thread stack (ARM Cortex-M), the slab must also cover that carve or the very
- * first exception taken while idle runs underflows below the stack.  Size the
- * slab as a small user portion plus the arch kernel-stack reserve (0 on ports
- * that do not carve, e.g. TriCore CSA / RISC-V single-stack).
- */
 #ifndef ULMK_ARCH_KSTACK_SIZE
 #define ULMK_ARCH_KSTACK_SIZE	0u
 #endif
-#define ULMK_IDLE_STACK_SIZE	(256u + ULMK_ARCH_KSTACK_SIZE)
+/*
+ * Idle runs on its own stack and absorbs IPIs / ISRs.  Trap frame alone is
+ * ~144 bytes on RISC-V; the C IRQ path needs several hundred more.  SMP
+ * idle is hit by remote enqueue IPIs — 256 was overflowing and corrupting
+ * mepc (INST_FAULT mtval=0).
+ */
+#define ULMK_IDLE_STACK_SIZE	(2048u + ULMK_ARCH_KSTACK_SIZE)
 
-static ulmk_thread_t idle_thread_g   UL_KERNEL_BSS;
-static uint8_t     idle_stack_g[ULMK_IDLE_STACK_SIZE]
+static ulmk_thread_t idle_thread_g[ULMK_NR_CPUS] UL_KERNEL_BSS;
+static uint8_t     idle_stack_g[ULMK_NR_CPUS][ULMK_IDLE_STACK_SIZE]
 	__attribute__((aligned(8))) UL_KERNEL_BSS;
 
 static ulmk_thread_t root_thread_g   UL_KERNEL_BSS;
 static uint8_t     root_stack_g[4096]
 	__attribute__((aligned(8), section(".user_bss")));
+
+#if ULMK_CONFIG_ENABLE_SMP
+/*
+ * Secondary CPUs enter here after ulmk_arch_start_secondary().  Sched state
+ * and idle threads were prepared on CPU0; we only run the local sched_start.
+ */
+void ulmk_kern_secondary_main(void)
+{
+	uint32_t cpu = ulmk_arch_cpu_id();
+
+	ulmk_printk("ulmk: CPU%u secondary entry\n", (unsigned)cpu);
+#if ULMK_CONFIG_SYSCALL_WCET
+	/* CCNT/DWT is per-core — primary enable does not cover this CPU. */
+	ulmk_arch_cycle_enable();
+#endif
+	ulmk_arch_secondary_init();
+	/*
+	 * online + secondary_mark_ready happen inside ulmk_sched_start() only
+	 * after current is set — otherwise a remote IPI can run dispatch with
+	 * current==NULL (drops the kick) and clear the soft mailbox forever.
+	 * Leave IE clear until the RFE into idle (PIE in the fabricated CSA).
+	 */
+	ulmk_printk("ulmk: CPU%u sched_start\n", (unsigned)cpu);
+	(void)cpu;
+	ulmk_sched_start();
+	for (;;)
+		;
+}
+#else
+void ulmk_kern_secondary_main(void)
+{
+	for (;;)
+		;
+}
+#endif
 
 /* =========================================================================
  * Kernel main — does not return
@@ -171,6 +247,7 @@ static uint8_t     root_stack_g[4096]
 void ulmk_kern_main(const ulmk_boot_info_t *info)
 {
 	ulmk_thread_attr_t attr = {0};
+	uint32_t           cpu;
 
 	ulmk_printk("ulmk: kernel entry\n");
 
@@ -183,8 +260,10 @@ void ulmk_kern_main(const ulmk_boot_info_t *info)
 
 #if ULMK_CONFIG_SYSCALL_WCET
 	ulmk_arch_cycle_enable();
-	g_ulmk_syscall_wcet.magic = ULMK_SYSCALL_WCET_MAGIC;
-	g_ulmk_syscall_wcet.seq   = 0u;
+	for (cpu = 0u; cpu < ULMK_SYSCALL_WCET_MAX_CPUS; cpu++) {
+		g_ulmk_syscall_wcet[cpu].magic = ULMK_SYSCALL_WCET_MAGIC;
+		g_ulmk_syscall_wcet[cpu].seq   = 0u;
+	}
 #endif
 
 	ulmk_arch_mpu_init();
@@ -196,19 +275,21 @@ void ulmk_kern_main(const ulmk_boot_info_t *info)
 		  (unsigned)ulmk_heap_free_bytes());
 
 	/*
-	 * Create the idle thread first — lowest priority (255), always in
-	 * the run queue.  The scheduler switches to it when no real thread
-	 * is ready, eliminating the need for a special idle context or a
-	 * polling loop in the kernel main frame.
+	 * One idle thread per CPU — always present in that CPU's runqueue so
+	 * pick_next never returns NULL after start.
 	 */
-	attr.name       = "idle";
-	attr.entry      = idle_thread_entry;
-	attr.arg        = NULL;
-	attr.priority   = 255u;
-	attr.stack_size = sizeof(idle_stack_g);
-	attr.privilege  = ULMK_PRIV_KERNEL;
-	ulmk_thread_init(&idle_thread_g, &attr, idle_stack_g);
-	ulmk_sched_enqueue(&idle_thread_g);
+	for (cpu = 0u; cpu < (uint32_t)ULMK_NR_CPUS; cpu++) {
+		attr.name       = "idle";
+		attr.entry      = idle_thread_entry;
+		attr.arg        = NULL;
+		attr.priority   = 255u;
+		attr.stack_size = ULMK_IDLE_STACK_SIZE;
+		attr.privilege  = ULMK_PRIV_KERNEL;
+		attr.cpu        = (uint8_t)cpu;
+		ulmk_thread_init(&idle_thread_g[cpu], &attr, idle_stack_g[cpu]);
+		ulmk_percpu_of(cpu)->idle = &idle_thread_g[cpu];
+		ulmk_sched_enqueue(&idle_thread_g[cpu]);
+	}
 
 	attr.name       = "root";
 	attr.entry      = (void (*)(void *))ulmk_root_thread;
@@ -216,6 +297,7 @@ void ulmk_kern_main(const ulmk_boot_info_t *info)
 	attr.priority   = 0u;
 	attr.stack_size = sizeof(root_stack_g);
 	attr.privilege  = ULMK_PRIV_DRIVER;
+	attr.cpu        = 0u;
 	ulmk_thread_init(&root_thread_g, &attr, root_stack_g);
 	root_thread_g.cap_flags = ULMK_CAP_ALL;
 	ulmk_sched_enqueue(&root_thread_g);
@@ -235,6 +317,15 @@ void ulmk_kern_main(const ulmk_boot_info_t *info)
 
 	ulmk_arch_mpu_enable();
 	UL_LOG_DBG("mpu enabled");
+
+	ulmk_arch_smp_mark_ready();
+
+#if ULMK_CONFIG_ENABLE_SMP
+	for (cpu = 1u; cpu < (uint32_t)ULMK_NR_CPUS; cpu++) {
+		ulmk_printk("ulmk: starting CPU%u\n", (unsigned)cpu);
+		ulmk_arch_start_secondary(cpu, ulmk_kern_secondary_main);
+	}
+#endif
 
 	ulmk_printk("ulmk: switching to root thread\n");
 

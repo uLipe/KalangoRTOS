@@ -35,6 +35,7 @@
 
 #ifndef UL_UNIT_TEST
 #include <kernel/include/ulmk_mem_internal.h>
+#include <kernel/include/ulmk_klock.h>
 #else
 #include <ulmk/config.h>
 #endif
@@ -159,11 +160,15 @@ void prepare_server_delivery(ulmk_thread_t *server,
 	apply_prio_inherit(server, caller);
 	clear_server_block(server);
 
+	/*
+	 * Copy through the TCB as well as the userspace outptr so a
+	 * cross-CPU writer never depends solely on the remote stack window
+	 * remaining mapped in the caller's PMP view.
+	 */
+	server->ipc_msg = *msg;
 	if (server->ipc_msg_outptr) {
 		*server->ipc_msg_outptr = *msg;
 		server->ipc_msg_outptr  = NULL;
-	} else {
-		server->ipc_msg = *msg;
 	}
 
 	if (server->ipc_sender_outptr) {
@@ -211,18 +216,32 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 {
 	ulmk_endpoint_t *ep;
 	ulmk_thread_t   *cur;
-	ulmk_thread_t   *srv;
+	ulmk_thread_t   *srv = NULL;
+#ifndef UL_UNIT_TEST
+	ulmk_arch_irq_key_t key;
+#endif
 
 	if (!msg)
 		return -ULMK_EINVAL;
 
+#ifndef UL_UNIT_TEST
+	key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_ipc);
+#endif
 	ep = ulmk_ep_by_id(ep_id);
-	if (!ep)
+	if (!ep) {
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
 		return -ULMK_EINVAL;
+	}
 
 	cur = ulmk_sched_current();
-	if (!cur)
+	if (!cur) {
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
 		return -ULMK_EINVAL;
+	}
 
 	cur->ipc_sender     = ULMK_TID_INVALID;
 	cur->blocked_reason = UL_BLOCKED_IPC_CALL;
@@ -233,19 +252,28 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 
 	if (!sys_dlist_is_empty(&ep->recv_queue)) {
 		/*
-		 * Fast path: server already waiting — deliver and enqueue; the
-		 * switch happens at trap exit (caller is BLOCKED).
+		 * Fast path: server already waiting — deliver now; enqueue the
+		 * server only after dropping the IPC lock so a remote resume
+		 * into ep_reply cannot deadlock (spin with IRQs off on ipc).
 		 */
 		srv = ipc_pop_head(&ep->recv_queue);
 		prepare_server_delivery(srv, cur, msg);
 		srv->state = UL_THREAD_STATE_READY;
-		ulmk_sched_enqueue(srv);
 	} else {
 		ipc_enqueue_tail(&ep->send_queue, cur);
 	}
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
-	ulmk_sched_dequeue_locked(cur);
+#ifndef UL_UNIT_TEST
+	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+	/* RQ ops outside IPC — IRQs masked at the gateway until trap exit. */
+	ulmk_sched_dequeue(cur);
+	if (srv)
+		ulmk_sched_enqueue(srv);
+#ifndef UL_UNIT_TEST
+	ulmk_sched_kick_pending();
+#endif
 	/*
 	 * Reply (or destroy error) is resolved after trap-exit switch: reply
 	 * writes *ipc_msg_outptr; ulmk_kern_syscall_ret_resolve() picks up
@@ -258,17 +286,31 @@ int ep_recv_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, ulmk_tid_t *sender)
 {
 	ulmk_endpoint_t *ep;
 	ulmk_thread_t   *cur;
+#ifndef UL_UNIT_TEST
+	ulmk_arch_irq_key_t key;
+#endif
 
 	if (!msg)
 		return -ULMK_EINVAL;
 
+#ifndef UL_UNIT_TEST
+	key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_ipc);
+#endif
 	ep = ulmk_ep_by_id(ep_id);
-	if (!ep)
+	if (!ep) {
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
 		return -ULMK_EINVAL;
+	}
 
 	cur = ulmk_sched_current();
-	if (!cur)
+	if (!cur) {
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
 		return -ULMK_EINVAL;
+	}
 
 	if (!sys_dlist_is_empty(&ep->send_queue)) {
 		ulmk_thread_t *caller = ipc_pop_head(&ep->send_queue);
@@ -279,7 +321,9 @@ int ep_recv_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, ulmk_tid_t *sender)
 
 		if (sender)
 			*sender = caller->tid;
-
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
 		return 0;
 	}
 
@@ -291,7 +335,13 @@ int ep_recv_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, ulmk_tid_t *sender)
 	ipc_enqueue_tail(&ep->recv_queue, cur);
 
 	cur->state = UL_THREAD_STATE_BLOCKED;
-	ulmk_sched_dequeue_locked(cur);
+#ifndef UL_UNIT_TEST
+	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+	ulmk_sched_dequeue(cur);
+#ifndef UL_UNIT_TEST
+	ulmk_sched_kick_pending();
+#endif
 	/* Delivery / errors completed at wake + trap-exit resume. */
 	return 0;
 }
@@ -300,13 +350,23 @@ int ep_reply_impl(ulmk_tid_t sender_tid, const ulmk_msg_t *reply)
 {
 	ulmk_thread_t *cur    = ulmk_sched_current();
 	ulmk_thread_t *caller;
+#ifndef UL_UNIT_TEST
+	ulmk_arch_irq_key_t key;
+#endif
 
 	if (!reply)
 		return -ULMK_EINVAL;
 
+#ifndef UL_UNIT_TEST
+	key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_ipc);
+#endif
 	caller = ulmk_thread_by_tid(sender_tid);
-	if (!caller || caller->blocked_reason != UL_BLOCKED_IPC_CALL)
+	if (!caller || caller->blocked_reason != UL_BLOCKED_IPC_CALL) {
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
 		return -ULMK_EINVAL;
+	}
 
 	if (cur)
 		cur->priority = cur->saved_prio;
@@ -322,7 +382,18 @@ int ep_reply_impl(ulmk_tid_t sender_tid, const ulmk_msg_t *reply)
 	caller->state          = UL_THREAD_STATE_READY;
 	caller->blocked_reason = UL_BLOCKED_NONE;
 	caller->blocked_ep     = ULMK_EP_INVALID;
-	ulmk_sched_enqueue_locked(caller);
+#ifndef UL_UNIT_TEST
+	/*
+	 * Enqueue after dropping IPC — same rule as ep_call waking a server.
+	 * Holding IPC across rq_lock + remote IPI deadlocks with a peer in
+	 * ep_call (IPC then RQ) and inflates cross-CPU reply WCET.
+	 */
+	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+	ulmk_sched_enqueue(caller);
+#ifndef UL_UNIT_TEST
+	ulmk_sched_kick_pending();
+#endif
 
 	return 0;
 }

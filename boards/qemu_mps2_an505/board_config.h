@@ -18,6 +18,11 @@
 #ifndef ULMK_BOARD_CONFIG_H
 #define ULMK_BOARD_CONFIG_H
 
+/* Uniprocessor Cortex-M — SMP is not supported. */
+#ifndef ULMK_ARCH_NUM_CPU
+#define ULMK_ARCH_NUM_CPU		1
+#endif
+
 /* ARMv8-M mainline (PMSAv8 MPU). */
 #define ULMK_ARCH_ARMV8M		1
 

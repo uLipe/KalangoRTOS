@@ -503,3 +503,87 @@ void ulmk_arch_init(ulmk_boot_info_t *info)
 	ulmk_arch_irq_vectors_init(0u, 0u, 0u);
 	/* SysTick is armed lazily on the first context switch (see sched_switch). */
 }
+
+/* =========================================================================
+ * SMP — not supported on Cortex-M; stubs keep the arch API complete
+ * ========================================================================= */
+
+uint32_t ulmk_arch_cpu_id(void)
+{
+	return 0u;
+}
+
+void ulmk_arch_spin_lock(ulmk_spinlock_t *lock)
+{
+#if ULMK_CONFIG_ENABLE_SMP
+	while (ulmk_arch_atomic_cas(&lock->locked, 0u, 1u) != 0u)
+		;
+#else
+	(void)lock;
+#endif
+}
+
+void ulmk_arch_spin_unlock(ulmk_spinlock_t *lock)
+{
+#if ULMK_CONFIG_ENABLE_SMP
+	lock->locked = 0u;
+#else
+	(void)lock;
+#endif
+}
+
+ulmk_arch_irq_key_t ulmk_arch_spin_lock_irqsave(ulmk_spinlock_t *lock)
+{
+	ulmk_arch_irq_key_t key = ulmk_arch_cpu_irq_save();
+
+	ulmk_arch_spin_lock(lock);
+	return key;
+}
+
+void ulmk_arch_spin_unlock_irqrestore(ulmk_spinlock_t *lock,
+				      ulmk_arch_irq_key_t key)
+{
+	ulmk_arch_spin_unlock(lock);
+	ulmk_arch_cpu_irq_restore(key);
+}
+
+void ulmk_arch_send_ipi(uint32_t cpu_id)
+{
+	(void)cpu_id;
+}
+
+void ulmk_arch_ipi_note_enter(void)
+{
+}
+
+void ulmk_arch_ipi_clear_self(void)
+{
+}
+
+void ulmk_arch_ipi_pulse_self(void)
+{
+}
+
+void ulmk_arch_secondary_init(void)
+{
+}
+
+void ulmk_arch_secondary_mark_ready(void)
+{
+}
+
+void ulmk_arch_start_secondary(uint32_t cpu_id, void (*entry)(void))
+{
+	(void)cpu_id;
+	(void)entry;
+}
+
+void ulmk_arch_smp_park(void)
+{
+	for (;;)
+		ulmk_arch_cpu_halt();
+}
+
+void ulmk_arch_smp_mark_ready(void)
+{
+}

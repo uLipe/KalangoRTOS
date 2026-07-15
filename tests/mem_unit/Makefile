@@ -13,6 +13,7 @@ CFLAGS := \
 
 SRCS := \
     mem_unit_test.c \
+    $(ROOT)/kernel/percpu/klock.c \
     $(ROOT)/kernel/mem/tlsf.c
 
 .PHONY: all run clean

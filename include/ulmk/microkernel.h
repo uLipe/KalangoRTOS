@@ -23,6 +23,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <ulmk/syscall_nr.h>
+#include <ulmk/syscall_wcet.h>
 
 /* =========================================================================
  * Privilege levels (TriCore PSW.IO field)
@@ -82,6 +83,7 @@ typedef struct {
 	size_t		 stack_size;
 	ulmk_privilege_t	 privilege;
 	size_t		 heap_size;	/* 0 = no per-thread heap; last for compat */
+	uint8_t		 cpu;		/* permanent affinity; 0 = CPU0 */
 } ulmk_thread_attr_t;
 
 /*
@@ -188,6 +190,34 @@ static inline ulmk_tid_t ulmk_thread_self(void)
 	uint32_t r;
 	ULMK_SYSCALL_0(ULMK_SYS_THREAD_SELF, r);
 	return (ulmk_tid_t)r;
+}
+
+/**
+ * @brief Return the CPU id this thread is currently running on.
+ */
+static inline uint32_t ulmk_cpu_id(void)
+{
+	uint32_t r;
+	ULMK_SYSCALL_0(ULMK_SYS_CPU_ID, r);
+	return r;
+}
+
+/**
+ * @brief Bind a private WCET sample slot for this thread (SYSCALL_WCET builds).
+ *
+ * When @p slot is non-NULL, each subsequent syscall publishes its sample
+ * there in addition to the per-CPU @c g_ulmk_syscall_wcet[] entry.  Required
+ * for correct measurement when peer threads share a CPU (IPC client/server).
+ *
+ * @param slot Userspace slot, or NULL to unbind.
+ * @return @c ULMK_OK, or @c ULMK_EINVAL if WCET is not enabled in this build.
+ */
+static inline int ulmk_wcet_bind(volatile struct ulmk_syscall_wcet_slot *slot)
+{
+	uint32_t r;
+
+	ULMK_SYSCALL_1(ULMK_SYS_WCET_BIND, slot, r);
+	return (int)r;
 }
 
 /**

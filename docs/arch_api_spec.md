@@ -162,6 +162,34 @@ Enter a low-power wait state until the next interrupt.  Called by the kernel
 idle thread.  Must return when an interrupt fires and is handled (i.e., after
 the ISR completes).
 
+### SMP — `ulmk_arch_cpu_id` / spinlocks / IPI / secondary
+
+```c
+uint32_t          ulmk_arch_cpu_id(void);              /* 0 .. NUM_CPU-1 */
+void              ulmk_arch_spin_lock(ulmk_spinlock_t *l);
+void              ulmk_arch_spin_unlock(ulmk_spinlock_t *l);
+ulmk_arch_irq_key_t ulmk_arch_spin_lock_irqsave(ulmk_spinlock_t *l);
+void              ulmk_arch_spin_unlock_irqrestore(ulmk_spinlock_t *l,
+						  ulmk_arch_irq_key_t k);
+void              ulmk_arch_send_ipi(uint32_t cpu_id);  /* soft resched */
+void              ulmk_arch_secondary_init(void);
+void              ulmk_arch_start_secondary(uint32_t cpu_id, void (*entry)(void));
+void              ulmk_arch_smp_mark_ready(void);       /* CPU0 post-bss gate */
+```
+
+`ULMK_ARCH_NUM_CPU` is a board constant (default 1).  `ULMK_CONFIG_ENABLE_SMP`
+may only be 1 when `NUM_CPU > 1`; ARM configure refuses SMP.  Kernel effective
+CPU count is `ULMK_NR_CPUS` (= `NUM_CPU` if SMP else 1).
+
+Affinity is a permanent `uint8_t cpu` on `ulmk_thread_attr_t` / TCB — no
+migration.  Shared pools use `spin_lock_irqsave` (irq_save alone is not
+enough under SMP).  With `ENABLE_SMP=0`, `spin_lock`/`unlock` are no-ops and
+`spin_lock_irqsave` reduces to `cpu_irq_save`/`restore` (UP path).  RISC-V
+SMP uses `mhartid`, LR/SC spin, and CLINT MSIP IPI.  TriCore exposes
+`CORE_ID` + CAS spinlocks; secondary bring-up is board-specific (phase B —
+CPU1 on TC275 silicon; QEMU TriCore stays CPU0-only).  ARM stubs
+`cpu_id→0` and rejects SMP at cmake time.
+
 ### `ulmk_arch_cpu_halt`
 
 ```c

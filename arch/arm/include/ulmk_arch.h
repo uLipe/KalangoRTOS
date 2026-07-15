@@ -56,6 +56,12 @@ typedef struct {
 #define ULMK_REGION_PERIPH	4
 #define ULMK_REGION_SHARED	5
 
+typedef struct {
+	volatile uint32_t locked;
+} ulmk_spinlock_t;
+
+#define ULMK_SPINLOCK_INIT	{ 0u }
+
 ulmk_arch_irq_key_t ulmk_arch_cpu_irq_save(void);
 void              ulmk_arch_cpu_irq_restore(ulmk_arch_irq_key_t key);
 void              ulmk_arch_cpu_irq_enable(void);
@@ -63,6 +69,23 @@ void              ulmk_arch_cpu_irq_disable(void);
 void              ulmk_arch_cpu_idle(void);
 void              ulmk_arch_cpu_halt(void);
 uint32_t          ulmk_arch_cpu_clz(uint32_t val);
+uint32_t          ulmk_arch_cpu_id(void);
+
+void              ulmk_arch_spin_lock(ulmk_spinlock_t *lock);
+void              ulmk_arch_spin_unlock(ulmk_spinlock_t *lock);
+ulmk_arch_irq_key_t ulmk_arch_spin_lock_irqsave(ulmk_spinlock_t *lock);
+void              ulmk_arch_spin_unlock_irqrestore(ulmk_spinlock_t *lock,
+						    ulmk_arch_irq_key_t key);
+
+void              ulmk_arch_send_ipi(uint32_t cpu_id);
+void              ulmk_arch_ipi_clear_self(void);
+void              ulmk_arch_ipi_note_enter(void);
+void              ulmk_arch_ipi_pulse_self(void);
+void              ulmk_arch_secondary_init(void);
+void              ulmk_arch_secondary_mark_ready(void);
+void              ulmk_arch_start_secondary(uint32_t cpu_id, void (*entry)(void));
+void              ulmk_arch_smp_mark_ready(void);
+void              ulmk_arch_smp_park(void);
 
 void     ulmk_arch_cycle_enable(void);
 uint32_t ulmk_arch_cycle_read(void);
@@ -130,7 +153,9 @@ void ulmk_arch_trap_dump(uint8_t trap_class, uint8_t tin);
 void ulmk_printk_char_out(char c);
 
 void ulmk_kern_irq_dispatch(uint8_t srpn);
+void ulmk_kern_ipi_resched(void);
 void ulmk_kern_sched_dispatch(bool from_isr);
+void ulmk_kern_secondary_main(void);
 uint32_t ulmk_kern_syscall_ret_resolve(uint32_t ret);
 uint32_t ulmk_kern_trap_syscall(uint8_t tin, uint32_t args[4]);
 void ulmk_kern_trap_recoverable(void);

@@ -12,8 +12,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <ulmk/microkernel.h>
+#include <ulmk/config.h>
 #include <ulmk_arch.h>
 #include <kernel/include/list.h>
+
+struct ulmk_syscall_wcet_slot;
 
 #define UL_THREAD_STATE_DEAD      0
 #define UL_THREAD_STATE_READY     1
@@ -42,10 +45,21 @@ typedef struct ulmk_thread {
 	uintptr_t        heap_base;	/* slab_base + stack_size */
 	size_t           heap_size;	/* bytes reserved for thread heap */
 	uint8_t          priority;
+	uint8_t          cpu;             /* permanent affinity (0..NR_CPUS-1) */
 	uint8_t          saved_prio;      /* priority before inheritance boost */
 	uint8_t          state;
 	uint8_t          blocked_reason;
 	ulmk_privilege_t   privilege;
+#if ULMK_CONFIG_ENABLE_SMP
+	/*
+	 * Lazy arch ctx: TriCore CSAs must be carved from the affinity CPU's
+	 * FCX.  Remote create stores entry/arg and fabricates on first
+	 * schedule on that CPU (see ulmk_thread_ensure_ctx).
+	 */
+	void           (*start_entry)(void *arg);
+	void            *start_arg;
+	uint8_t          ctx_ready;
+#endif
 	ulmk_tid_t         tid;	/* opaque handle: (uintptr_t)this */
 	ulmk_ep_t          blocked_ep;      /* ep blocked on; for cleanup on kill */
 	ulmk_notif_t       blocked_notif;   /* notif blocked on; recv_or_notif */
@@ -96,6 +110,11 @@ typedef struct ulmk_thread {
 	uint32_t          wcet_blocked;
 	uint32_t          wcet_block_mark;
 	uint8_t           wcet_block_open;
+	/*
+	 * Optional userspace slot (ulmk_wcet_bind).  When set, each syscall
+	 * also publishes there so same-CPU peers cannot overwrite samples.
+	 */
+	volatile struct ulmk_syscall_wcet_slot *wcet_out;
 } ulmk_thread_t;
 
 int          ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr,
@@ -103,5 +122,13 @@ int          ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr,
 ulmk_thread_t *ulmk_thread_by_tid(ulmk_tid_t tid);
 void         ulmk_thread_set_state(ulmk_thread_t *th, uint8_t state);
 void         ulmk_thread_free(ulmk_thread_t *th);
+#if ULMK_CONFIG_ENABLE_SMP
+void         ulmk_thread_ensure_ctx(ulmk_thread_t *th);
+#else
+static inline void ulmk_thread_ensure_ctx(ulmk_thread_t *th)
+{
+	(void)th;
+}
+#endif
 
 #endif /* UL_THREAD_INTERNAL_H */

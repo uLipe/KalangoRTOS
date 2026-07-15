@@ -278,7 +278,7 @@ static void test_spawn_null_attr(void)
 	/* attr_ptr = 0 → NULL check must reject before any dereference. */
 	uint32_t r = ulmk_kern_thread_spawn(0);
 
-	EXPECT((int32_t)r == ULMK_EINVAL);
+	EXPECT(r == (uint32_t)ULMK_TID_INVALID);
 	EXPECT(g_enqueue_count == 0);
 }
 

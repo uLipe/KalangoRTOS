@@ -15,6 +15,10 @@
 
 #include <ulmk/platform.h>
 
+#ifndef ULMK_ARCH_NUM_CPU
+#define ULMK_ARCH_NUM_CPU	1
+#endif
+
 #ifndef ULMK_BOARD_SRC_BASE
 #error "board_config.h must define ULMK_BOARD_SRC_BASE (SoC SRC block base)"
 #endif

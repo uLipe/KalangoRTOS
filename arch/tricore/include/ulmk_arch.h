@@ -44,6 +44,12 @@ typedef struct {
 /* Saved interrupt state (ICR register value on TriCore). */
 typedef uint32_t ulmk_arch_irq_key_t;
 
+typedef struct {
+	volatile uint32_t locked;
+} ulmk_spinlock_t;
+
+#define ULMK_SPINLOCK_INIT	{ 0u }
+
 /* Single MPU region descriptor. */
 typedef struct {
 	uintptr_t base;
@@ -71,6 +77,24 @@ void              ulmk_arch_cpu_irq_disable(void);
 void              ulmk_arch_cpu_idle(void);
 void              ulmk_arch_cpu_halt(void);
 uint32_t          ulmk_arch_cpu_clz(uint32_t val);
+uint32_t          ulmk_arch_cpu_id(void);
+
+void              ulmk_arch_spin_lock(ulmk_spinlock_t *lock);
+void              ulmk_arch_spin_unlock(ulmk_spinlock_t *lock);
+ulmk_arch_irq_key_t ulmk_arch_spin_lock_irqsave(ulmk_spinlock_t *lock);
+void              ulmk_arch_spin_unlock_irqrestore(ulmk_spinlock_t *lock,
+						    ulmk_arch_irq_key_t key);
+
+void              ulmk_arch_send_ipi(uint32_t cpu_id);
+void              ulmk_arch_ipi_clear_self(void);
+void              ulmk_arch_ipi_note_enter(void);
+void              ulmk_arch_ipi_pulse_self(void);
+bool              ulmk_arch_ipi_soft_take(void);
+void              ulmk_arch_secondary_mark_ready(void);
+void              ulmk_arch_secondary_init(void);
+void              ulmk_arch_start_secondary(uint32_t cpu_id, void (*entry)(void));
+void              ulmk_arch_smp_mark_ready(void);
+void              ulmk_arch_smp_park(void);
 
 void     ulmk_arch_cycle_enable(void);
 uint32_t ulmk_arch_cycle_read(void);
@@ -232,6 +256,11 @@ void ulmk_printk_char_out(char c);
  * Called from the generic ISR stub before RSLCX/RFE.
  */
 void ulmk_kern_irq_dispatch(uint8_t srpn);
+void ulmk_kern_ipi_resched(void);
+#if ULMK_CONFIG_ENABLE_SMP
+void ulmk_kern_ipi_from_isr(void);
+#endif
+void ulmk_kern_secondary_main(void);
 
 /*
  * ulmk_kern_sched_dispatch — run trap-exit preemption after IRQ or syscall.

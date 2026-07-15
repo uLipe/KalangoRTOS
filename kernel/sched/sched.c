@@ -3,13 +3,14 @@
  * Copyright (c) 2024-2026 Felipe Neves
  *
  * Scheduler core — kernel/sched/sched.c
- * Dispatches through ulmk_sched_class_t vtable; manages current/idle state.
+ * Dispatches through ulmk_sched_class_t vtable; manages per-CPU current/idle.
  *
  * Context switches from syscall/IRQ hot paths happen only in
  * ulmk_sched_trap_dispatch() (deferred reschedule).
  *
  * IRQs are already masked for the whole kernel/ISR gateway on every arch;
- * this file does not nest irq_save/restore.
+ * this file does not nest irq_save/restore.  Cross-CPU shared state uses
+ * spin_lock_irqsave at the call sites that touch pools.
  */
 
 #include <stddef.h>
@@ -18,31 +19,10 @@
 #include <kernel/include/ulmk_sched.h>
 #include <kernel/include/ulmk_thread_internal.h>
 #include <kernel/include/ulmk_mem_internal.h>
+#include <kernel/include/ulmk_percpu.h>
 #include <ulmk_arch.h>
 
 static const ulmk_sched_class_t * UL_KERNEL_BSS sched_class;
-static ulmk_thread_t            * UL_KERNEL_BSS sched_current;
-
-/*
- * Dead-thread reaper slot.
- *
- * When a thread calls ulmk_thread_exit() it is still on the CPU — its
- * hardware context chain is live in the arch context register.  We cannot
- * walk and free that chain until after the context switch hands control to
- * the next thread.  ulmk_sched_set_dead_for_cleanup() stores the dying thread
- * here; sched_switch_to() frees the context chain and stack at the start
- * of its next invocation, at which point the dead thread's context pointer
- * is saved in its ctx and is safe to walk.
- *
- * Only one slot is needed: a thread can exit at most once, and the next
- * switch always drains the slot before any new exit can enqueue another.
- */
-static ulmk_thread_t * UL_KERNEL_BSS g_sched_dead;
-
-static ulmk_arch_ctx_t UL_KERNEL_BSS startup_ctx;
-
-/* Set by enqueue of higher-prio ready work or ulmk_sched_request_resched(). */
-static bool UL_KERNEL_BSS needs_resched;
 
 static inline __attribute__((always_inline))
 uint8_t sched_thread_prs(const ulmk_thread_t *t)
@@ -53,52 +33,56 @@ uint8_t sched_thread_prs(const ulmk_thread_t *t)
 }
 
 static inline __attribute__((always_inline))
-void sched_mark_preempt_if_higher(const ulmk_thread_t *t)
+void sched_mark_preempt_if_higher(ulmk_thread_t *t)
 {
-	if (sched_current && t != sched_current &&
-	    t->priority < sched_current->priority)
-		needs_resched = true;
+	struct ulmk_percpu *pc;
+	ulmk_thread_t      *cur;
+
+	pc  = ulmk_percpu_of(t->cpu);
+	cur = pc->current;
+	if (!cur || (t != cur && t->priority < cur->priority))
+		pc->needs_resched = true;
+
+#if ULMK_CONFIG_ENABLE_SMP
+	/*
+	 * Remote RQ is only examined on that CPU.  Defer the IPI into
+	 * ipi_pending so callers can drop IPC/RQ locks first; flushed by
+	 * ulmk_sched_kick_pending() (trap exit / explicit wake paths).
+	 * Idle has no tick — without a kick the remote never notices.
+	 */
+	if (t->cpu != (uint8_t)ulmk_arch_cpu_id() &&
+	    ulmk_percpu_of(t->cpu)->online) {
+		ulmk_percpu()->ipi_pending |= (1u << t->cpu);
+	}
+#endif
 }
 
 static void sched_reap_dead(ulmk_thread_t *prev)
 {
-	/*
-	 * The guard `g_sched_dead != prev` is critical: when a thread calls
-	 * ulmk_kern_exit() it sets g_sched_dead = self and then immediately
-	 * switches.  At that point the thread's context chain is still live —
-	 * ulmk_arch_ctx_switch() is about to save it.  Freeing before that
-	 * save would corrupt the CSA/stack frames.
-	 */
-	if (!g_sched_dead || g_sched_dead == prev)
+	struct ulmk_percpu *pc = ulmk_percpu();
+
+	if (!pc->dead_for_cleanup || pc->dead_for_cleanup == prev)
 		return;
 
-	ulmk_arch_ctx_free(&g_sched_dead->ctx);
-	ulmk_thread_free(g_sched_dead);
-	g_sched_dead = NULL;
+	ulmk_arch_ctx_free(&pc->dead_for_cleanup->ctx);
+	ulmk_thread_free(pc->dead_for_cleanup);
+	pc->dead_for_cleanup = NULL;
 }
 
-/*
- * Commit @next as current and switch from @prev's context.
- * Skips MPU reprogramming when the hardware context does not change.
- * Interrupt mask is left as the gateway left it (masked) — no irq_restore
- * that could enable IRQs mid-syscall after a resume.
- */
 static void sched_switch_to(ulmk_thread_t *prev, ulmk_thread_t *next)
 {
-	ulmk_arch_ctx_t *from;
-	ulmk_arch_ctx_t *to;
+	struct ulmk_percpu *pc = ulmk_percpu();
+	ulmk_arch_ctx_t    *from;
+	ulmk_arch_ctx_t    *to;
 
-	from = prev ? &prev->ctx : &startup_ctx;
+	ulmk_thread_ensure_ctx(next);
+
+	from = prev ? &prev->ctx : &pc->startup_ctx;
 	to   = &next->ctx;
 
 	if (from == to) {
-		sched_current = next;
-		next->state   = UL_THREAD_STATE_RUNNING;
-		/*
-		 * trap_dispatch may have enqueued @prev before pick_next();
-		 * if the head did not change we must not leave a RUNNING
-		 * thread linked in the ready queue.
-		 */
+		pc->current = next;
+		next->state = UL_THREAD_STATE_RUNNING;
 		if (prev && sys_dnode_is_linked(&prev->sched_node)) {
 			sched_class->dequeue(prev);
 			prev->state = UL_THREAD_STATE_RUNNING;
@@ -109,26 +93,26 @@ static void sched_switch_to(ulmk_thread_t *prev, ulmk_thread_t *next)
 	ulmk_arch_mpu_switch(next->regions, next->region_count,
 			     sched_thread_prs(next));
 
-	sched_current = next;
-	next->state   = UL_THREAD_STATE_RUNNING;
+	pc->current = next;
+	next->state = UL_THREAD_STATE_RUNNING;
 	ulmk_arch_ctx_switch(from, to);
-	/* Resumed here when THIS thread (prev) is re-scheduled. */
 }
 
 void ulmk_sched_set_dead_for_cleanup(ulmk_thread_t *th)
 {
-	if (g_sched_dead) {
-		ulmk_arch_ctx_free(&g_sched_dead->ctx);
-		ulmk_thread_free(g_sched_dead);
+	struct ulmk_percpu *pc = ulmk_percpu();
+
+	if (pc->dead_for_cleanup) {
+		ulmk_arch_ctx_free(&pc->dead_for_cleanup->ctx);
+		ulmk_thread_free(pc->dead_for_cleanup);
 	}
-	g_sched_dead = th;
+	pc->dead_for_cleanup = th;
 }
 
 void ulmk_sched_init(void)
 {
-	sched_current = NULL;
-	sched_class   = NULL;
-	needs_resched = false;
+	ulmk_percpu_init();
+	sched_class = NULL;
 }
 
 void ulmk_sched_set_class(const ulmk_sched_class_t *cls)
@@ -139,27 +123,65 @@ void ulmk_sched_set_class(const ulmk_sched_class_t *cls)
 
 void ulmk_sched_start(void)
 {
-	ulmk_thread_t *first = sched_class->pick_next();
+	struct ulmk_percpu *pc = ulmk_percpu();
+	ulmk_thread_t      *first = sched_class->pick_next();
 
-	sched_current          = first;
-	first->state           = UL_THREAD_STATE_RUNNING;
-	needs_resched          = false;
+	ulmk_thread_ensure_ctx(first);
+
+	/*
+	 * Publish current before online/armed.  A remote enqueue IPI that
+	 * lands with current==NULL is dropped by trap_dispatch; soft mailbox
+	 * recovery only works if idle already exists as current.
+	 */
+	pc->current  = first;
+	first->state = UL_THREAD_STATE_RUNNING;
+	pc->online   = true;
+#if ULMK_CONFIG_ENABLE_SMP
+	if (ulmk_arch_cpu_id() != 0u)
+		ulmk_arch_secondary_mark_ready();
+	/*
+	 * Do not clear needs_resched: CPU0 may have enqueued a remote thread
+	 * between online and the switch below (soft IPI / SETR already out).
+	 */
+#else
+	pc->needs_resched = false;
+#endif
 	ulmk_arch_mpu_switch(first->regions, first->region_count,
 			     sched_thread_prs(first));
-	ulmk_arch_ctx_switch(&startup_ctx, &first->ctx);
+	ulmk_arch_ctx_switch(&pc->startup_ctx, &first->ctx);
 }
 
 void ulmk_sched_request_resched(void)
 {
-	needs_resched = true;
+	ulmk_percpu()->needs_resched = true;
 }
+
+#if ULMK_CONFIG_ENABLE_SMP
+void ulmk_sched_kick_pending(void)
+{
+	struct ulmk_percpu *pc = ulmk_percpu();
+	uint32_t            pending;
+	uint32_t            cpu;
+
+	pending = pc->ipi_pending;
+	if (!pending)
+		return;
+	pc->ipi_pending = 0u;
+
+	for (cpu = 0u; cpu < (uint32_t)ULMK_NR_CPUS; cpu++) {
+		if (pending & (1u << cpu))
+			ulmk_arch_send_ipi(cpu);
+	}
+}
+#endif
 
 void ulmk_sched_resched(void)
 {
-	ulmk_thread_t *prev = sched_current;
-	ulmk_thread_t *next;
+	struct ulmk_percpu *pc = ulmk_percpu();
+	ulmk_thread_t      *prev = pc->current;
+	ulmk_thread_t      *next;
 
-	needs_resched = false;
+	pc->needs_resched = false;
 	sched_reap_dead(prev);
 	next = sched_class->pick_next();
 	sched_switch_to(prev, next);
@@ -176,10 +198,6 @@ void ulmk_sched_dequeue(ulmk_thread_t *t)
 	sched_class->dequeue(t);
 }
 
-/*
- * Locked aliases — same as unlocked under the kernel-masked-IRQ contract.
- * Kept so existing callers (notif critical sections) stay readable.
- */
 void ulmk_sched_enqueue_locked(ulmk_thread_t *t)
 {
 	ulmk_sched_enqueue(t);
@@ -192,7 +210,7 @@ void ulmk_sched_dequeue_locked(ulmk_thread_t *t)
 
 ulmk_thread_t *ulmk_sched_current(void)
 {
-	return sched_current;
+	return ulmk_percpu()->current;
 }
 
 ulmk_thread_t *ulmk_sched_peek_next(void)
@@ -200,26 +218,24 @@ ulmk_thread_t *ulmk_sched_peek_next(void)
 	return sched_class ? sched_class->peek_next() : NULL;
 }
 
-/*
- * ulmk_sched_trap_dispatch — trap/ISR exit scheduling.
- *
- * If the current thread is no longer RUNNING (blocked/dead/ready-requeued by
- * a syscall that deferred the switch), pick the next thread immediately.
- * Otherwise apply classic priority preemption / requested resched.
- */
 void ulmk_sched_trap_dispatch(bool from_isr)
 {
-	ulmk_thread_t *cur;
-	ulmk_thread_t *next;
-	bool           want;
+	struct ulmk_percpu *pc;
+	ulmk_thread_t      *cur;
+	ulmk_thread_t      *next;
+	bool                want;
 
-	cur = sched_current;
+	/* Flush before any switch so remotes can run while we continue. */
+	ulmk_sched_kick_pending();
+
+	pc = ulmk_percpu();
+	cur = pc->current;
 
 	if (!cur || !sched_class)
 		return;
 
-	want = needs_resched;
-	needs_resched = false;
+	want = pc->needs_resched;
+	pc->needs_resched = false;
 
 	if (cur->state != UL_THREAD_STATE_RUNNING) {
 		sched_reap_dead(cur);
@@ -242,9 +258,10 @@ void ulmk_sched_trap_dispatch(bool from_isr)
 
 		if (ulmk_arch_sched_isr_preempt_deferred()) {
 			next = sched_class->pick_next();
+			ulmk_thread_ensure_ctx(next);
 
-			sched_current = next;
-			next->state   = UL_THREAD_STATE_RUNNING;
+			pc->current = next;
+			next->state = UL_THREAD_STATE_RUNNING;
 			ulmk_arch_mpu_switch(next->regions, next->region_count,
 					     sched_thread_prs(next));
 			ulmk_arch_sched_switch(&cur->ctx, &next->ctx,

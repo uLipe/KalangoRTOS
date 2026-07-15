@@ -18,6 +18,10 @@
 
 #include <ulmk/platform.h>
 
+#ifndef ULMK_ARCH_NUM_CPU
+#define ULMK_ARCH_NUM_CPU	1
+#endif
+
 /* Sub-profile: 0 = ARMv7-M, 1 = ARMv8-M mainline (board overrides). */
 #ifndef ULMK_ARCH_ARMV8M
 #define ULMK_ARCH_ARMV8M	0

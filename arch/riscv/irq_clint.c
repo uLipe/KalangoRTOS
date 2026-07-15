@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include <ulmk/microkernel.h>
+#include <ulmk/config.h>
 #include <ulmk_arch.h>
 #include <arch_config.h>
 #include "irq_internal.h"
@@ -96,6 +97,17 @@ void riscv_clint_dispatch(uint32_t mcause)
 
 	is_soft  = mcause == MCAUSE_MSOFT;
 	is_timer = mcause == MCAUSE_MTIMER;
+
+#if ULMK_CONFIG_ENABLE_SMP
+	/*
+	 * Reschedule IPI: clear this hart's MSIP; kernel marks needs_resched.
+	 * Bound SRPN soft IRQs (tests) still run below.
+	 */
+	if (is_soft) {
+		ulmk_arch_ipi_clear_self();
+		ulmk_kern_ipi_resched();
+	}
+#endif
 
 	for (srpn = 1u; srpn < 256u; srpn++) {
 		if (g_src_type[srpn] != IRQ_SRC_CLINT)

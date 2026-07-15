@@ -58,3 +58,4 @@ build-riscv/
 
 # SDK suite object leftovers
 tests/sdk_suite/**/*.o
+.hil_tmp/

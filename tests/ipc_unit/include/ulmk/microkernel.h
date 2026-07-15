@@ -42,6 +42,7 @@ typedef struct {
 	size_t         stack_size;
 	ulmk_privilege_t privilege;
 	size_t         heap_size;
+	uint8_t        cpu;
 } ulmk_thread_attr_t;
 
 /* syscall_abi structs needed by ep.c */

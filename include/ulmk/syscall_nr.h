@@ -36,6 +36,8 @@
 
 /* ── Thread query (any privilege) ───────────────────────────────── */
 #define ULMK_SYS_THREAD_SELF         20  /* ulmk_tid_t ulmk_thread_self(void)           */
+#define ULMK_SYS_CPU_ID              21  /* uint32_t ulmk_cpu_id(void)                */
+#define ULMK_SYS_WCET_BIND           22  /* int ulmk_wcet_bind(slot*)                 */
 
 /* ── IPC endpoints ───────────────────────────────────────────────── */
 #define ULMK_SYS_EP_CREATE           30  /* ulmk_ep_t ulmk_ep_create(void)              */

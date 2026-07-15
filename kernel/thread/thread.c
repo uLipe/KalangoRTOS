@@ -12,6 +12,7 @@
 #include <ulmk/config.h>
 #include <kernel/include/ulmk_thread_internal.h>
 #include <kernel/include/ulmk_sched.h>
+#include <kernel/include/ulmk_percpu.h>
 #include <kernel/include/ulmk_mem_internal.h>
 #include <kernel/include/ulmk_ep_internal.h>
 #include <kernel/include/ulmk_notif_internal.h>
@@ -67,6 +68,7 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 	th->heap_base   = 0u;
 	th->heap_size   = 0u;
 	th->priority    = attr->priority;
+	th->cpu         = attr->cpu;
 	th->saved_prio  = attr->priority;
 	th->state       = UL_THREAD_STATE_READY;
 	th->blocked_reason = UL_BLOCKED_NONE;
@@ -88,6 +90,7 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 	th->ipc_sender_outptr = NULL;
 	th->notif_bits_outptr  = NULL;
 	th->rn_result_outptr   = NULL;
+	th->wcet_out          = NULL;
 	th->region_count      = 0u;
 
 	th->cap_flags = (attr->privilege == ULMK_PRIV_KERNEL) ? ULMK_CAP_ALL : 0u;
@@ -110,11 +113,31 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 		th->region_count     = 1u;
 	}
 
+#if ULMK_CONFIG_ENABLE_SMP
+	th->start_entry = attr->entry;
+	th->start_arg   = attr->arg;
+	/*
+	 * Arch context that consumes a per-CPU resource (TriCore FCX) must be
+	 * built on the affinity CPU.  Fabricate now only when local.
+	 */
+	if (attr->cpu != (uint8_t)ulmk_arch_cpu_id()) {
+		th->ctx       = (ulmk_arch_ctx_t){ 0 };
+		th->ctx_ready = 0u;
+	} else {
+		ulmk_arch_ctx_init(&th->ctx,
+				   attr->entry,
+				   attr->arg,
+				   (uintptr_t)stack + attr->stack_size,
+				   attr->privilege);
+		th->ctx_ready = 1u;
+	}
+#else
 	ulmk_arch_ctx_init(&th->ctx,
 			 attr->entry,
 			 attr->arg,
 			 (uintptr_t)stack + attr->stack_size,
 			 attr->privilege);
+#endif
 
 	/* Register in the TCB registry (append at tail). */
 	tcb_registry_ensure_init();
@@ -122,6 +145,23 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 
 	return ULMK_OK;
 }
+
+#if ULMK_CONFIG_ENABLE_SMP
+void ulmk_thread_ensure_ctx(ulmk_thread_t *th)
+{
+	if (!th || th->ctx_ready)
+		return;
+	if (th->cpu != (uint8_t)ulmk_arch_cpu_id())
+		return;
+
+	ulmk_arch_ctx_init(&th->ctx,
+			   th->start_entry,
+			   th->start_arg,
+			   (uintptr_t)th->stack_base + th->stack_size,
+			   th->privilege);
+	th->ctx_ready = 1u;
+}
+#endif
 
 ulmk_thread_t *ulmk_thread_by_tid(ulmk_tid_t tid)
 {
@@ -244,13 +284,23 @@ uint32_t ulmk_kern_thread_spawn(uint32_t attr_ptr)
 	int            ret;
 
 	if (!uattr || !uattr->entry || uattr->stack_size == 0)
-		return (uint32_t)(int32_t)ULMK_EINVAL;
+		return (uint32_t)ULMK_TID_INVALID;
 
 	/*
 	 * Grow the requested stack by the arch kernel-stack reserve so the full
 	 * user stack survives the per-thread carve (see ULMK_ARCH_KSTACK_SIZE).
 	 */
 	attr = *uattr;
+#if !ULMK_CONFIG_ENABLE_SMP
+	/*
+	 * UP builds have a single RQ.  Absorb affinity quietly so apps that
+	 * hard-code attr.cpu=1 (SMP demos) keep working without a rebuild.
+	 */
+	attr.cpu = 0u;
+#else
+	if (attr.cpu >= (uint8_t)ULMK_NR_CPUS)
+		return (uint32_t)ULMK_TID_INVALID;
+#endif
 	attr.stack_size += ULMK_ARCH_KSTACK_SIZE;
 
 	heap_size = attr.heap_size;

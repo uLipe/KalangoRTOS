@@ -19,6 +19,7 @@
 #include <kernel/include/ulmk_irq_internal.h>
 #include <kernel/include/ulmk_notif_internal.h>
 #include <kernel/include/ulmk_mem_internal.h>
+#include <kernel/include/ulmk_klock.h>
 #include <kernel/syscall/syscall_router.h>
 #include <ulmk_arch.h>
 
@@ -35,18 +36,23 @@ void ulmk_irq_table_init(void)
 
 int ulmk_irq_binding_add(uint8_t srpn, ulmk_notif_obj_t *notif, uint32_t bit)
 {
+	ulmk_arch_irq_key_t key;
 	int i;
+	int ret = -1;
 
+	key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_irq);
 	for (i = 0; i < ULMK_CONFIG_MAX_IRQ_BINDINGS; i++) {
 		if (!irq_table[i].notif) {
 			irq_table[i].srpn    = srpn;
 			irq_table[i].notif   = notif;
 			irq_table[i].bit     = bit;
 			irq_table[i].enabled = false;
-			return i;
+			ret = i;
+			break;
 		}
 	}
-	return -1;
+	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_irq, key);
+	return ret;
 }
 
 ulmk_irq_binding_t *ulmk_irq_binding_by_srpn(uint8_t srpn)

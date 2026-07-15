@@ -12,6 +12,10 @@
 
 #include <ulmk/platform.h>
 
+#ifndef ULMK_ARCH_NUM_CPU
+#define ULMK_ARCH_NUM_CPU	1
+#endif
+
 #ifndef ULMK_ARCH_HAVE_FPU
 #define ULMK_ARCH_HAVE_FPU	0
 #endif

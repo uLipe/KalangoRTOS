@@ -91,8 +91,11 @@ _trap_handler:
 	addi    t0, sp, TF_SIZE
 	sw      t0, TF_SP(sp)
 
-	la      t0, g_trap_sp
-	sw      sp, 0(t0)
+	csrr    t0, mhartid
+	slli    t0, t0, 2
+	la      t1, g_trap_sp
+	add     t1, t1, t0
+	sw      sp, 0(t1)
 
 	mv      a0, sp
 	call    _ulmk_trap_dispatch

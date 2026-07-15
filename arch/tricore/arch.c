@@ -48,7 +48,13 @@ void ulmk_arch_cpu_irq_restore(ulmk_arch_irq_key_t key)
 
 void ulmk_arch_cpu_irq_enable(void)
 {
-	__asm__ volatile("enable" ::: "memory");
+	/*
+	 * ENABLE then isync so a GPSR IPI latched while IE=0 (kernel /
+	 * critical section) can be recognized before the next C statement.
+	 */
+	__asm__ volatile("enable\n\t"
+			 "isync"
+			 ::: "memory");
 }
 
 void ulmk_arch_cpu_irq_disable(void)
@@ -58,7 +64,20 @@ void ulmk_arch_cpu_irq_disable(void)
 
 void ulmk_arch_cpu_idle(void)
 {
-#if ULMK_ARCH_IDLE_IS_WAIT
+#if ULMK_CONFIG_ENABLE_SMP
+	/*
+	 * TC275: remote GPSR SETR can latch PIPN without taking the BIV slot.
+	 * Drain the software IPI mailbox (set by ulmk_arch_send_ipi) with the
+	 * same callbacks as the ISR — not a poll of needs_resched.
+	 */
+	if (ulmk_arch_ipi_soft_take()) {
+		ulmk_arch_ipi_clear_self();
+		ulmk_kern_ipi_resched();
+		ulmk_kern_sched_dispatch(false);
+		return;
+	}
+	__asm__ volatile("nop" ::: "memory");
+#elif ULMK_ARCH_IDLE_IS_WAIT
 	/*
 	 * WAIT suspends the pipeline until the next pending interrupt.
 	 * ICR.IE must be 1 before entering WAIT, which is the case for
@@ -66,7 +85,7 @@ void ulmk_arch_cpu_idle(void)
 	 */
 	__asm__ volatile("wait" ::: "memory");
 #else
-	__asm__ volatile("nop");
+	__asm__ volatile("nop" ::: "memory");
 #endif
 }
 
@@ -331,10 +350,17 @@ void ulmk_arch_ctx_free(ulmk_arch_ctx_t *ctx)
 
 /*
  * ISR preemption handoff — consumed by _arch_generic_preempt_isr in vectors.S
- * after the C handler returns.
+ * after the C handler returns.  Must be per-CPU: a shared pair races when
+ * CPU0 arms a deferred switch while CPU1 exits an IPI (or vice versa).
  */
-ulmk_arch_ctx_t *g_preempt_old_ctx;
-ulmk_arch_ctx_t *g_preempt_new_ctx;
+#if ULMK_CONFIG_ENABLE_SMP
+#define ULMK_PREEMPT_SLOTS	ULMK_ARCH_NUM_CPU
+#else
+#define ULMK_PREEMPT_SLOTS	1
+#endif
+
+ulmk_arch_ctx_t *g_preempt_old_ctx[ULMK_PREEMPT_SLOTS];
+ulmk_arch_ctx_t *g_preempt_new_ctx[ULMK_PREEMPT_SLOTS];
 
 bool ulmk_arch_sched_isr_preempt_deferred(void)
 {
@@ -344,9 +370,14 @@ bool ulmk_arch_sched_isr_preempt_deferred(void)
 void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
 			    unsigned int flags)
 {
+	uint32_t cpu;
+
 	if (flags == ULMK_SCHED_SWITCH_PREEMPT_ISR) {
-		g_preempt_old_ctx = from;
-		g_preempt_new_ctx = (ulmk_arch_ctx_t *)to;
+		cpu = ulmk_arch_cpu_id();
+		if (cpu >= (uint32_t)ULMK_PREEMPT_SLOTS)
+			cpu = 0u;
+		g_preempt_old_ctx[cpu] = from;
+		g_preempt_new_ctx[cpu] = (ulmk_arch_ctx_t *)to;
 		return;
 	}
 
@@ -941,9 +972,20 @@ void ulmk_arch_irq_src_configure(uint8_t srpn, uint8_t priority, uint8_t cpu_id)
 
 void ulmk_arch_irq_src_register(uint8_t srpn, uint32_t src_reg_addr)
 {
+	volatile uint32_t *src;
+	uint32_t           v;
+
 	g_src_addr[srpn] = src_reg_addr;
-	if (src_reg_addr)
-		*(volatile uint32_t *)(uintptr_t)src_reg_addr = (uint32_t)srpn;
+	if (!src_reg_addr)
+		return;
+	/*
+	 * Update SRPN only — do not wipe TOS/SRE (SMP IPI programs GPSR
+	 * with TOS=target first; a full word write would drop the request).
+	 */
+	src = (volatile uint32_t *)(uintptr_t)src_reg_addr;
+	v   = *src;
+	v   = (v & ~0xFFu) | (uint32_t)srpn;
+	*src = v;
 }
 
 void ulmk_arch_irq_src_enable(uint8_t srpn)
@@ -1004,6 +1046,7 @@ void _arch_generic_isr_handler(void)
 {
 	uint32_t icr;
 	uint32_t psw;
+	uint8_t  srpn;
 
 	/*
 	 * Elevate to kernel PRS 0 and supervisor IO so CSFR access (ICR) and
@@ -1018,7 +1061,17 @@ void _arch_generic_isr_handler(void)
 			 :: "d"(psw) : "memory");
 
 	__asm__ volatile("mfcr %0, 0xFE2C" : "=d"(icr));
-	ulmk_kern_irq_dispatch((uint8_t)(icr & 0xFFu));
+	srpn = (uint8_t)(icr & 0xFFu);
+
+#if ULMK_CONFIG_ENABLE_SMP && defined(ULMK_BOARD_IRQ_IPI)
+	if (srpn == (uint8_t)ULMK_BOARD_IRQ_IPI) {
+		ulmk_arch_ipi_clear_self();
+		ulmk_kern_ipi_from_isr();
+		return;
+	}
+#endif
+
+	ulmk_kern_irq_dispatch(srpn);
 
 	/*
 	 * If the dispatch woke a higher-priority thread, arm the preemption
@@ -1036,21 +1089,30 @@ uint32_t ulmk_arch_atomic_cas(volatile uint32_t *ptr,
 {
 	uint32_t old;
 
+#if ULMK_CONFIG_ENABLE_SMP
 	/*
-	 * Single-core CAS via DISABLE/ENABLE.
-	 *
-	 * DISABLE/ENABLE are accessible at IO >= 1 (driver privilege) and
-	 * provide correct atomicity on a single-core system by preventing
-	 * preemption from ISRs.
-	 *
-	 * For multi-core targets, replace with CMPSWAP.W once the SMP
-	 * scheduler is introduced.
+	 * CMPSWAP.W with E-register packing (iLLD Ifx__cmpAndSwap):
+	 *   low  = desired, high = expected; after insn low = prior *ptr.
 	 */
+	{
+		unsigned long long reg64 =
+			(unsigned long long)desired |
+			((unsigned long long)expected << 32);
+
+		__asm__ volatile("cmpswap.w [%[addr]]0, %A[reg]"
+				 : [reg] "+d"(reg64)
+				 : [addr] "a"(ptr)
+				 : "memory");
+		old = (uint32_t)reg64;
+	}
+#else
+	/* UP: DISABLE/ENABLE is enough (ISR preemption only). */
 	__asm__ __volatile__("disable" ::: "memory");
 	old = *ptr;
 	if (old == expected)
 		*ptr = desired;
 	__asm__ __volatile__("enable" ::: "memory");
+#endif
 	return old;
 }
 
@@ -1098,14 +1160,17 @@ void ulmk_arch_syscall_entry(uint32_t frame_ptr)
 	args[3] = frame[4];
 
 	/*
-	 * Raise CCPN to 255 (mask IRQs) and switch to kernel PRS 0.
+	 * Raise CCPN to 255 (mask IRQs), IO=supervisor, PRS 0.
+	 * Without supervisor IO the kernel heap/ctrl (and some CSFRs) are
+	 * unreliable while the trap still carries the caller's PSW.IO.
 	 * One isync after both CSFRs — RFE in _trap_class6 restores the
 	 * caller's ICR/PSW from the Upper CSA.
 	 */
 	__asm__ volatile("mfcr %0, 0xFE2C" : "=d"(icr));
 	icr |= 0xFFu;	/* CCPN = 255 */
 	__asm__ volatile("mfcr %0, 0xFE04" : "=d"(psw));
-	psw &= ~0x3000u;	/* PSW.PRS [13:12] = 0 (kernel PRS) */
+	psw &= ~0x3C00u;	/* clear PSW.PRS and PSW.IO */
+	psw |= 0x800u;		/* IO = supervisor, PRS = 0 */
 	__asm__ volatile("mtcr 0xFE2C, %0\n\t"
 			 "mtcr 0xFE04, %1\n\t"
 			 "isync"
@@ -1334,3 +1399,58 @@ void ulmk_arch_init(ulmk_boot_info_t *info)
 		(uintptr_t)_ulmk_int_table,
 		(uintptr_t)_ulmk_isr_stack_top);
 }
+
+/* =========================================================================
+ * SMP — CPU id / spin / IPI (secondary start is phase-B / board-specific)
+ * ========================================================================= */
+
+#ifndef CSFR_CORE_ID
+#define CSFR_CORE_ID	0xFE1Cu
+#endif
+
+uint32_t ulmk_arch_cpu_id(void)
+{
+	uint32_t id;
+
+	__asm__ volatile("mfcr %0, %1" : "=d"(id) : "i"(CSFR_CORE_ID));
+	return id & 0x7u;
+}
+
+void ulmk_arch_spin_lock(ulmk_spinlock_t *lock)
+{
+#if ULMK_CONFIG_ENABLE_SMP
+	uint32_t old;
+
+	do {
+		old = ulmk_arch_atomic_cas(&lock->locked, 0u, 1u);
+	} while (old != 0u);
+#else
+	(void)lock;
+#endif
+}
+
+void ulmk_arch_spin_unlock(ulmk_spinlock_t *lock)
+{
+#if ULMK_CONFIG_ENABLE_SMP
+	lock->locked = 0u;
+#else
+	(void)lock;
+#endif
+}
+
+ulmk_arch_irq_key_t ulmk_arch_spin_lock_irqsave(ulmk_spinlock_t *lock)
+{
+	ulmk_arch_irq_key_t key = ulmk_arch_cpu_irq_save();
+
+	ulmk_arch_spin_lock(lock);
+	return key;
+}
+
+void ulmk_arch_spin_unlock_irqrestore(ulmk_spinlock_t *lock,
+				      ulmk_arch_irq_key_t key)
+{
+	ulmk_arch_spin_unlock(lock);
+	ulmk_arch_cpu_irq_restore(key);
+}
+
+/* send_ipi / secondary / park — arch/tricore/smp.c */

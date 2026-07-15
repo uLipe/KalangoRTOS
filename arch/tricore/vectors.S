@@ -118,6 +118,18 @@ _trap_class5:
     .align  5
     .global _trap_class6
 _trap_class6:
+    /*
+     * Elevate PRS=0 + IO=supervisor before any C/stack work — kernel
+     * BSS (TLSF ctrl, TCB pools) is not in PRS 1.  Args stay in D4–D7
+     * until parked below; TIN is in D15.
+     */
+    mfcr    %d14, 0xFE04
+    mov     %d13, 0x3C00
+    andn    %d14, %d14, %d13
+    mov     %d13, 0x800
+    or      %d14, %d14, %d13
+    mtcr    0xFE04, %d14
+    isync
     sub.a   %a10, 20
     st.w    [%a10] 0,  %d15
     st.w    [%a10] 4,  %d4
@@ -208,18 +220,29 @@ _arch_generic_preempt_isr:
     svlcx
     call    _arch_generic_isr_handler
 
+    /*
+     * Per-CPU deferred preempt slot: CORE_ID * sizeof(ptr) into the arrays.
+     * Shared g_preempt_* (UP-era) races with remote IPI on CPU1.
+     */
+    mfcr    %d15, 0xFE1C
+    and     %d15, %d15, 7
+    sh      %d15, %d15, 2
+
     movh.a  %a14, hi:g_preempt_new_ctx
     lea     %a14, [%a14] lo:g_preempt_new_ctx
+    addsc.a %a14, %a14, %d15, 0
     ld.a    %a14, [%a14]
     jz.a    %a14, .Lgeneric_no_preempt
 
     movh.a  %a15, hi:g_preempt_old_ctx
     lea     %a15, [%a15] lo:g_preempt_old_ctx
+    addsc.a %a15, %a15, %d15, 0
     ld.a    %a15, [%a15]
 
     mov.a   %a12, 0
     movh.a  %a13, hi:g_preempt_new_ctx
     lea     %a13, [%a13] lo:g_preempt_new_ctx
+    addsc.a %a13, %a13, %d15, 0
     st.a    [%a13], %a12
 
     /*

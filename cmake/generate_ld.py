@@ -53,7 +53,7 @@ def render_snippet(path: str, substitutions: dict) -> str:
 def parse_flags(chip_memory_ld: str) -> dict:
     """Extract HAVE_* flag values from the chip memory.ld as integers."""
     flags = {}
-    for name in ("HAVE_CSA", "HAVE_SMALL_DATA", "HAVE_BMHD"):
+    for name in ("HAVE_CSA", "HAVE_CSA_CPU1", "HAVE_SMALL_DATA", "HAVE_BMHD"):
         m = re.search(rf"^\s*{name}\s*=\s*(\d+)\s*;", chip_memory_ld, re.MULTILINE)
         flags[name] = int(m.group(1)) if m else 0
     return flags
@@ -163,6 +163,13 @@ def main():
 
     # 4q. User pool (always last in KERNEL_RAM)
     out.append(read_fragment(os.path.join(args.kernel_dir, "user_pool.ld.in")))
+
+    # 4r. CPU1 DSPR CSA/ISP/park — AFTER KERNEL_RAM so VMA '.' is not left
+    #     in 0x60000000 (would corrupt user_ram_start / zero_words span).
+    if flags.get("HAVE_CSA_CPU1"):
+        cpu1 = os.path.join(args.arch_dir, "csa_pool_cpu1.ld.in")
+        if os.path.exists(cpu1):
+            out.append(read_fragment(cpu1))
 
     out.append("\n} /* SECTIONS */\n")
 
