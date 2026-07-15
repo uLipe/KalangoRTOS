@@ -57,6 +57,12 @@ ulmk_arch_ctx_switch:
 	.global _ulmk_thread_trampoline_m
 	.type _ulmk_thread_trampoline_m, @function
 _ulmk_thread_trampoline_m:
+	/*
+	 * Kernel threads (idle) inherit MIE=0 from the prior trap/syscall
+	 * path.  Without enabling, secondary-hart idle never takes CLINT
+	 * MSIP IPIs and remote affinity threads stall forever.
+	 */
+	csrsi   mstatus, 0x8            /* set MIE */
 	mv      a0, s0                  /* entry — 1st arg to common entry */
 	mv      a1, s1                  /* arg   — 2nd arg to common entry */
 	tail    ulmk_user_thread_entry  /* jump: common entry never returns */

@@ -224,7 +224,8 @@ void ulmk_kern_secondary_main(void)
 	 * online + secondary_mark_ready happen inside ulmk_sched_start() only
 	 * after current is set — otherwise a remote IPI can run dispatch with
 	 * current==NULL (drops the kick) and clear the soft mailbox forever.
-	 * Leave IE clear until the RFE into idle (PIE in the fabricated CSA).
+	 * Arch idle entry must accept IPIs (RISC-V kernel trampoline enables
+	 * MIE; TriCore idle CSA has PIE=1 on RFE).
 	 */
 	ulmk_printk("ulmk: CPU%u sched_start\n", (unsigned)cpu);
 	(void)cpu;

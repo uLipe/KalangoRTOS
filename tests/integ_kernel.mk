@@ -29,6 +29,8 @@ INTEG_KERNEL_SRCS ?= \
 	$(ROOT)/kernel/init/init.c \
 	$(ROOT)/kernel/kernel_main.c \
 	$(ROOT)/kernel/printk/ulmk_printk.c \
+	$(ROOT)/kernel/percpu/percpu.c \
+	$(ROOT)/kernel/percpu/klock.c \
 	$(ROOT)/kernel/sched/sched.c \
 	$(ROOT)/kernel/sched/fifo_rt.c \
 	$(ROOT)/kernel/sched/bitmap_rt.c \
@@ -39,6 +41,7 @@ INTEG_KERNEL_SRCS ?= \
 	$(ROOT)/kernel/ipc/ep.c \
 	$(ROOT)/kernel/notif/notif.c \
 	$(ROOT)/kernel/syscall/syscall_router.c \
+	$(ROOT)/kernel/syscall/syscall_wcet.c \
 	$(INTEG_KERNEL_STUB) \
 	$(INTEG_KERNEL_EXTRA_SRCS)
 
