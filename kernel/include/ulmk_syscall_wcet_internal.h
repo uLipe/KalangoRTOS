@@ -11,6 +11,8 @@
 
 struct ulmk_thread;
 
+uint32_t ulmk_kern_wcet_bind(uint32_t slot_ptr);
+
 #if ULMK_CONFIG_SYSCALL_WCET
 void ulmk_syscall_wcet_account_reset(void);
 uint32_t ulmk_syscall_wcet_blocked_cycles(void);

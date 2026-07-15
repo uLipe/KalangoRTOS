@@ -2,9 +2,10 @@
 /*
  * Syscall WCET slot — filled by the kernel when ULMK_CONFIG_SYSCALL_WCET=1.
  *
- * Lives in .user_bss so driver threads may read it without mem_map.
- * After each syscall the kernel updates nr/delta/begin/end/blocked and
- * increments seq.
+ * g_ulmk_syscall_wcet[cpu] is the last sample on that CPU (debug / legacy).
+ * For correct measurement when more than one thread runs on a CPU (IPC),
+ * bind a private slot with ulmk_wcet_bind() — the kernel then also writes
+ * that thread's samples there, without peer overwrite.
  */
 
 #ifndef ULMK_SYSCALL_WCET_H
@@ -12,7 +13,9 @@
 
 #include <stdint.h>
 
-#define ULMK_SYSCALL_WCET_MAGIC	0x57434554u	/* 'WCET' */
+#define ULMK_SYSCALL_WCET_MAGIC		0x57434554u	/* 'WCET' */
+
+#define ULMK_SYSCALL_WCET_MAX_CPUS	8u
 
 struct ulmk_syscall_wcet_slot {
 	uint32_t magic;
@@ -30,6 +33,7 @@ struct ulmk_syscall_wcet_slot {
 	uint32_t blocked;
 };
 
-extern volatile struct ulmk_syscall_wcet_slot g_ulmk_syscall_wcet;
+extern volatile struct ulmk_syscall_wcet_slot
+	g_ulmk_syscall_wcet[ULMK_SYSCALL_WCET_MAX_CPUS];
 
 #endif /* ULMK_SYSCALL_WCET_H */

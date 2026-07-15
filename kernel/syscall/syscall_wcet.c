@@ -7,12 +7,14 @@
  */
 
 #include <ulmk/syscall_wcet.h>
+#include <ulmk/microkernel.h>
 #include <ulmk/config.h>
 #include <ulmk_arch.h>
 #include <kernel/include/ulmk_sched.h>
 #include <kernel/include/ulmk_thread_internal.h>
 
-volatile struct ulmk_syscall_wcet_slot g_ulmk_syscall_wcet
+volatile struct ulmk_syscall_wcet_slot
+g_ulmk_syscall_wcet[ULMK_SYSCALL_WCET_MAX_CPUS]
 	__attribute__((section(".user_bss")));
 
 #if ULMK_CONFIG_SYSCALL_WCET
@@ -54,6 +56,31 @@ void ulmk_syscall_wcet_block_end_th(struct ulmk_thread *th)
 	now = ulmk_arch_cycle_read();
 	t->wcet_blocked += now - t->wcet_block_mark;
 	t->wcet_block_open = 0u;
+}
+
+uint32_t ulmk_kern_wcet_bind(uint32_t slot_ptr)
+{
+	ulmk_thread_t *cur = ulmk_sched_current();
+	volatile struct ulmk_syscall_wcet_slot *slot;
+
+	if (!cur)
+		return (uint32_t)(int32_t)ULMK_EINVAL;
+
+	slot = (volatile struct ulmk_syscall_wcet_slot *)(uintptr_t)slot_ptr;
+	cur->wcet_out = slot;
+	if (slot) {
+		slot->magic = ULMK_SYSCALL_WCET_MAGIC;
+		slot->seq   = 0u;
+	}
+	return (uint32_t)ULMK_OK;
+}
+
+#else /* !ULMK_CONFIG_SYSCALL_WCET */
+
+uint32_t ulmk_kern_wcet_bind(uint32_t slot_ptr)
+{
+	(void)slot_ptr;
+	return (uint32_t)(int32_t)ULMK_EINVAL;
 }
 
 #endif /* ULMK_CONFIG_SYSCALL_WCET */
