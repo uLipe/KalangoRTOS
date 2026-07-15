@@ -402,7 +402,8 @@ def _resolve_board_path(board_arg: str | None) -> tuple[Path, str, list[str]]:
 def _build_shell(board_container: str, board: dict,
                  clean: bool, run_qemu: bool,
                  component_flags: list[str], build_subdir: str,
-                 optimize_size: bool = False) -> str:
+                 optimize_size: bool = False,
+                 enable_smp: bool = False) -> str:
     arch = _board_arch(board)
     toolchain = _toolchain_for_arch(arch)
     qemu = _qemu_binary(arch)
@@ -428,6 +429,8 @@ def _build_shell(board_container: str, board: dict,
     ]
     if optimize_size:
         cfg.append("    -DULMK_OPTIMIZE_SIZE=ON \\")
+    if enable_smp:
+        cfg.append("    -DULMK_CONFIG_ENABLE_SMP=1 \\")
     for flag in component_flags:
         cfg.append(f"    {flag} \\")
     cfg += [
@@ -575,6 +578,9 @@ def _run_build(args: argparse.Namespace) -> None:
     component_flags = _component_cmake_flags(enabled, board_host)
     if "silicon_wcet" in enabled:
         component_flags.append("-DULMK_CONFIG_SYSCALL_WCET=1")
+    enable_smp = bool(getattr(args, "enable_smp", False))
+    if "silicon_smp_smoke" in enabled:
+        enable_smp = True
 
     elf = BUILD_DIR / build_subdir / "ulmk"
     if run_qemu and not args.clean and elf.is_file():
@@ -582,7 +588,8 @@ def _run_build(args: argparse.Namespace) -> None:
     else:
         shell_cmd = _build_shell(
             board_container, board, args.clean, run_qemu, component_flags,
-            build_subdir, getattr(args, "optimize_size", False))
+            build_subdir, getattr(args, "optimize_size", False),
+            enable_smp)
 
     cmd = [
         "docker", "run", "--rm",
@@ -620,7 +627,8 @@ def _killall() -> None:
 # Test runner helpers
 # ---------------------------------------------------------------------------
 
-def _discover_tests(kind: str) -> list[str]:
+def _discover_tests(kind: str, arch: str | None = None,
+                    *, include_smp: bool = False) -> list[str]:
     result = []
     if kind == "e2e":
         # Prefer sdk_suite/<case>/; keep legacy *_e2e dirs as fallback.
@@ -630,6 +638,11 @@ def _discover_tests(kind: str) -> list[str]:
                     continue
                 if d.name == "arch_whitebox":
                     continue
+                # smp_* cases need QEMU multi-hart (RISC-V virt only) and are
+                # opt-in via --include-smp so UP CI jobs stay single-core.
+                if d.name.startswith("smp_"):
+                    if not include_smp or arch != "riscv":
+                        continue
                 if (d / "Makefile").exists():
                     result.append(f"sdk_suite/{d.name}")
             if result:
@@ -655,7 +668,7 @@ def _discover_tests(kind: str) -> list[str]:
     return result
 
 
-def _sdk_cache_vars(arch: str, make_extra: str) -> str:
+def _sdk_cache_vars(arch: str, make_extra: str, test_name: str = "") -> str:
     """Make variables for a shared SDK cache directory inside the container."""
     board = "qemu_tc3xx"
     if arch == "riscv":
@@ -664,6 +677,10 @@ def _sdk_cache_vars(arch: str, make_extra: str) -> str:
         m = re.search(r"ARM_BOARD=(\S+)", make_extra)
         board = m.group(1) if m else "qemu_mps2_an500"
     tag = f"{arch}_{board}_gcc"
+    # SMP sdk_suite cases build a separate kernel with ULMK_CONFIG_ENABLE_SMP=1.
+    base = test_name.rsplit("/", 1)[-1] if test_name else ""
+    if base.startswith("smp_"):
+        tag += "_smp"
     return f"SDK_CACHE=/workspace/tests/sdk_suite/_sdk_cache/{tag}"
 
 
@@ -680,7 +697,7 @@ def _run_one_shell(kind: str, name: str, arch: str, make_extra: str = "",
     if kind == "e2e":
         if with_path:
             steps.insert(0, CONTAINER_PATH)
-        cache = _sdk_cache_vars(arch, make_extra)
+        cache = _sdk_cache_vars(arch, make_extra, name)
         steps.append(
             f"timeout --kill-after=5 {TEST_TIMEOUT} "
             f"make run ARCH={arch}{ext} {cache}")
@@ -760,11 +777,21 @@ def _run_all_shell(kind: str, tests: list[str], arch: str,
 def _run_tests(args: argparse.Namespace) -> None:
     kind      = args.kind
     test_name = args.test
+    include_smp = bool(getattr(args, "include_smp", False))
 
     _killall()
 
     board_host, _, _ = _resolve_board_path(getattr(args, "board", None))
     arch = _board_arch(_parse_board_cmake(board_host))
+
+    if include_smp:
+        if kind != "e2e":
+            sys.exit("error: --include-smp is only valid with 'tests e2e'")
+        if arch != "riscv":
+            sys.exit(
+                "error: --include-smp requires a RISC-V board "
+                "(boards/qemu_riscv_virt); QEMU SMP is not supported elsewhere"
+            )
 
     # ARM ships two QEMU boards (mps2-an500 / mps2-an505) under one arch; the
     # test Makefiles pick the board via ARM_BOARD, so forward the selected one.
@@ -780,8 +807,14 @@ def _run_tests(args: argparse.Namespace) -> None:
         json_path.mkdir(parents=True, exist_ok=True)
         docker_env = ["-e", "ULMK_TEST_JSON_DIR=/test-results"]
 
+    # Single --test sdk_suite/smp_* on RISC-V may omit --include-smp.
+    discover_smp = include_smp or (
+        bool(test_name) and arch == "riscv" and
+        test_name.rsplit("/", 1)[-1].startswith("smp_")
+    )
+
     if args.list:
-        tests = _discover_tests(kind)
+        tests = _discover_tests(kind, arch, include_smp=include_smp)
         if kind == "integ":
             tests = _filter_integ_tests(tests, arch)
         print(f"{kind} tests ({len(tests)}) [ARCH={arch}]:")
@@ -790,7 +823,7 @@ def _run_tests(args: argparse.Namespace) -> None:
         return
 
     if test_name:
-        available = _discover_tests(kind)
+        available = _discover_tests(kind, arch, include_smp=discover_smp)
         if kind == "integ":
             available = _filter_integ_tests(available, arch)
         if test_name not in available:
@@ -818,7 +851,7 @@ def _run_tests(args: argparse.Namespace) -> None:
         cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
         os.execvp("docker", cmd)
     else:
-        tests = _discover_tests(kind)
+        tests = _discover_tests(kind, arch, include_smp=include_smp)
         if kind == "integ":
             tests = _filter_integ_tests(tests, arch)
         if not tests:
@@ -863,6 +896,7 @@ examples:
   python3 tools/dev.py tests unit
   python3 tools/dev.py tests e2e
   python3 tools/dev.py tests e2e --board boards/qemu_riscv_virt
+  python3 tools/dev.py tests e2e --board boards/qemu_riscv_virt --include-smp
   python3 tools/dev.py tests e2e --test sdk_suite/abi_smoke
   python3 tools/dev.py tests e2e --list
   python3 tools/dev.py tests integ --test sdk_suite/arch_whitebox/ctx_early_tricore
@@ -931,6 +965,11 @@ examples:
         action="store_true",
         help="Compile kernel/arch with -Os instead of the default -Ofast",
     )
+    build_p.add_argument(
+        "--enable-smp",
+        action="store_true",
+        help="Build with ULMK_CONFIG_ENABLE_SMP=1 (requires board NUM_CPU>1)",
+    )
 
     build_p.add_argument(
         "--component",
@@ -996,7 +1035,8 @@ examples:
             "Run unit, integration or end-to-end tests inside the container.\n\n"
             "  tests unit              host-compiled Unity tests\n"
             "  tests integ             QEMU integration tests\n"
-            "  tests e2e               SDK consumer end-to-end tests\n"
+            "  tests e2e               SDK consumer end-to-end tests (UP)\n"
+            "  tests e2e --include-smp RISC-V: UP suite + smp_* cases\n"
             "  tests <kind> --list     show available suites\n"
             "  tests <kind> --test NAME run one suite\n"
             "  tests <kind> --board PATH  select architecture via board"
@@ -1023,6 +1063,11 @@ examples:
         "--list",
         action="store_true",
         help="List available tests of the given kind and exit",
+    )
+    tests_p.add_argument(
+        "--include-smp",
+        action="store_true",
+        help="e2e only (RISC-V): also run sdk_suite/smp_* multi-hart cases",
     )
     tests_p.add_argument(
         "--json-dir",

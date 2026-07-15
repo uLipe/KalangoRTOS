@@ -58,7 +58,7 @@ static void idle_victim(void *arg)
 
 static void user_probe(void *arg)
 {
-	ulmk_thread_attr_t a;
+	ulmk_thread_attr_t a = {0};
 	ulmk_notif_t       n;
 	void              *p;
 	ulmk_tid_t         tid;
@@ -90,7 +90,7 @@ static void user_probe(void *arg)
 
 static void driver_probe(void *arg)
 {
-	ulmk_thread_attr_t a;
+	ulmk_thread_attr_t a = {0};
 	ulmk_notif_t       n;
 	void              *p;
 	ulmk_tid_t         tid;

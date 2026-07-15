@@ -54,7 +54,15 @@ sleep 1
 sleep 3
 
 GDB_OUT=/tmp/ulmk-gdb-hil.log
-cleanup() { pkill -9 -f "${OCD}" 2>/dev/null || true; }
+
+# Stage ELF under the workspace — docker may not see host /tmp, and build/
+# artefacts are often root-owned (container cmake).
+HIL_TMP="${HIL_DIR}/../../.hil_tmp"
+mkdir -p "${HIL_TMP}"
+cp -f "$ELF" "${HIL_TMP}/$(basename "$ELF")"
+cleanup() {
+	pkill -9 -f "${OCD}" 2>/dev/null || true
+}
 trap cleanup EXIT
 
 GDB_EX=(
@@ -74,9 +82,25 @@ GDB_EX+=(
 	-ex "bt 4"
 )
 
-docker run --rm --network host -v "$(dirname "$ELF"):/elf" "$GDB_IMAGE" \
-	timeout 90 tricore-elf-gdb -batch "/elf/$(basename "$ELF")" \
+# If continue never hits a BP, force a halt then re-dump via a second session.
+docker run --rm --network host -v "${HIL_TMP}:/elf" "$GDB_IMAGE" \
+	timeout 45 tricore-elf-gdb -batch "/elf/$(basename "$ELF")" \
 	"${GDB_EX[@]}" >"$GDB_OUT" 2>&1 || true
+
+if ! grep -qE '0x[0-9a-f]+ <.*>:' "$GDB_OUT" 2>/dev/null; then
+	{
+		echo "--- retry dump after monitor halt ---"
+		docker run --rm --network host -v "${HIL_TMP}:/elf" "$GDB_IMAGE" \
+			timeout 20 tricore-elf-gdb -batch "/elf/$(basename "$ELF")" \
+			-ex "set remotetimeout 20" \
+			-ex "target extended-remote :${GDB_PORT}" \
+			-ex "monitor halt" \
+			-ex "x/wx &g_ulmk_board_hil_scratch" \
+			-ex "x/wx &g_ulmk_console_log_len" \
+			-ex "x/2048cb &g_ulmk_console_log" \
+			-ex "bt 4" 2>&1 || true
+	} >>"$GDB_OUT"
+fi
 
 echo "--- gdb ---"
 /usr/bin/tail -80 "$GDB_OUT"

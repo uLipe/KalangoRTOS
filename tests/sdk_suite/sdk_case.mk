@@ -34,6 +34,19 @@ MACHINE    := virt
 QEMU_EXTRA := -bios none -m 16M
 BOARD      := boards/qemu_riscv_virt
 ARCH_FLAGS := -march=rv32imac_zicsr_zifencei -mabi=ilp32
+# Optional: CASE Makefile sets SMP=1 for multi-hart SDK + QEMU -smp 2
+SMP        ?= 0
+ifeq ($(SMP),1)
+ifneq ($(ARCH),riscv)
+$(error SMP sdk_suite cases require ARCH=riscv)
+endif
+QEMU_EXTRA += -smp 2
+SDK_SMP_FLAG := --enable-smp
+TAG_SUFFIX := _smp
+else
+SDK_SMP_FLAG :=
+TAG_SUFFIX :=
+endif
 else ifeq ($(ARCH),arm)
 ARM_BOARD ?= qemu_mps2_an500
 CC         := arm-none-eabi-gcc
@@ -52,7 +65,10 @@ $(error unsupported ARCH '$(ARCH)' — use tricore, riscv or arm)
 endif
 
 BOARD_NAME := $(notdir $(BOARD))
-TAG        := $(ARCH)_$(BOARD_NAME)_gcc
+# Non-riscv boards: TAG_SUFFIX / SDK_SMP_FLAG empty
+TAG_SUFFIX   ?=
+SDK_SMP_FLAG ?=
+TAG        := $(ARCH)_$(BOARD_NAME)_gcc$(TAG_SUFFIX)
 TOOLCHAIN  := $(WS)/cmake/toolchain-$(ARCH)-gcc.cmake
 
 # Shared cache (preferred) or per-case _out/
@@ -105,7 +121,8 @@ sdk:
 			--arch $(ARCH) \
 			--board-name $(BOARD_NAME) \
 			--build-dir $(BUILD) \
-			--out-dir $(SDK); \
+			--out-dir $(SDK) \
+			$(SDK_SMP_FLAG); \
 	fi
 
 all: sdk $(TARGET)

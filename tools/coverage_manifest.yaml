@@ -193,3 +193,16 @@ areas:
     riscv: missing
     arm: missing
     note: silicon_recv_or_notif_race + sdk_suite/recv_or_notif_race
+
+  - id: smp.riscv
+    title: SMP affinity / IPI / cross-CPU IPC (QEMU virt)
+    cases:
+      - sdk_suite/smp_smoke
+      - sdk_suite/smp_affinity
+      - sdk_suite/smp_ipc_cross
+      - sdk_suite/smp_stress
+      - sdk_suite/smp_vs_up
+    tricore: missing
+    riscv: covered
+    arm: missing
+    note: CI job integ-tests-riscv-smp (--include-smp); QEMU multi-hart only

@@ -23,7 +23,7 @@ set -euo pipefail
 usage() {
 	echo "usage: $0 --toolchain FILE --chip-dir DIR --arch ARCH \\" >&2
 	echo "          --board-name NAME --build-dir DIR --out-dir DIR \\" >&2
-	echo "          [--clean] [--optimize-size]" >&2
+	echo "          [--clean] [--optimize-size] [--enable-smp]" >&2
 	exit 2
 }
 
@@ -35,6 +35,7 @@ BUILD_DIR=""
 OUT_DIR=""
 CLEAN=0
 OPTIMIZE_SIZE=0
+ENABLE_SMP=0
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -46,6 +47,7 @@ while [ $# -gt 0 ]; do
 	--out-dir)    OUT_DIR="$2";   shift 2;;
 	--clean)      CLEAN=1;        shift;;
 	--optimize-size) OPTIMIZE_SIZE=1; shift;;
+	--enable-smp) ENABLE_SMP=1;   shift;;
 	*) echo "error: unknown argument '$1'" >&2; usage;;
 	esac
 done
@@ -59,6 +61,9 @@ WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="/opt/qemu-tricore/bin:/opt/tricore-gcc-bin:/opt/riscv-gcc-bin:/opt/arm-gcc-bin:${PATH}"
 
 TAG="${ARCH}_${BOARD_NAME}_gcc"
+if [ "$ENABLE_SMP" -eq 1 ]; then
+	TAG="${TAG}_smp"
+fi
 KERNEL_A="ulmk_kernel_${TAG}.a"
 BOARD_A="ulmk_board_${TAG}.a"
 LD="linker_${TAG}.ld"
@@ -73,11 +78,16 @@ OPT_SIZE_FLAG=""
 if [ "$OPTIMIZE_SIZE" -eq 1 ]; then
 	OPT_SIZE_FLAG="-DULMK_OPTIMIZE_SIZE=ON"
 fi
+SMP_FLAG=""
+if [ "$ENABLE_SMP" -eq 1 ]; then
+	SMP_FLAG="-DULMK_CONFIG_ENABLE_SMP=1"
+fi
 cmake -S "$WORKSPACE" -B "$BUILD_DIR" \
 	-DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
 	-DULMK_CHIP_DIR="$CHIP_DIR" \
 	-DULMK_SDK=ON \
 	${OPT_SIZE_FLAG} \
+	${SMP_FLAG} \
 	-GNinja \
 	--no-warn-unused-cli
 

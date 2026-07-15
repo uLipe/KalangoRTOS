@@ -138,7 +138,7 @@ static void idle_target(void *arg)
 static ulmk_tid_t spawn(const char *name, void (*entry)(void *), void *arg,
 			uint8_t prio, size_t heap)
 {
-	ulmk_thread_attr_t a;
+	ulmk_thread_attr_t a = {0};
 
 	a.name       = name;
 	a.entry      = entry;
