@@ -1,0 +1,12 @@
+=== nm ===
+=== force PC=_start via hil ===
+Error: Target not examined yet
+Info : [tc27x.cpu0] Examination succeed
+PC (/32): 0xa0000020
+0x70008280: 00000003 
+PC (/32): 0xa00064e8
+=== naked ===
+Error: Target not examined yet
+Info : [tc27x.cpu0] Examination succeed
+0x70008280: 00000001 
+PC (/32): 0xa000016c

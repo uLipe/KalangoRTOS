@@ -1,0 +1,18 @@
+[0/1] /usr/bin/cmake --regenerate-during-build -S/workspace -B/build/ulipe-tricore-tc275_lite
+-- Kernel/arch optimisation: -Ofast -fno-inline (speed)
+-- ULMK_ARCH=tricore  ULMK_CHIP_DIR=/board
+--   [component] tricore_asclin DISABLED
+--   [component] hello_world DISABLED
+--   [component] ping_pong DISABLED
+--   [component] board_adc_pot DISABLED
+--   [component] board_blinky ENABLED
+--   [component] board_can_loopback DISABLED
+--   [component] board_i2c_scanner DISABLED
+--   [component] board_pwm_led DISABLED
+--   [component] gpio_led_notify DISABLED
+--   [component] smp_can_demo DISABLED
+--   [component] ROOT_THREAD: board_blinky
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /build/ulipe-tricore-tc275_lite
+ninja: no work to do.

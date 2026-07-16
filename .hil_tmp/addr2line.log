@@ -1,0 +1,17 @@
+0xa0000162 _trap_class3 at ??:?
+0xa0000178 _trap_class3 at ??:?
+0xa0006d58 ulmk_arch_trap_entry at ??:?
+0xa000019c _trap_class4 at ??:?
+0xa00032b2 _ulmk_printk at ??:?
+0xa0005ee0 dump_puts at arch.c:?
+0xa0005ee1 dump_puts at arch.c:?
+0xa0005eeb dump_puts at arch.c:?
+0xa0005eed dump_puts at arch.c:?
+0xa0003204 _ulmk_printk at ??:?
+0xa000316c _ulmk_printk at ??:?
+0xa00090d6 board_services_init at ??:?
+0xa000923a board_console_start at ??:?
+0xa0009f48 pinmux_init at ??:?
+0xa000ba08 asclin_init at ??:?
+==== nm nearby ====
+awk: line 8: function strtonum never defined

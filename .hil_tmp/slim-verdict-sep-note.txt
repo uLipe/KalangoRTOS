@@ -1,0 +1,33 @@
+VERDICT slim board_init (ASCLIN+STM only) — official verify_slim.sh
+VERDICT slim board_init (ASCLIN+STM only)
+===== naked =====
+Error: Target not examined yet
+
+===== cbs =====
+Error: Target not examined yet
+
+===== hil =====
+Error: Target not examined yet
+
+NAKED: FAIL
+
+--- supplemental sample (separate -c; reset halt; resume) ---
+===== naked =====
+0x70008280: 00000001 
+PC (/32): 0xa00027bc
+ulmk_kern_trap_panic ??:? 
+Error: Target not examined yet
+
+===== cbs =====
+0x70008280: 00000003 
+PC (/32): 0xa00064e8
+ulmk_arch_cpu_idle ??:? 
+Error: Target not examined yet
+
+===== hil =====
+0x70008280: 00000003 
+PC (/32): 0xa00064e8
+ulmk_arch_cpu_idle ??:? 
+Error: Target not examined yet
+
+NAKED (sep sample): FAIL

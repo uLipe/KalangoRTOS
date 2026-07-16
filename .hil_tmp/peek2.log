@@ -1,0 +1,5 @@
+warning: Architecture rejected target-supplied description
+0xa0000020 in _start ()
+/elf/peek2.gdb:7: Error in sourced command file:
+'g_ulmk_ipi_send_count' has unknown type; cast it to its declared type
+[Inferior 1 (Remote target) detached]

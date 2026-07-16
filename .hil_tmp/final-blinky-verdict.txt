@@ -1,0 +1,22 @@
+PASS
+
+# blinky after board_init rebuild+flash (2026-07-16)
+# Protocol: OpenOCD reset halt → resume → sleep 5s → halt → reg PC + mdw scratch
+# ELF: /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+# scratch: g_ulmk_board_hil_scratch @ 0x70008280
+
+| tag   | config                     | PC         | symbol                    | scratch @0x70008280 | verdict |
+|-------|----------------------------|------------|---------------------------|---------------------|---------|
+| naked | tc275_no_wdt_disarm.cfg    | 0xa00064e8 | ulmk_arch_cpu_idle (+4)   | 00000003 00000063   | PASS    |
+| hil   | tc275_lite_hil.cfg         | 0xa00064e8 | ulmk_arch_cpu_idle (+4)   | 00000003 00000063   | PASS    |
+
+## nm
+a0008c0c T ulmk_board_i2c0_hw_init
+a0008f92 T ulmk_board_wdt_disable_early
+70008280 B g_ulmk_board_hil_scratch
+a00064e4 T ulmk_arch_cpu_idle
+
+## Summary
+VERDICT: PASS
+- build+flash OK; both naked and hil reach idle with non-zero scratch
+- required symbols present in ELF

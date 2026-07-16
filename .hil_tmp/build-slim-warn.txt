@@ -1,0 +1,38 @@
+--- configure ---
+Not searching for unused variables given on the command line.
+-- Kernel/arch optimisation: -Ofast -fno-inline (speed)
+-- ULMK_ARCH=tricore  ULMK_CHIP_DIR=/board
+--   [component] tricore_asclin DISABLED
+--   [component] hello_world DISABLED
+--   [component] ping_pong DISABLED
+--   [component] board_adc_pot DISABLED
+--   [component] board_blinky ENABLED
+--   [component] board_can_loopback DISABLED
+--   [component] board_i2c_scanner DISABLED
+--   [component] board_pwm_led DISABLED
+--   [component] gpio_led_notify DISABLED
+--   [component] smp_can_demo DISABLED
+--   [component] board_leds DISABLED
+--   [component] silicon_baseline DISABLED
+--   [component] silicon_cap_neg DISABLED
+--   [component] silicon_destroy_waiters DISABLED
+--   [component] silicon_e2e DISABLED
+--   [component] silicon_fault_policy DISABLED
+--   [component] silicon_ipc_pi DISABLED
+--   [component] silicon_irq_stress DISABLED
+--   [component] silicon_kill_rendezvous DISABLED
+--   [component] silicon_mem_grant DISABLED
+--   [component] silicon_pool_exhaust DISABLED
+--   [component] silicon_recv_or_notif_race DISABLED
+--   [component] silicon_smp_smoke DISABLED
+--   [component] silicon_stress DISABLED
+--   [component] silicon_unit DISABLED
+--   [component] silicon_wcet DISABLED
+--   [component] ROOT_THREAD: board_blinky
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /build/ulipe-tricore-tc275_lite
+--- build ---
+ninja: Entering directory `/build/ulipe-tricore-tc275_lite'
+ninja: no work to do.
+Build OK → /build/ulipe-tricore-tc275_lite/ulmk

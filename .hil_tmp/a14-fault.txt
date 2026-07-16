@@ -1,0 +1,113 @@
+TC275 A14 / st.w [A14]-4 class-4 interpretation
+================================================
+Date: 2026-07-16
+Attach: .hil_tmp/tc275_attach_only.cfg (already in trap; PC=ulmk_kern_trap_panic)
+ELF:   /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+git -C ulmk diff kernel/ipc/ep.c | head -100 → (empty; no local ep.c changes)
+
+CSA frame @ 0x70002cc0 (Upper context; A11=0xa0009630 as requested)
+-----------------------------------------------------------------
+Word  idx  field (UC)     value
+  0    0   PCXI           0x003700b2
+  1    1   PSW            0x18001584
+  2    2   A10 (SP)       0x70008228
+  3    3   A11 (PC/RA)    0xa0009630
+  4    4   D8             0x00000000
+  5    5   D9             0x00000000
+  6    6   D10            0x00000000
+  7    7   D11            0x00000000
+  8    8   A12            0x00000000
+  9    9   A13            0x00000000
+ 10   10   A14            0x70008230
+ 11   11   A15            0xa000b8b8
+ 12   12   D12            0x00000000
+ 13   13   D13            0x00000000
+ 14   14   D14            0x00000000
+ 15   15   D15            0x00000000
+
+PSW decode: CDC=4 CDE=1 IS=0 IO=1 (User-1/driver) PRS[13:12]=1 (userspace)
+scratch @ 0x70008280 = 1  (hil_mark(1) done; pinmux_init never reached 0x11/0x70)
+
+A14 / A10 / store EA
+--------------------
+A14 (word 10) = 0x70008230  → DSPR frame pointer, NOT a code pointer
+  addr2line(A14): N/A (RAM). Symbol: root_stack_g+4016
+A10 (word  2) = 0x70008228  → SP (= A14-8)
+A15 (word 11) = 0xa000b8b8  → ulmk_user_thread_entry
+A11 (word  3) = 0xa0009630  → pinmux_init+0x48
+
+store address = A14 - 4 = 0x7000822c
+  mdw: readable, currently 0 (root_stack_g+4012)
+  root_stack_g @ 0x70007280 size 0x1000 → top 0x70008280
+  EA is 84 bytes below stack top (0x54) — inside the root thread stack BSS
+
+addr2line A11:
+  0xa0009630  pinmux_init  (insn: st.w [%a14]-4, %d2)
+
+Faulting instruction
+--------------------
+  a000962c:  call  a00090e2 <ulmk_ep_create>   /* server.c stub: syscall 30 */
+  a0009630:  st.w  [%a14]-4, %d2               ← A11 / fault PC
+  a0009634:  ld.w  %d2, [%a14]-4
+
+So class-4 fires on the *caller* spill of ulmk_ep_create's return value
+into a stack local, immediately after the CALL returns — not on a
+peripheral SFR pointer.
+
+User call chain (UC A11, oldest → fault)
+----------------------------------------
+  _ulmk_thread_trampoline → ulmk_user_thread_entry → ulmk_root_thread
+    → board_services_init (hil_mark(1); pinmux_init(0))
+      → pinmux_init +0x48  (after call ulmk_ep_create)  ← FAULT
+
+ulmk_ep_create @ 0xa00090e2 (first ~8 insns):
+  mov.aa a14, sp
+  sub.a  sp, 8
+  syscall 30
+  st.w   [a14]-4, d2
+  ld.w   d2, [a14]-4
+  ret
+
+pinmux_init @ 0xa00095e8 (prologue + path to fault):
+  mov.aa a14, sp
+  sub.a  sp, 48
+  ... memset / g_pinmux_eps check ...
+  call   ulmk_ep_create
+  st.w   [a14]-4, d2          ← class-4 site
+
+Why st.w [A14]-4 class-4'd
+--------------------------
+1. The effective address is a *normal stack slot* (root_stack_g+4012), not
+   MMIO. A14 is the C frame pointer from `mov.aa %a14,%sp` in pinmux_init.
+   This is not "A14 held a bad code/SFR pointer".
+
+2. Class-4 entry is confirmed via CSA walk through _trap_class4 (see
+   trap-pc-summary.txt). DIEAR/DIETR @ 0xF7E19080/84 and 0xF7E1A014/18
+   are 0 at panic halt — panic/printk nest cleared or never latched for
+   postmortem; cannot re-read the precise fault EA from SFRs now.
+
+3. Best interpretation of the locus:
+   - Primary: data-memory class-4 on the post-ep_create stack store in
+     pinmux_init (fault PC = 0xa0009630).
+   - The store itself is innocuous C ABI; a class-4 on DSPR user stack
+     after syscall 30 points to *kernel/syscall/MPU return path* leaving
+     the thread unable to write its own stack (or a bus/data error on
+     that line), not to pinmux SFR programming (pinmux_port intentionally
+     avoids mem_map for that reason — see server.c comment).
+   - Note: A10=0x70008228 is only A14-8, whereas pinmux_init's prologue
+     subtracts 48 (expected SP 0x70008200). That SP anomaly is consistent
+     with context corruption or a partial restore around the syscall/CALL
+     boundary; the store EA still follows A14 and lands in root_stack.
+
+4. ep.c: no uncommitted diff — if ep_create/syscall is implicated, it is
+   in the already-built kernel image, not a dirty working-tree patch.
+
+5. Not the fault: A14-as-code (RAM); g_pinmux_eps lookup (already passed);
+   pinmux PORT SFR writes (those happen later in pinmux_server / apply).
+
+Bottom line
+-----------
+class-4 at st.w [%a14]-4 in pinmux_init right after ulmk_ep_create returns,
+EA=0x7000822c ∈ root_stack_g. A14 is FP (DSPR), A10 is SP. Investigate
+syscall-30 / MPU / context restore on return to userspace — not pinmux
+pad MMIO, and not a bad A14 code pointer.

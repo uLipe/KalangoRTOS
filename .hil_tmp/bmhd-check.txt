@@ -1,0 +1,48 @@
+++ echo '=== host nm ==='
+=== host nm ===
+++ /usr/bin/nm /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+++ /usr/bin/grep -E '_start|wdt_disable_early|_ulmk_bmhd|board_wdt'
+++ /usr/bin/sort
+60000000 B _ulmk_csa_pool_cpu1_start
+70000000 D _ulmk_kernel_data_start
+70000008 B _ulmk_kernel_bss_start
+70002a40 B _ulmk_csa_pool_start
+70006a40 B _ulmk_domain_board_blinky_start
+70006a40 B _ulmk_user_data_start
+70006a40 B _ulmk_user_ram_start
+70008afc b g_eru_started
+70008b40 B _ulmk_user_pool_start
+a0000000 R _ulmk_bmhd
+a0000020 T _start
+a00000d0 T _ulmk_kernel_exec_start
+a0002400 T _ulmk_kernel_text_start
+a000258a T ulmk_kern_start
+a000260e T ulmk_kern_start_end
+a0003958 T ulmk_sched_start
+a00039a2 T ulmk_sched_start_end
+a0006e36 T _ulmk_user_text_start
+a0006e40 T _ulmk_comp_board_blinky_text_start
+a0008f88 T ulmk_board_wdt_disable_early
+a000923a T board_console_start
+a0009270 T board_console_start_end
+a00096b8 T board_timer_start
+a00098e0 T board_timer_start_end
+a000c4e0 D _ulmk_domain_table_start
+++ echo '=== docker nm/objdump ==='
+=== docker nm/objdump ===
+++ /snap/bin/docker run --rm -v /home/ulipe/fun/build:/build ulipe-microkernel:dev sh -c 'tricore-elf-nm /build/ulipe-tricore-tc275_lite/ulmk | grep -E " _start$|wdt_disable_early|_ulmk_bmhd"; echo ---; tricore-elf-objdump -s -j .bmhd /build/ulipe-tricore-tc275_lite/ulmk; echo ---; tricore-elf-objdump -d -j .text._start /build/ulipe-tricore-tc275_lite/ulmk | head -40'
+a0000020 T _start
+a0000000 R _ulmk_bmhd
+a0008f88 T ulmk_board_wdt_disable_early
+---
+
+/build/ulipe-tricore-tc275_lite/ulmk:     file format elf32-tricore
+
+Contents of section .bmhd:
+ a0000000 3e0059b3 200000a0 639d02e3 9c62fd1c  >.Y. ...c....b..
+ a0000010 00000000 00000000 00000000 00000000  ................
+---
+tricore-elf-objdump: section '.text._start' mentioned in a -j option, but not found in any input file
+
+/build/ulipe-tricore-tc275_lite/ulmk:     file format elf32-tricore
+

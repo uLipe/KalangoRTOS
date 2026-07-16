@@ -1,0 +1,32 @@
+RESTORE VERDICT — board_blinky (2026-07-16)
+Protocol: OpenOCD separate -c; halt; resume; sleep 5000; halt; mdw 0x70008280; reg PC; addr2line
+ELF: /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+Success: idle OR scratch>=3
+
+===== hil =====
+cfg: /home/ulipe/fun/ulmk_boards/tc275_lite/openocd/tc275_lite_hil.cfg
+Error: Target not examined yet
+Info : [tc27x.cpu0] Examination succeed
+0x70008280: 00000001 
+PC (/32): 0xa00027dc
+addr2line: ulmk_kern_trap_panic ??:? 
+PC=0xa00027dc
+
+===== naked =====
+cfg: /home/ulipe/fun/ulmk/.hil_tmp/tc275_no_wdt_disarm.cfg
+Error: Target not examined yet
+Info : [tc27x.cpu0] Examination succeed
+0x70008280: 00000001 
+PC (/32): 0xa00027dc
+addr2line: ulmk_kern_trap_panic ??:? 
+PC=0xa00027dc
+
+---
+hil: FAIL scratch=00000001 (1) PC (/32): 0xa00027dc
+  addr2line: ulmk_kern_trap_panic ??:? 
+naked: FAIL scratch=00000001 (1) PC (/32): 0xa00027dc
+  addr2line: ulmk_kern_trap_panic ??:? 
+
+HIL: FAIL
+NAKED: FAIL
+OVERALL_HIL: FAIL

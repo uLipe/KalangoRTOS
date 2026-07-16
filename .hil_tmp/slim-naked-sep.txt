@@ -1,0 +1,5 @@
+===== naked =====
+0x70008280: 00000001 
+PC (/32): 0xa00027bc
+ulmk_kern_trap_panic ??:? 
+Error: Target not examined yet

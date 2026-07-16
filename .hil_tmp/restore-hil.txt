@@ -1,0 +1,8 @@
+===== hil =====
+cfg: /home/ulipe/fun/ulmk_boards/tc275_lite/openocd/tc275_lite_hil.cfg
+Error: Target not examined yet
+Info : [tc27x.cpu0] Examination succeed
+0x70008280: 00000001 
+PC (/32): 0xa00027dc
+addr2line: ulmk_kern_trap_panic ??:? 
+PC=0xa00027dc

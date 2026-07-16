@@ -1,0 +1,61 @@
+=== ensure blinky symbols ===
+a00099b0 T board_console_start
+a00099e6 T board_console_start_end
+a0009e30 T board_timer_start
+a000a058 T board_timer_start_end
+70009dbc b g_eru_started
+a000ce78 t hw_start
+a000cce2 t node_start
+a0000020 T _start
+a00072ac T ulmk_arch_start_secondary
+a0007300 T ulmk_arch_start_secondary_end
+a0000000 R _ulmk_bmhd
+a00097f8 T ulmk_board_cpu_start
+a0009864 T ulmk_board_cpu_start_end
+a00073c0 T _ulmk_comp_smp_can_demo_text_start
+a0007c80 T _ulmk_cpu1_start
+60000000 B _ulmk_csa_pool_cpu1_start
+70003c40 B _ulmk_csa_pool_start
+70007c40 B _ulmk_domain_smp_can_demo_start
+a000e580 D _ulmk_domain_table_start
+70000010 B _ulmk_kernel_bss_start
+=== tas ===
+865747 /home/ulipe/.local/aurix/tas/opt/Tools/DAS/8.3.0/bin/tas_server
+=== flash blinky (normal path with WDT disarm) ===
+flash: ulmk (58768 B, sectors 0-3)
+  erase...
+  program...
+  start...
+  flash + start — done
+=== wait 2s for blinky to run ===
+=== NOW: naked reset (no WDT disarm) + resume 3s + halt ===
+--- naked log ---
+Open On-Chip Debugger 0.12.0+dev-g4fbdce8 (2026-07-09-10:36)
+Licensed under GNU GPL v2
+For bug reports, read
+	http://openocd.org/doc/doxygen/bugs.html
+Info : only one transport option; autoselecting 'tas'
+force hard breakpoints
+Info : Connecting to TAS server 127.0.0.1:24817
+Info : Note: The adapter "tas_client" doesn't support configurable speed
+Error: Target not examined yet
+Info : [tc27x.cpu0] Examination succeed
+Info : [tc27x.cpu0] gdb port disabled
+shutdown command invoked
+Warn : Flash driver of pflash0 does not support free_driver_priv()
+=== control: hil.cfg reset (WITH WDT disarm) + resume 3s + halt ===
+--- hil log ---
+Open On-Chip Debugger 0.12.0+dev-g4fbdce8 (2026-07-09-10:36)
+Licensed under GNU GPL v2
+For bug reports, read
+	http://openocd.org/doc/doxygen/bugs.html
+Info : only one transport option; autoselecting 'tas'
+force hard breakpoints
+Info : Connecting to TAS server 127.0.0.1:24817
+Info : Note: The adapter "tas_client" doesn't support configurable speed
+Error: Target not examined yet
+Info : [tc27x.cpu0] Examination succeed
+Info : [tc27x.cpu0] gdb port disabled
+shutdown command invoked
+Warn : Flash driver of pflash0 does not support free_driver_priv()
+=== DONE ===

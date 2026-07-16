@@ -1,0 +1,44 @@
+Open On-Chip Debugger 0.12.0+dev-g4fbdce8 (2026-07-09-10:36)
+Licensed under GNU GPL v2
+For bug reports, read
+	http://openocd.org/doc/doxygen/bugs.html
+Info : only one transport option; autoselecting 'tas'
+force hard breakpoints
+Info : Listening on port 6666 for tcl connections
+Info : Listening on port 4444 for telnet connections
+Info : Connecting to TAS server 127.0.0.1:24817
+Info : Note: The adapter "tas_client" doesn't support configurable speed
+Error: Target not examined yet
+Info : [tc27x.cpu0] Examination succeed
+Info : [tc27x.cpu0] starting gdb server on 3333
+Info : Listening on port 3333 for gdb connections
+Info : accepting 'telnet' connection on tcp/4444
+Info : dropped 'telnet' connection
+Info : accepting 'gdb' connection on tcp/3333
+Info : tc3xx flash: TC2xx family (CHIPID 0x47467072)
+Info : aurix: TC2xx GDB register layout (CHIPID 0x47467072)
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Error: Failed to run ocds sequence
+Info : dropped 'gdb' connection

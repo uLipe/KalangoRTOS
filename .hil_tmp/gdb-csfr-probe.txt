@@ -1,0 +1,42 @@
+warning: Architecture rejected target-supplied description
+0xa0000020 in _start ()
+d0             0x1                 1
+d1             0x6                 6
+d2             0x47467072          1195798642
+d3             0x0                 0
+d4             0x0                 0
+d5             0x0                 0
+d6             0x34b6d             215917
+d7             0x0                 0
+d8             0x80008051          -2147450799
+d9             0x0                 0
+d10            0x7d                125
+d11            0x80008051          -2147450799
+d12            0x2c52              11346
+d13            0x4                 4
+d14            0x0                 0
+d15            0x0                 0
+a0             0xafffbab0          0xafffbab0
+a1             0xafffbab0          0xafffbab0
+a2             0xafffb140          0xafffb140
+a3             0xf0000478          0xf0000478
+a4             0x1040              0x1040
+a5             0x7                 0x7
+a6             0xf0062800          0xf0062800
+a7             0xafffd154          0xafffd154
+a8             0xa0000020          0xa0000020 <_start>
+a9             0xf0040000          0xf0040000
+a10            0xf0036000          0xf0036000
+a11            0xafffd154          0xafffd154
+a12            0xf8001000          0xf8001000
+a13            0x0                 0x0
+a14            0xf0060000          0xf0060000
+a15            0xf8000528          0xf8000528
+lcx            0x0                 0
+fcx            0x0                 0
+pcx            0x0                 0
+psw            0x18000b80          402656128
+pc             0xa0000020          0xa0000020 <_start>
+BTV=Remote connection closed
+No registers.
+Value can't be converted to integer.

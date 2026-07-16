@@ -1,0 +1,3 @@
+81c696f kernel: add SMP foundation with per-CPU runqueues and affinity
+ef024ca kernel: defer context switch to trap/ISR exit
+8350343 ipc: stage ep envelopes by pointer, keep irq mask on switch return

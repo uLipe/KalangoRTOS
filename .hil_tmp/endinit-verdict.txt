@@ -1,0 +1,42 @@
+PASS
+
+# endinit / naked boot verification — board_blinky (2026-07-16)
+# ELF: /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+# TAS: 127.0.0.1:24817 (tas_server listening)
+# Build: python3 tools/dev.py build --board ../ulmk_boards/tc275_lite --no-components --component board_blinky
+# Flash: flash.sh → flash + start — done
+# Protocol: OpenOCD daemon → reset halt → mdw OCDS CSFR aliases → resume 5s → halt → scratch/PC/CSFRs
+# CSFR via OCDS map: 0xF8810000+offset (BTV=FE24, BIV=FE20, ISP=FE28); mfcr/reg BTV not in this OpenOCD
+
+## Symbols (nm)
+a0000100 T _ulmk_trap_table
+a0000300 T _ulmk_int_table
+70007280 B _ulmk_isr_stack_top
+70008280 B g_ulmk_board_hil_scratch
+a00064e4 T ulmk_arch_cpu_idle
+
+## Results after resume 5s
+
+| tag   | config                  | PC         | symbol              | scratch @0x70008280 | BTV        | BIV        | ISP        | verdict |
+|-------|-------------------------|------------|---------------------|---------------------|------------|------------|------------|---------|
+| naked | tc275_no_wdt_disarm.cfg | 0xa00064e8 | ulmk_arch_cpu_idle  | 00000003 00000063   | 0xa0000100 | 0xa0000300 | 0x70007280 | PASS    |
+| hil   | tc275_lite_hil.cfg      | 0xa00064e8 | ulmk_arch_cpu_idle  | 00000003 00000063   | 0xa0000100 | 0xa0000300 | 0x70007280 | PASS    |
+
+## After reset halt (pre-run, for reference)
+
+| tag   | BTV        | BIV        | ISP        | note |
+|-------|------------|------------|------------|------|
+| naked | 0xa0000100 | 0x00000000 | 0x00000100 | BIV/ISP not yet programmed; BTV already trap table |
+| hil   | 0xa0000100 | 0x00000000 | 0x00000100 | same |
+
+## SUCCESS criteria (naked)
+- idle OR scratch=3: YES (both — PC in ulmk_arch_cpu_idle, scratch=3)
+- ISP non-zero (~0x7000xxxx): YES (ISP=0x70007280 == _ulmk_isr_stack_top)
+- BTV != reset default 0x80000100: YES (BTV=0xa0000100 == _ulmk_trap_table)
+
+## Summary
+VERDICT: PASS
+- board_blinky rebuild+flash OK; TAS on 24817
+- NAKED boot (no CBS WDT disarm) reaches idle with scratch=3
+- ISP/BTV/BIV match linker symbols after 5s run
+- HIL control matches naked (same idle/scratch/CSFRs)

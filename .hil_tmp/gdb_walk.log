@@ -1,0 +1,7 @@
+warning: Architecture rejected target-supplied description
+0xa0000162 in _trap_class3 ()
+0xf7e19080:	0x00000000
+0xf7e19084:	0x00000000
+0xf000e010:	0x00000000
+Invalid argument syntax
+ >

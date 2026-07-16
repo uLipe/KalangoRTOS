@@ -1,0 +1,7 @@
+warning: Architecture rejected target-supplied description
+0xa0000020 in _start ()
+pc=0xa0000020
+send=0 isr=0 seen=0
+/elf/peek3.gdb:9: Error in sourced command file:
+'g_secondary_armed' has unknown type; cast it to its declared type
+[Inferior 1 (Remote target) detached]

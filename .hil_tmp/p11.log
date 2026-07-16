@@ -1,0 +1,29 @@
+warning: Architecture rejected target-supplied description
+0xa0000020 in _start ()
+intvec prio8 @ BIV+0x100
+   0xa0000300 <_ulmk_int_table+256>:	j 0xa0002200 <_arch_generic_preempt_isr>
+   0xa0000304 <_ulmk_int_table+260>:	nop 
+   0xa0000306 <_ulmk_int_table+262>:	nop 
+   0xa0000308 <_ulmk_int_table+264>:	nop 
+   0xa000030a <_ulmk_int_table+266>:	nop 
+   0xa000030c <_ulmk_int_table+268>:	nop 
+   0xa000030e <_ulmk_int_table+270>:	nop 
+   0xa0000310 <_ulmk_int_table+272>:	nop 
+intvec prio1
+   0xa0000220 <_ulmk_int_table+32>:	j 0xa0002200 <_arch_generic_preempt_isr>
+   0xa0000224 <_ulmk_int_table+36>:	nop 
+   0xa0000226 <_ulmk_int_table+38>:	nop 
+   0xa0000228 <_ulmk_int_table+40>:	nop 
+CPU1 ICR PSW PCXI FCX
+0xf883fe2c:	0x00088000
+0xf883fe04:	0x18000982
+0xf883fe00:	0x003700f7
+0xf883fe38:	0x000700f7
+CPU1 SYSCON
+0xf883fe14:	0x00000002
+try software SETR on GPSR10 and resume briefly
+after SETR: ICR GPSR10 PC
+0xf883fe2c:	0x00088000
+0xf0039020:	0x20350c08
+0xf883fe08:	0xa000269c
+[Inferior 1 (Remote target) detached]

@@ -116,10 +116,15 @@
 #define ULMK_ARCH_CSFR_CPR_L(n)	(0xD000u + (n) * 8u)
 #define ULMK_ARCH_CSFR_CPR_U(n)	(0xD004u + (n) * 8u)
 
-#define ULMK_ARCH_CSFR_CPRE_0	0xE000u
-#define ULMK_ARCH_CSFR_CPRE_1	0xE004u
-#define ULMK_ARCH_CSFR_CPRE_2	0xE008u
-#define ULMK_ARCH_CSFR_CPRE_3	0xE00Cu
+/*
+ * TC2xx/TC3xx MPU enables (UM): CPXE @ E000, DPRE @ E010, DPWE @ E020.
+ * There is no CPRE register.  Older internal docs listed CPXE @ E040; on
+ * TC27x that address is Safety RGNLA — never program it as CPXE.
+ */
+#define ULMK_ARCH_CSFR_CPXE_0	0xE000u
+#define ULMK_ARCH_CSFR_CPXE_1	0xE004u
+#define ULMK_ARCH_CSFR_CPXE_2	0xE008u
+#define ULMK_ARCH_CSFR_CPXE_3	0xE00Cu
 #define ULMK_ARCH_CSFR_DPRE_0	0xE010u
 #define ULMK_ARCH_CSFR_DPRE_1	0xE014u
 #define ULMK_ARCH_CSFR_DPRE_2	0xE018u
@@ -128,10 +133,6 @@
 #define ULMK_ARCH_CSFR_DPWE_1	0xE024u
 #define ULMK_ARCH_CSFR_DPWE_2	0xE028u
 #define ULMK_ARCH_CSFR_DPWE_3	0xE02Cu
-#define ULMK_ARCH_CSFR_CPXE_0	0xE040u
-#define ULMK_ARCH_CSFR_CPXE_1	0xE044u
-#define ULMK_ARCH_CSFR_CPXE_2	0xE048u
-#define ULMK_ARCH_CSFR_CPXE_3	0xE04Cu
 
 #define ULMK_ARCH_CSFR_SYSCON	0xFE14u
 #define ULMK_ARCH_SYSCON_PROTEN	(1u << 1)

@@ -1,0 +1,7 @@
+warning: Architecture rejected target-supplied description
+0xa0000020 in _start ()
+Breakpoint 1 at 0xa00072d8
+Breakpoint 2 at 0xa000274a
+Cannot execute this command while the target is running.
+Use the "interrupt" command to stop the target
+and then try again.

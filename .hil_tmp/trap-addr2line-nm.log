@@ -1,0 +1,81 @@
+=== addr2line (code-looking CSA / regs) ===
+0xa00027bc
+ulmk_kern_ipi_resched
+??:?
+---
+0xa0006d7a
+ulmk_arch_trap_dump
+??:?
+---
+0xa000019c
+_trap_class4
+??:?
+---
+0xa00032b2
+_ulmk_printk
+??:?
+---
+0xa0006d2a
+ulmk_arch_trap_dump
+??:?
+---
+0xa00001ee
+_trap_class6
+??:?
+---
+0xa00090ea
+bsp_enable_module_clocks
+board_init.c:?
+---
+0xa0009630
+bsp_enable_module_clocks
+board_init.c:?
+---
+0xa00087ec
+pll_init_20mhz_200mhz
+board_init.c:?
+---
+0xa000723e
+ulmk_arch_ipi_soft_take
+??:?
+---
+0xa000b8d8
+ulmk_notif_wait
+server.c:?
+---
+0xa0006e1e
+ulmk_arch_trap_dump
+??:?
+---
+0xa000316c
+emit_ulmk_hex
+ulmk_printk.c:?
+---
+0xa000b8b8
+ulmk_notif_wait
+server.c:?
+---
+0xa0005eed
+mpu_mtcr
+arch.c:?
+---
+0xa0003204
+_ulmk_printk
+??:?
+---
+0xa0005efe
+mpu_mtcr
+arch.c:?
+---
+0xa00026ad
+ulmk_percpu
+kernel_main.c:?
+---
+
+=== nm | grep hil_mark board_services pinmux_init ===
+a0009b4c T board_services_init
+a0009bc2 T board_services_init_end
+a000aa4e T pinmux_init
+a000ab6c T pinmux_init_end
+a0009b24 T ulmk_board_hil_mark
+a0009b3e T ulmk_board_hil_mark_end

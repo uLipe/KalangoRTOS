@@ -1,0 +1,21 @@
+warning: Architecture rejected target-supplied description
+0xa0000020 in _start ()
+pc             0xa0000020          0xa0000020 <_start>
+#0  0xa0000020 in _start ()
+0x70000010 <g_seen_cpu1>:	0x00000000
+0x70000008 <g_smp_gate>:	0xc0dec0de
+0x70002bc8 <g_secondary_armed>:	0x00000000	0x00000001
+0xf0039000:	0x00360408
+0xf0039004:	0x202e0c08
+0xf883fe08:	0xa00065a4
+0x70009400 <g_ulmk_board_hil_scratch>:	0x00000003
+0x70009404 <g_ulmk_console_log_len>:	0x00000019
+0x70009408 <g_ulmk_console_log>:	83 'S'	73 'I'	76 'L'	73 'I'	67 'C'	79 'O'	78 'N'	95 '_'
+0x70009410 <g_ulmk_console_log+8>:	83 'S'	77 'M'	80 'P'	95 '_'	83 'S'	77 'M'	79 'O'	75 'K'
+0x70009418 <g_ulmk_console_log+16>:	69 'E'	58 ':'	32 ' '	98 'b'	101 'e'	103 'g'	105 'i'	110 'n'
+0x70009420 <g_ulmk_console_log+24>:	10 '\n'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'
+0x70009428 <g_ulmk_console_log+32>:	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'
+0x70009430 <g_ulmk_console_log+40>:	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'
+0x70009438 <g_ulmk_console_log+48>:	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'
+0x70009440 <g_ulmk_console_log+56>:	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'	0 '\000'
+[Inferior 1 (Remote target) detached]

@@ -1,0 +1,16 @@
+warning: Architecture rejected target-supplied description
+0xa0000020 in _start ()
+CPU1 CSFRs: BIV BTV ISP PSW SYSCON CORE_ID ICR
+0xf883fe20:	0xa0000200
+0xf883fe24:	0xa0000100
+0xf883fe28:	0x60002800
+0xf883fe04:	0x18000982
+0xf883fe14:	0x00000002
+0xf883fe1c:	0x00000001
+0xf883fe2c:	0x00088000
+CPU0 same for compare
+0xf881fe20:	0xa0000200
+0xf881fe2c:	0x00008000
+int_table expect
+0xa0000200 <_ulmk_int_table>:	0x00008000
+[Inferior 1 (Remote target) detached]

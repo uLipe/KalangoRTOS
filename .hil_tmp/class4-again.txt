@@ -1,0 +1,307 @@
+ELF=/home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+CFG=/home/ulipe/fun/ulmk/.hil_tmp/tc275_no_wdt_disarm.cfg
+protocol: naked OpenOCD, reset halt, resume 3s, halt, walk CSA A11@+12
+halt_PC=0xa0000178  frames_parsed=256
+CSA pool: 0x70002a40 .. 0x70006a40
+
+=== A11(+12) addr2line (unique transitions, in chain order) ===
+F  0 csa=0x70006a00 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F  1 csa=0x700069c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F  2 csa=0x70006980 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F  3 csa=0x70006940 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F  4 csa=0x70006900 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F  5 csa=0x700068c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F  6 csa=0x70006880 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F  7 csa=0x70006840 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F  8 csa=0x70006800 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F  9 csa=0x700067c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 10 csa=0x70006780 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 11 csa=0x70006740 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 12 csa=0x70006700 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 13 csa=0x700066c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 14 csa=0x70006680 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 15 csa=0x70006640 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 16 csa=0x70006600 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 17 csa=0x700065c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 18 csa=0x70006580 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 19 csa=0x70006540 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 20 csa=0x70006500 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 21 csa=0x700064c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 22 csa=0x70006480 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 23 csa=0x70006440 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 24 csa=0x70006400 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 25 csa=0x700063c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 26 csa=0x70006380 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 27 csa=0x70006340 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 28 csa=0x70006300 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 29 csa=0x700062c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 30 csa=0x70006280 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 31 csa=0x70006240 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 32 csa=0x70006200 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 33 csa=0x700061c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 34 csa=0x70006180 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 35 csa=0x70006140 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 36 csa=0x70006100 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 37 csa=0x700060c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 38 csa=0x70006080 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 39 csa=0x70006040 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 40 csa=0x70006000 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 41 csa=0x70005fc0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 42 csa=0x70005f80 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 43 csa=0x70005f40 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 44 csa=0x70005f00 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 45 csa=0x70005ec0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 46 csa=0x70005e80 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 47 csa=0x70005e40 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 48 csa=0x70005e00 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 49 csa=0x70005dc0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 50 csa=0x70005d80 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 51 csa=0x70005d40 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 52 csa=0x70005d00 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 53 csa=0x70005cc0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 54 csa=0x70005c80 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 55 csa=0x70005c40 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 56 csa=0x70005c00 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 57 csa=0x70005bc0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 58 csa=0x70005b80 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 59 csa=0x70005b40 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 60 csa=0x70005b00 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 61 csa=0x70005ac0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 62 csa=0x70005a80 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 63 csa=0x70005a40 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 64 csa=0x70005a00 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 65 csa=0x700059c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 66 csa=0x70005980 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 67 csa=0x70005940 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 68 csa=0x70005900 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 69 csa=0x700058c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 70 csa=0x70005880 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 71 csa=0x70005840 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 72 csa=0x70005800 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 73 csa=0x700057c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 74 csa=0x70005780 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 75 csa=0x70005740 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 76 csa=0x70005700 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 77 csa=0x700056c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 78 csa=0x70005680 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 79 csa=0x70005640 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 80 csa=0x70005600 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 81 csa=0x700055c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 82 csa=0x70005580 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 83 csa=0x70005540 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 84 csa=0x70005500 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 85 csa=0x700054c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 86 csa=0x70005480 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 87 csa=0x70005440 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 88 csa=0x70005400 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 89 csa=0x700053c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 90 csa=0x70005380 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 91 csa=0x70005340 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 92 csa=0x70005300 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 93 csa=0x700052c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 94 csa=0x70005280 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 95 csa=0x70005240 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 96 csa=0x70005200 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F 97 csa=0x700051c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F 98 csa=0x70005180 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F 99 csa=0x70005140 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F100 csa=0x70005100 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F101 csa=0x700050c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F102 csa=0x70005080 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F103 csa=0x70005040 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F104 csa=0x70005000 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F105 csa=0x70004fc0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F106 csa=0x70004f80 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F107 csa=0x70004f40 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F108 csa=0x70004f00 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F109 csa=0x70004ec0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F110 csa=0x70004e80 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F111 csa=0x70004e40 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F112 csa=0x70004e00 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F113 csa=0x70004dc0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F114 csa=0x70004d80 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F115 csa=0x70004d40 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F116 csa=0x70004d00 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F117 csa=0x70004cc0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F118 csa=0x70004c80 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F119 csa=0x70004c40 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F120 csa=0x70004c00 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F121 csa=0x70004bc0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F122 csa=0x70004b80 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F123 csa=0x70004b40 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F124 csa=0x70004b00 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F125 csa=0x70004ac0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F126 csa=0x70004a80 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F127 csa=0x70004a40 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F128 csa=0x70004a00 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F129 csa=0x700049c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F130 csa=0x70004980 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F131 csa=0x70004940 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F132 csa=0x70004900 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F133 csa=0x700048c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F134 csa=0x70004880 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F135 csa=0x70004840 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F136 csa=0x70004800 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F137 csa=0x700047c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F138 csa=0x70004780 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F139 csa=0x70004740 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F140 csa=0x70004700 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F141 csa=0x700046c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F142 csa=0x70004680 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F143 csa=0x70004640 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F144 csa=0x70004600 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F145 csa=0x700045c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F146 csa=0x70004580 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F147 csa=0x70004540 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F148 csa=0x70004500 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F149 csa=0x700044c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F150 csa=0x70004480 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F151 csa=0x70004440 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F152 csa=0x70004400 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F153 csa=0x700043c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F154 csa=0x70004380 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F155 csa=0x70004340 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F156 csa=0x70004300 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F157 csa=0x700042c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F158 csa=0x70004280 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F159 csa=0x70004240 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F160 csa=0x70004200 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F161 csa=0x700041c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F162 csa=0x70004180 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F163 csa=0x70004140 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F164 csa=0x70004100 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F165 csa=0x700040c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F166 csa=0x70004080 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F167 csa=0x70004040 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F168 csa=0x70004000 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F169 csa=0x70003fc0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F170 csa=0x70003f80 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F171 csa=0x70003f40 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F172 csa=0x70003f00 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F173 csa=0x70003ec0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F174 csa=0x70003e80 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F175 csa=0x70003e40 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F176 csa=0x70003e00 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F177 csa=0x70003dc0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F178 csa=0x70003d80 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F179 csa=0x70003d40 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F180 csa=0x70003d00 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F181 csa=0x70003cc0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F182 csa=0x70003c80 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F183 csa=0x70003c40 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F184 csa=0x70003c00 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F185 csa=0x70003bc0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F186 csa=0x70003b80 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F187 csa=0x70003b40 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F188 csa=0x70003b00 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F189 csa=0x70003ac0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F190 csa=0x70003a80 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F191 csa=0x70003a40 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F192 csa=0x70003a00 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F193 csa=0x700039c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F194 csa=0x70003980 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F195 csa=0x70003940 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F196 csa=0x70003900 A11=0xa000013c  =>  0xa000013c: _trap_class1 at ??:?
+F197 csa=0x700038c0 A11=0xa0006d42  =>  0xa0006d42: ulmk_arch_trap_entry at ??:?
+F198 csa=0x70003880 A11=0xa000015c  =>  0xa000015c: _trap_class2 at ??:?
+F199 csa=0x70003840 A11=0xa0006d42  =>  0xa0006d42: ulmk_arch_trap_entry at ??:?
+F200 csa=0x70003800 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F201 csa=0x700037c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F202 csa=0x70003780 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F203 csa=0x70003740 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F204 csa=0x70003700 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F205 csa=0x700036c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F206 csa=0x70003680 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F207 csa=0x70003640 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F208 csa=0x70003600 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F209 csa=0x700035c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F210 csa=0x70003580 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F211 csa=0x70003540 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F212 csa=0x70003500 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F213 csa=0x700034c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F214 csa=0x70003480 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F215 csa=0x70003440 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F216 csa=0x70003400 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F217 csa=0x700033c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F218 csa=0x70003380 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F219 csa=0x70003340 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F220 csa=0x70003300 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F221 csa=0x700032c0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F222 csa=0x70003280 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F223 csa=0x70003240 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F224 csa=0x70003200 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F225 csa=0x700031c0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F226 csa=0x70003180 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F227 csa=0x70003140 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F228 csa=0x70003100 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F229 csa=0x700030c0 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F230 csa=0x70003080 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F231 csa=0x70003040 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F232 csa=0x70003000 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F233 csa=0x70002fc0 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F234 csa=0x70002f80 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F235 csa=0x70002f40 A11=0xa0006d58  =>  0xa0006d58: ulmk_arch_trap_entry at ??:?
+F236 csa=0x70002f00 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F237 csa=0x70002ec0 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F238 csa=0x70002e80 A11=0xa0006d18  =>  0xa0006d18: ulmk_arch_trap_entry at ??:?
+F239 csa=0x70002e40 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F240 csa=0x70002e00 A11=0xa00032b2  =>  0xa00032b2: _ulmk_printk at ??:?
+F241 csa=0x70002dc0 A11=0xa0006d18  =>  0xa0006d18: ulmk_arch_trap_entry at ??:?
+F242 csa=0x70002d80 A11=0xa000019c  =>  0xa000019c: _trap_class4 at ??:?
+F243 csa=0x70002d40 A11=0xa00001ee  =>  0xa00001ee: _trap_class6 at ??:?
+F244 csa=0x70002d00 A11=0xa00096ea  =>  0xa00096ea: ulmk_ep_create at server.c:?
+F245 csa=0x70002cc0 A11=0xa0009dfe  =>  0xa0009dfe: pinmux_init at ??:?
+F246 csa=0x70002c80 A11=0xa0008d84  =>  0xa0008d84: board_services_init at ??:?
+F247 csa=0x70002c40 A11=0xa000723e  =>  0xa000723e: ulmk_root_thread at ??:?
+F248 csa=0x70002c00 A11=0xa000c1ec  =>  0xa000c1ec: ulmk_user_thread_entry at ??:?
+F249 csa=0x70002bc0 A11=0xa0006e28  =>  0xa0006e28: _ulmk_thread_trampoline at ??:?
+F250 csa=0x0 A11=0x0  =>  0x00000000: ?? ??:0
+
+=== top A11 frequencies ===
+  0xa000019c x80  0xa000019c: _trap_class4 at ??:?
+  0xa00032b2 x79  0xa00032b2: _ulmk_printk at ??:?
+  0xa0006d58 x78  0xa0006d58: ulmk_arch_trap_entry at ??:?
+  0x0 x6  0x00000000: ?? ??:0
+  0xa0006d42 x2  0xa0006d42: ulmk_arch_trap_entry at ??:?
+  0xa0006d18 x2  0xa0006d18: ulmk_arch_trap_entry at ??:?
+  0xa000013c x1  0xa000013c: _trap_class1 at ??:?
+  0xa000015c x1  0xa000015c: _trap_class2 at ??:?
+
+=== oldest 15 frames (end of chain) ===
+F241 csa=0x70002dc0 A11=0xa0006d18 A10=0x000000dc  =>  0xa0006d18: ulmk_arch_trap_entry at ??:?
+F242 csa=0x70002d80 A11=0xa000019c A10=0x000000dc  =>  0xa000019c: _trap_class4 at ??:?
+F243 csa=0x70002d40 A11=0xa00001ee A10=0x000000ec  =>  0xa00001ee: _trap_class6 at ??:?
+F244 csa=0x70002d00 A11=0xa00096ea A10=0x000000ec  =>  0xa00096ea: ulmk_ep_create at server.c:?
+F245 csa=0x70002cc0 A11=0xa0009dfe A10=0x70008220  =>  0xa0009dfe: pinmux_init at ??:?
+F246 csa=0x70002c80 A11=0xa0008d84 A10=0x70008228  =>  0xa0008d84: board_services_init at ??:?
+F247 csa=0x70002c40 A11=0xa000723e A10=0x70008260  =>  0xa000723e: ulmk_root_thread at ??:?
+F248 csa=0x70002c00 A11=0xa000c1ec A10=0x70008270  =>  0xa000c1ec: ulmk_user_thread_entry at ??:?
+F249 csa=0x70002bc0 A11=0xa0006e28 A10=0x70008278  =>  0xa0006e28: _ulmk_thread_trampoline at ??:?
+F250 csa=0x00000000 A11=0x0 A10=0x00000000  =>  0x00000000: ?? ??:0
+F251 csa=0x00000000 A11=0x0 A10=0x00000000  =>  0x00000000: ?? ??:0
+F252 csa=0x00000000 A11=0x0 A10=0x00000000  =>  0x00000000: ?? ??:0
+F253 csa=0x00000000 A11=0x0 A10=0x00000000  =>  0x00000000: ?? ??:0
+F254 csa=0x00000000 A11=0x0 A10=0x00000000  =>  0x00000000: ?? ??:0
+F255 csa=0x00000000 A11=0x0 A10=0x00000000  =>  0x00000000: ?? ??:0
+
+EARLIEST_USER_OR_BOARD: 0xa0009dfe  pinmux_init  (board; see VERDICT)
+
+=== VERDICT ===
+halt: 0xa0000178 _trap_class3 (FCD — CSA free list empty; FCX=nil)
+
+Chain shape (newest→oldest):
+  ~240 frames: nested class4 ↔ printk ↔ trap_entry (UART/printk re-fault)
+  then origin:
+    F243 A11=0xa00001ee  _trap_class6
+    F244 A11=0xa00096ea  ulmk_ep_create
+    F245 A11=0xa0009dfe  pinmux_init
+    F246 A11=0xa0008d84  board_services_init
+    F247 A11=0xa000723e  ulmk_root_thread
+    F248 A11=0xa000c1ec  ulmk_user_thread_entry
+    F249 A11=0xa0006e28  _ulmk_thread_trampoline
+
+Earliest userspace/board fault PC (excluding trap vector / printk / trap_entry):
+  0xa0009dfe  pinmux_init
+
+(Syscall site immediately above board: 0xa00096ea ulmk_ep_create — kernel,
+ entered via class6 from pinmux_init → board_services_init → ulmk_root_thread.)

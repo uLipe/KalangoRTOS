@@ -1,0 +1,100 @@
+ÿûÿûÿýÿþOpen On-Chip Debugger
+> halt
+> help ocds
+ocds
+      OCDS commands (configuration command)
+  ocds create name '-chain-position' name
+        Creates a new DAP instance (command valid any time)
+  ocds init
+        Initialize all OCDS systems (command valid any time)
+> help aurix
+> help tc27x
+tc27x.cpu0
+      target command group (command valid any time)
+  tc27x.cpu0 arp_examine ['allow-defer']
+        used internally for reset processing
+  tc27x.cpu0 arp_halt
+        used internally for reset processing
+  tc27x.cpu0 arp_halt_gdb
+        used internally for reset processing to halt GDB
+  tc27x.cpu0 arp_poll
+        used internally for reset processing
+  tc27x.cpu0 arp_reset 'assert'|'deassert' halt
+        used internally for reset processing
+  tc27x.cpu0 arp_waitstate statename timeoutmsecs
+        used internally for reset processing
+  tc27x.cpu0 cget target_attribute
+        returns the specified target attribute (command valid any time)
+  tc27x.cpu0 configure [target_attribute ...]
+        configure a new target for use (command valid any time)
+  tc27x.cpu0 curstate
+        displays the current state of this target
+  tc27x.cpu0 debug_reason
+        displays the debug reason of this target
+  tc27x.cpu0 eventlist
+        displays a table of events defined for this target
+  tc27x.cpu0 examine_deferred
+        used internally for reset processing
+  tc27x.cpu0 get_reg list
+        Get register values from the target
+  tc27x.cpu0 invoke-event event_name
+        invoke handler for specified event
+  tc27x.cpu0 mdb address [count]
+        Display target memory as 8-bit bytes
+  tc27x.cpu0 mdd address [count]
+        Display target memory as 64-bit words
+  tc27x.cpu0 mdh address [count]
+        Display target memory as 16-bit half-words
+  tc27x.cpu0 mdw address [count]
+        Display target memory as 32-bit words
+  tc27x.cpu0 mwb address data [count]
+        Write byte(s) to target memory
+  tc27x.cpu0 mwd address data [count]
+        Write 64-bit word(s) to target memory
+  tc27x.cpu0 mwh address data [count]
+        Write 16-bit half-word(s) to target memory
+  tc27x.cpu0 mww address data [count]
+        Write 32-bit word(s) to target memory
+  tc27x.cpu0 read_memory address width count ['phys']
+        Read Tcl list of 8/16/32/64 bit numbers from target memory
+  tc27x.cpu0 set_reg dict
+        Set target register values
+  tc27x.cpu0 was_examined
+        used internally for reset processing
+  tc27x.cpu0 write_memory address width data ['phys']
+        Write Tcl list of 8/16/32/64 bit numbers to target memory
+> ocds
+ocds
+  ocds create name '-chain-position' name
+  ocds init
+
+> tc27x.cpu0
+tc27x.cpu0
+  tc27x.cpu0 arp_examine ['allow-defer']
+  tc27x.cpu0 arp_halt
+  tc27x.cpu0 arp_halt_gdb
+  tc27x.cpu0 arp_poll
+  tc27x.cpu0 arp_reset 'assert'|'deassert' halt
+  tc27x.cpu0 arp_waitstate statename timeoutmsecs
+  tc27x.cpu0 cget target_attribute
+  tc27x.cpu0 configure [target_attribute ...]
+  tc27x.cpu0 curstate
+  tc27x.cpu0 debug_reason
+  tc27x.cpu0 eventlist
+  tc27x.cpu0 examine_deferred
+  tc27x.cpu0 get_reg list
+  tc27x.cpu0 invoke-event event_name
+  tc27x.cpu0 mdb address [count]
+  tc27x.cpu0 mdd address [count]
+  tc27x.cpu0 mdh address [count]
+  tc27x.cpu0 mdw address [count]
+  tc27x.cpu0 mwb address data [count]
+  tc27x.cpu0 mwd address data [count]
+  tc27x.cpu0 mwh address data [count]
+  tc27x.cpu0 mww address data [count]
+  tc27x.cpu0 read_memory address width count ['phys']
+  tc27x.cpu0 set_reg dict
+  tc27x.cpu0 was_examined
+  tc27x.cpu0 write_memory address width data ['phys']
+
+> exit

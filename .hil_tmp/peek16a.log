@@ -1,0 +1,413 @@
+warning: Architecture rejected target-supplied description
+0xa0000020 in _start ()
+Breakpoint 1 at 0xa00074b0
+Breakpoint 2 at 0xa0007190
+Breakpoint 3 at 0xa00027c0
+Breakpoint 4 at 0xa000722e
+SEND_IPI cpu arg in d4? peek soft after
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+Error in testing condition for breakpoint 4:
+'g_ulmk_ipi_soft' has unknown type; cast it to its declared type
+SOFT_TAKE with soft1 pending
+[Inferior 1 (Remote target) detached]

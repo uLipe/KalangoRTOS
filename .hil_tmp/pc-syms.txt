@@ -1,0 +1,124 @@
+=== ELF: /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk ===
+=== date: 2026-07-16T10:10:09-03:00 ===
+
+=== labeled address map ===
+0xa0002880  naked_reset PC
+0xa0007068  naked a11
+0xa0007232  hil_reset PC
+0xa00067b0  hil a11
+0xa0002874  known trap_panic
+
+=== tricore-elf-addr2line -f -a -p ===
+0xa0002880: ulmk_kern_trap_panic at ??:?
+0xa0007068: ulmk_arch_trap_entry at ??:?
+0xa0007232: ulmk_arch_ipi_soft_take at ??:?
+0xa00067b0: ulmk_arch_cpu_idle at ??:?
+0xa0002874: ulmk_kern_trap_panic at ??:?
+
+=== tricore-elf-nm -nS: symbol containing each address ===
+0xa0002880 in ulmk_kern_trap_panic  [a0002874 .. +0x00000010)  off=+0xc
+0xa0002874 in ulmk_kern_trap_panic  [a0002874 .. +0x00000010)  off=+0x0
+0xa00067b0 in ulmk_arch_cpu_idle  [a00067ac .. +0x0000001c)  off=+0x4
+0xa0007068 in ulmk_arch_trap_entry  [a0006f70 .. +0x00000126)  off=+0xf8
+0xa0007232 in ulmk_arch_ipi_soft_take  [a000722e .. +0x0000002a)  off=+0x4
+
+=== related nm symbols (focus) ===
+a0002874 T ulmk_kern_trap_panic
+a0002884 T ulmk_kern_trap_panic_end
+a0006778 T ulmk_arch_cpu_irq_save
+a0006794 T ulmk_arch_cpu_irq_restore
+a0006794 T ulmk_arch_cpu_irq_save_end
+a00067a2 T ulmk_arch_cpu_irq_enable
+a00067a2 T ulmk_arch_cpu_irq_restore_end
+a00067ac T ulmk_arch_cpu_idle
+a00067ac T ulmk_arch_cpu_irq_enable_end
+a00067c8 T ulmk_arch_cpu_halt
+a00067c8 T ulmk_arch_cpu_idle_end
+a00067cc T ulmk_arch_cpu_halt_end
+a0006f70 T ulmk_arch_trap_entry
+a0007096 T ulmk_arch_trap_entry_end
+a000722e T ulmk_arch_ipi_soft_take
+a0007258 T ulmk_arch_ipi_soft_take_end
+
+=== tricore-elf-nm -n nearest (before/after) ===
+--- 0xa0002880 (naked_reset_PC) ---
+  <= a0002874 T ulmk_kern_trap_recoverable_end
+  >> a0002884 T ulmk_kern_main
+     a0002884 T ulmk_kern_trap_panic_end
+     a0002a3e t _caller_priv
+
+--- 0xa0007068 (naked_a11) ---
+  <= a0006f70 T ulmk_arch_trap_entry
+  >> a0007096 T ulmk_arch_init
+     a0007096 T ulmk_arch_trap_entry_end
+     a00070ba T ulmk_arch_cpu_id
+
+--- 0xa0007232 (hil_reset_PC) ---
+  <= a000722e T ulmk_arch_ipi_soft_take
+  >> a0007258 T ulmk_arch_ipi_soft_take_end
+     a0007258 T ulmk_arch_secondary_init
+     a0007290 T ulmk_arch_secondary_init_end
+
+--- 0xa00067b0 (hil_a11) ---
+  <= a00067ac T ulmk_arch_cpu_irq_enable_end
+  >> a00067c8 T ulmk_arch_cpu_halt
+     a00067c8 T ulmk_arch_cpu_idle_end
+     a00067cc t csa_alloc
+
+--- 0xa0002874 (known_trap_panic) ---
+  <= a0002874 T ulmk_kern_trap_recoverable_end
+  >> a0002884 T ulmk_kern_main
+     a0002884 T ulmk_kern_trap_panic_end
+     a0002a3e t _caller_priv
+
+=== notes ===
+0xa0002880: infinite spin inside ulmk_kern_trap_panic (j .)
+0xa0002874: entry of ulmk_kern_trap_panic
+0xa0007068: inside ulmk_arch_trap_entry (RA/a11 from naked path)
+0xa0007232: inside ulmk_arch_ipi_soft_take (hil_reset PC)
+0xa00067b0: inside ulmk_arch_cpu_idle (hil a11)
+
+=== objdump -d: ~20 instructions around 0xa0002880 ===
+
+/elf/ulmk:     file format elf32-tricore
+
+
+Disassembly of section .kernel_text:
+
+a0002850 <ulmk_kern_trap_recoverable+0x14>:
+a0002850:	74 a2       	st.w [%sp],%d2
+a0002852:	d9 44 7e 92 	lea %a4,[%a4]9854
+a0002856:	6d 00 cf 04 	call a00031f4 <_ulmk_printk>
+a000285a:	82 02       	mov %d2,0
+a000285c:	40 c4       	mov.aa %a4,%a12
+a000285e:	e9 c2 1f 00 	st.b [%a12]31,%d2
+a0002862:	6d 00 08 0a 	call a0003c72 <ulmk_sched_dequeue>
+a0002866:	40 c4       	mov.aa %a4,%a12
+a0002868:	6d 00 43 09 	call a0003aee <ulmk_sched_set_dead_for_cleanup>
+a000286c:	6d 00 b2 09 	call a0003bd0 <ulmk_sched_resched>
+a0002870:	1d 00 00 00 	j a0002870 <ulmk_kern_trap_recoverable+0x34>
+
+a0002874 <ulmk_kern_trap_panic>:
+a0002874:	91 00 00 4a 	movh.a %a4,40960
+a0002878:	d9 44 5b a2 	lea %a4,[%a4]9883 <a000269b <ulmk_percpu+0x73>>
+a000287c:	6d 00 bc 04 	call a00031f4 <_ulmk_printk>
+a0002880:	1d 00 00 00 	j a0002880 <ulmk_kern_trap_panic+0xc>
+
+a0002884 <ulmk_kern_main>:
+a0002884:	20 28       	sub.a %sp,40
+a0002886:	3b 00 02 50 	mov %d5,32
+a000288a:	82 04       	mov %d4,0
+a000288c:	80 4c       	mov.d %d12,%a4
+a000288e:	d9 a4 08 00 	lea %a4,[%sp]8
+a0002892:	6d 00 9b 5d 	call a000e3c8 <memset>
+a0002896:	91 00 00 4a 	movh.a %a4,40960
+a000289a:	d9 44 7d a2 	lea %a4,[%a4]9917 <a00026bd <ulmk_percpu+0x95>>
+a000289e:	6d 00 ab 04 	call a00031f4 <_ulmk_printk>
+a00028a2:	6d 00 37 09 	call a0003b10 <ulmk_sched_init>
+a00028a6:	91 00 00 4a 	movh.a %a4,40960
+a00028aa:	d9 44 34 34 	lea %a4,[%a4]16628 <a00040f4 <ulmk_bitmap_rt_class>>
+a00028ae:	6d 00 39 09 	call a0003b20 <ulmk_sched_set_class>
+a00028b2:	91 00 00 4a 	movh.a %a4,40960
+a00028b6:	d9 44 51 b2 	lea %a4,[%a4]9937 <a00026d1 <ulmk_percpu+0xa9>>
+a00028ba:	6d 00 9d 04 	call a00031f4 <_ulmk_printk>
+a00028be:	6d 00       	.hword 0x006d

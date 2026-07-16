@@ -1,0 +1,5 @@
+warning: Architecture rejected target-supplied description
+0xa00065a4 in ulmk_arch_cpu_idle ()
+/elf/peek.gdb:7: Error in sourced command file:
+Invalid argument syntax
+[Inferior 1 (Remote target) detached]

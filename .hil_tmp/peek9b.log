@@ -1,0 +1,7 @@
+warning: Architecture rejected target-supplied description
+0xa0002698 in idle_thread_entry ()
+pc=0xa0002698 scratch=6
+lock=0
+#0  0xa0002698 in idle_thread_entry ()
+#1  0xa0009238 in ulmk_user_thread_entry ()
+[Inferior 1 (Remote target) detached]

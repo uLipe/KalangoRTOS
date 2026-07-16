@@ -1,0 +1,16 @@
+# OpenOCD config isolation — blinky + early WDT
+# Protocol: reset halt → resume → sleep 5s → halt → reg PC + mdw 0x70009480 2
+# ELF: /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+
+| tag  | config                         | PC         | symbol              | 0x70009480        | verdict                          |
+|------|--------------------------------|------------|---------------------|-------------------|----------------------------------|
+| naked| tc275_no_wdt_disarm.cfg        | 0xa0000178 | _trap_class3        | 00000000 00000000 | FAIL — trapped (class3)          |
+| cbs  | tc275_cbs_only.cfg             | 0xa00064e8 | ulmk_arch_cpu_idle  | 00000000 00000000 | OK — idle                        |
+| wdt1 | tc275_wdt1_only.cfg            | 0xa0000178 | _trap_class3        | 00000000 00000000 | FAIL — trapped (class3)          |
+| hil  | tc275_lite_hil.cfg (board)     | 0xa00064e8 | ulmk_arch_cpu_idle  | 00000000 00000000 | OK — idle                        |
+
+## Summary
+- CBS disarm alone is sufficient for healthy idle after 5s run.
+- WDT1-only and naked both land in _trap_class3 (0xa0000178).
+- Full HIL cfg matches CBS-only (idle).
+- mdw @ 0x70009480 is zero in all four samples (no differentiating marker there).

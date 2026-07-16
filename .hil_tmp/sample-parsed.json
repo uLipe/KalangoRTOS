@@ -1,0 +1,4 @@
+{'hil': {'pc': '0xa0000178', 'scratch': '00000001', 'sym': '_trap_class3 / ??:?'}, 'naked': {'pc': '0xa0000178', 'scratch': '00000001', 'sym': '_trap_class3 / ??:?'}}
+70008280 B g_ulmk_board_hil_scratch
+a00064e4 T ulmk_arch_cpu_idle
+a00064ea T ulmk_arch_cpu_idle_end

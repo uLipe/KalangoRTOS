@@ -1,0 +1,12 @@
+Open On-Chip Debugger
+> halt
+> reg PC
+PC (/32): 0xa00064e8
+> reg PCX
+PCX (/32): 0x003700ae
+> mdw 0xF881C00C 1
+0xf881c00c: 70006a38 
+> mdw 0x70008280 2
+0x70008280: 00000003 00000063 
+> resume
+> exit

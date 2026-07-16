@@ -1,0 +1,6 @@
+a00087d8 T board_services_init
+a0008862 T board_services_init_end
+a00095e8 T pinmux_init
+a00096c0 T pinmux_init_end
+a00087b0 T ulmk_board_hil_mark
+a00087ca T ulmk_board_hil_mark_end

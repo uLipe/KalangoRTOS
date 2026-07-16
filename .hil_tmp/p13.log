@@ -1,0 +1,11 @@
+warning: Architecture rejected target-supplied description
+0xa0000020 in _start ()
+ipi_isr ipi_send armed seen ICR GPSR10 PC
+0x70002bc4 <g_ulmk_ipi_isr_count>:	0x00000001
+0x70002bc0 <g_ulmk_ipi_send_count>:	0x00000001
+0x70002bd0 <g_secondary_armed>:	0x00000000	0x00000001	0x00000000	0x00000001
+0x70000010 <g_seen_cpu1>:	0x00000000
+0xf883fe2c:	0x00088000
+0xf0039020:	0x20350c08
+0xf883fe08:	0xa0002698
+[Inferior 1 (Remote target) detached]

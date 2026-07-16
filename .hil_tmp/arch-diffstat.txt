@@ -1,0 +1,3 @@
+ arch/tricore/include/ulmk_arch.h | 6 ++++++
+ 1 file changed, 6 insertions(+)
+22:    board_wdt_early.S

@@ -1,0 +1,52 @@
+warning: Architecture rejected target-supplied description
+0xa0000020 in _start ()
+Breakpoint 1 at 0xa00035d0
+Breakpoint 2 at 0xa0003ab2
+Breakpoint 3 at 0xa00072d8
+Breakpoint 4 at 0xa000274a
+ENQ t=0x70001188 cpu=0 prio=255 entry_via_start?
+ENQ t=0x700012f4 cpu=1 prio=255 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+SPAWN uattr=0x700093cc cpu=0 stack=1024 prio=2 priv=1 heap=0 entry=0xa0009f9e
+ENQ t=0x70009e80 cpu=0 prio=2 entry_via_start?
+SPAWN uattr=0x700093b8 cpu=0 stack=2048 prio=1 priv=1 heap=0 entry=0xa000b94c
+ENQ t=0x7000a580 cpu=0 prio=1 entry_via_start?
+SPAWN uattr=0x700093c4 cpu=0 stack=2048 prio=2 priv=1 heap=0 entry=0xa00095ae
+ENQ t=0x7000b080 cpu=0 prio=2 entry_via_start?
+SPAWN uattr=0x700093c8 cpu=0 stack=1536 prio=1 priv=1 heap=0 entry=0xa000a8f6
+ENQ t=0x7000bb80 cpu=0 prio=1 entry_via_start?
+SPAWN uattr=0x700093c8 cpu=0 stack=1536 prio=2 priv=1 heap=0 entry=0xa000a9b0
+ENQ t=0x7000c380 cpu=0 prio=2 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x7000a580 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+ENQ t=0x70000018 cpu=0 prio=0 entry_via_start?
+Cannot execute this command while the target is running.
+Use the "interrupt" command to stop the target
+and then try again.

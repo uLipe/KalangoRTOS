@@ -1,0 +1,142 @@
+# Source: ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/iLLD/TC27D/Tricore/Scu/Std/IfxScuWdt.h
+# SFR:    ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxScu_reg.h
+# Chip:   TC27D
+
+## Absolute addresses (TC27D / IfxScu_reg.h)
+
+MODULE_SCU       = 0xF0036000
+SCU_WDTS_CON0    = 0xF00360F0   /* Safety WDT Control Register 0 */
+SCU_WDTS_CON1    = 0xF00360F4   /* Safety WDT Control Register 1 */
+SCU_WDTCPU0_CON0 = 0xF0036100   /* CPU0 WDT Control Register 0 */
+SCU_WDTCPU0_CON1 = 0xF0036104   /* CPU0 WDT Control Register 1 */
+
+/* User Manual aliases: SCU_WDTSCON0, SCU_WDTSCON1, SCU_WDTCPU0CON0, SCU_WDTCPU0CON1 */
+
+## CON0 bitfield offsets (CPU and Safety identical layout)
+
+ENDINIT_OFF = 0
+LCK_OFF     = 1
+PW_OFF      = 2   /* 14 bits */
+REL_OFF     = 16  /* 16 bits */
+
+## Inline implementations (verbatim from IfxScuWdt.h)
+
+IFX_INLINE void IfxScuWdt_clearCpuEndinitInline(Ifx_SCU_WDTCPU *watchdog, uint16 password)
+{
+    if (watchdog->CON0.B.LCK)
+    {
+        /* see Table 1 (Password Access Bit Pattern Requirements) */
+        watchdog->CON0.U = (1 << IFX_SCU_WDTCPU_CON0_ENDINIT_OFF) |
+                           (0 << IFX_SCU_WDTCPU_CON0_LCK_OFF) |
+                           (password << IFX_SCU_WDTCPU_CON0_PW_OFF) |
+                           (watchdog->CON0.B.REL << IFX_SCU_WDTCPU_CON0_REL_OFF);
+    }
+
+    /* Clear ENDINT and set LCK bit in Config_0 register */
+    watchdog->CON0.U = (0 << IFX_SCU_WDTCPU_CON0_ENDINIT_OFF) |
+                       (1 << IFX_SCU_WDTCPU_CON0_LCK_OFF) |
+                       (password << IFX_SCU_WDTCPU_CON0_PW_OFF) |
+                       (watchdog->CON0.B.REL << IFX_SCU_WDTCPU_CON0_REL_OFF);
+
+    /* read back ENDINIT and wait until it has been cleared */
+    while (watchdog->CON0.B.ENDINIT == 1)
+    {}
+}
+
+
+IFX_INLINE void IfxScuWdt_clearSafetyEndinitInline(uint16 password)
+{
+    if (SCU_WDTS_CON0.B.LCK)
+    {
+        /* see Table 1 (Password Access Bit Pattern Requirements) */
+        SCU_WDTS_CON0.U = (1 << IFX_SCU_WDTS_CON0_ENDINIT_OFF) |
+                          (0 << IFX_SCU_WDTS_CON0_LCK_OFF) |
+                          (password << IFX_SCU_WDTS_CON0_PW_OFF) |
+                          (SCU_WDTS_CON0.B.REL << IFX_SCU_WDTS_CON0_REL_OFF);
+    }
+
+    /* Clear ENDINT and set LCK bit in Config_0 register */
+    SCU_WDTS_CON0.U = (0 << IFX_SCU_WDTS_CON0_ENDINIT_OFF) |
+                      (1 << IFX_SCU_WDTS_CON0_LCK_OFF) |
+                      (password << IFX_SCU_WDTS_CON0_PW_OFF) |
+                      (SCU_WDTS_CON0.B.REL << IFX_SCU_WDTS_CON0_REL_OFF);
+
+    /* read back ENDINIT and wait until it has been cleared */
+    while (SCU_WDTS_CON0.B.ENDINIT == 1)
+    {}
+}
+
+
+IFX_INLINE uint16 IfxScuWdt_getCpuWatchdogPasswordInline(Ifx_SCU_WDTCPU *watchdog)
+{
+    uint16 password;
+
+    /* Read Password from CON0 register
+     * !!! NOTE: !!! when read bottom six bit of password are inverted so we have
+     * to toggle them before returning password */
+    password  = watchdog->CON0.B.PW;
+    password ^= 0x003F;
+
+    return password;
+}
+
+
+IFX_INLINE uint16 IfxScuWdt_getSafetyWatchdogPasswordInline(void)
+{
+    uint16        password;
+    Ifx_SCU_WDTS *watchdog = &MODULE_SCU.WDTS;
+
+    /* Read Password from Safety WDT CON0 register
+     * !!! NOTE: !!! when read bottom six bit of password are inverted so we have
+     * to toggle them before returning password */
+    password  = watchdog->CON0.B.PW;
+    password ^= 0x003F;
+
+    return password;
+}
+
+
+IFX_INLINE void IfxScuWdt_setCpuEndinitInline(Ifx_SCU_WDTCPU *watchdog, uint16 password)
+{
+    if (watchdog->CON0.B.LCK)
+    {
+        /* see Table 1 (Pass.word Access Bit Pattern Requirements) */
+        watchdog->CON0.U = (1 << IFX_SCU_WDTCPU_CON0_ENDINIT_OFF) |
+                           (0 << IFX_SCU_WDTCPU_CON0_LCK_OFF) |
+                           (password << IFX_SCU_WDTCPU_CON0_PW_OFF) |
+                           (watchdog->CON0.B.REL << IFX_SCU_WDTCPU_CON0_REL_OFF);
+    }
+
+    /* Set ENDINT and set LCK bit in Config_0 register */
+    watchdog->CON0.U = (1 << IFX_SCU_WDTCPU_CON0_ENDINIT_OFF) |
+                       (1 << IFX_SCU_WDTCPU_CON0_LCK_OFF) |
+                       (password << IFX_SCU_WDTCPU_CON0_PW_OFF) |
+                       (watchdog->CON0.B.REL << IFX_SCU_WDTCPU_CON0_REL_OFF);
+
+    /* read back ENDINIT and wait until it has been set */
+    while (watchdog->CON0.B.ENDINIT == 0)
+    {}
+}
+
+
+IFX_INLINE void IfxScuWdt_setSafetyEndinitInline(uint16 password)
+{
+    if (SCU_WDTS_CON0.B.LCK)
+    {
+        /* see Table 1 (Password Access Bit Pattern Requirements) */
+        SCU_WDTS_CON0.U = (1 << IFX_SCU_WDTS_CON0_ENDINIT_OFF) |
+                          (0 << IFX_SCU_WDTS_CON0_LCK_OFF) |
+                          (password << IFX_SCU_WDTS_CON0_PW_OFF) |
+                          (SCU_WDTS_CON0.B.REL << IFX_SCU_WDTS_CON0_REL_OFF);
+    }
+
+    /* Set ENDINT and set LCK bit in Config_0 register */
+    SCU_WDTS_CON0.U = (1 << IFX_SCU_WDTS_CON0_ENDINIT_OFF) |
+                      (1 << IFX_SCU_WDTS_CON0_LCK_OFF) |
+                      (password << IFX_SCU_WDTS_CON0_PW_OFF) |
+                      (SCU_WDTS_CON0.B.REL << IFX_SCU_WDTS_CON0_REL_OFF);
+
+    /* read back ENDINIT and wait until it has been cleared */
+    while (SCU_WDTS_CON0.B.ENDINIT == 0)
+    {}
+}

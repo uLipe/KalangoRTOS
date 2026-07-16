@@ -1,0 +1,5 @@
+===== hil =====
+0x70008280: 00000003 
+PC (/32): 0xa00064e8
+ulmk_arch_cpu_idle ??:? 
+Error: Target not examined yet

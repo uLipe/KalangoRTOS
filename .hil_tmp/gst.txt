@@ -1,0 +1,44 @@
+## main...origin/main
+ M arch/tricore/arch.c
+ M arch/tricore/startup.S
+?? .hil_tmp_ls.txt
+ arch/tricore/arch.c    | 12 ++++++++++++
+ arch/tricore/startup.S | 22 ++++++++++++++++++++++
+ 2 files changed, 34 insertions(+)
+diff --git a/arch/tricore/arch.c b/arch/tricore/arch.c
+index cfa0b67..9fdb08a 100644
+--- a/arch/tricore/arch.c
++++ b/arch/tricore/arch.c
+@@ -1306,6 +1306,7 @@ void ulmk_arch_trap_entry(uint8_t trap_class, uint8_t tin)
+ 	uint32_t psw;
+ 	uint32_t is;
+ 	int      from_kernel;
++	static volatile uint8_t dump_busy;
+ 
+ 	psw         = trap_interrupted_psw();
+ 	is          = (psw >>  9) & 1u;	/* PSW.IS[9]: 1 = on ISP (ISR)   */
+@@ -1321,6 +1322,16 @@ void ulmk_arch_trap_entry(uint8_t trap_class, uint8_t tin)
+ 			 "isync"
+ 			 :: "d"(psw) : "memory");
+ 
++	/*
++	 * Nested traps during dump/printk (e.g. corrupt SP → class 4) used to
++	 * recurse until FCX=0 (class 3 FCU) and light ESR0.  Skip re-entry.
++	 */
++	if (dump_busy) {
++		ulmk_kern_trap_panic();
++		return;
++	}
++	dump_busy = 1u;
++
+ 	ulmk_printk("TRAP class=%u (%s) tin=%u %s\n",
+ 		  (unsigned)trap_class,
+ 		  trap_class < 8u ? trap_class_names[trap_class] : "?",
+@@ -1330,6 +1341,7 @@ void ulmk_arch_trap_entry(uint8_t trap_class, uint8_t tin)
+ 	ulmk_arch_trap_dump(trap_class, tin);
+ 
+ 	if ((trap_class == 0u || trap_class == 1u) && !from_kernel) {
++		dump_busy = 0u;
+ 		ulmk_kern_trap_recoverable();
+ 	} else {
+ 		ulmk_kern_trap_panic();

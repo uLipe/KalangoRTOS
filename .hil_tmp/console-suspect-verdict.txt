@@ -1,0 +1,74 @@
+TC275 Lite console-suspect verdict
+==================================
+Date: 2026-07-16
+ELF: /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+Method: naked reset (tc275_no_wdt_disarm.cfg, resume 3s, halt) + attach-only OpenOCD + tricore-elf-gdb in ulipe-microkernel:dev
+
+Scratch / milestone
+-------------------
+g_ulmk_board_hil_scratch @ 0x70008280 = 0x00000001
+
+board_services.c marks:
+  1 = before pinmux_init()
+  2 = after board_console_start()
+  3 = after board_timer_start() OK
+
+Interpretation: scratch==1 means execution entered board_services_init(), wrote mark 1,
+then died INSIDE pinmux_init() OR board_console_start() (never reached mark 2).
+board_console_start() only calls asclin_init() — so console/asclin is in the suspect window,
+but so is pinmux.
+
+PC / trap state
+---------------
+PC  = 0xa0000164  → _trap_class3 (+4)
+D15 = 0x4         → Class 3 TIN 4 = FCU (Free Context list Underflow)
+PCX = 0x001701a8  → CSA link 0x701a8 → CSA @ 0x70006a00
+FCX = 0             → free list empty (matches FCU)
+LCX = 0x000701a8    → equals current PCX link (pool exhausted to LCX)
+PSW = 0x08000a80
+SP  = 0xfffffbcc    → CORRUPT (not in DSPR; near top of address space)
+
+DIEAR
+-----
+Read 0xF7E19080 (DIEAR) and 0xF7E19084 (DIETR) via GDB x/xw: both readable, both 0x00000000.
+Not diagnostic here: halt is Class 3 FCU, not a Class 1 protection fault. DIEAR does not
+implicate a data address for this stop.
+
+CSA return addresses (Upper A11), symbolized
+--------------------------------------------
+Chain is a nested trap storm (same 3 RAs repeating; SP climbing 0xfffffbcc → 0xfffffc4c…):
+
+  CSA0 @0x70006a00  RA=0xa0006d58  ulmk_arch_trap_entry
+  CSA1 @0x700069c0  RA=0xa000019c  _trap_class4
+  CSA2 @0x70006980  RA=0xa00032b2  _ulmk_printk
+  CSA3 @0x70006940  RA=0xa0006d58  ulmk_arch_trap_entry
+  CSA4 @0x70006900  RA=0xa000019c  _trap_class4
+  CSA5 @0x700068c0  RA=0xa00032b2  _ulmk_printk
+  … continues identically through at least 0x70006400 …
+
+Also in Upper contexts: A12/A13 ≈ dump_puts (arch.c), A14/A15 ≈ _ulmk_printk.
+
+GDB find over CSA RAM [0x70006000,0x70008000] for RAs of:
+  board_services_init / board_console_start / pinmux_init / asclin_init / board_console_putc / asclin_call
+→ Pattern not found. Original userspace CSA frames were overwritten by the trap nest.
+
+Is board_console / asclin implicated?
+-------------------------------------
+PARTIALLY (milestone only), NOT proven by CSA.
+
+YES (suspect window):
+  - scratch=1 places death between mark1 and mark2 → pinmux_init OR board_console_start→asclin_init.
+
+NO (not on CSA stack):
+  - No CSA RA into asclin/console/pinmux/mem_map/mpu.
+  - Observed stop is secondary: Class4 bus errors on corrupt SP while printk/trap dump runs,
+    then Class3 TIN4 FCU when FCX hits 0.
+
+Verdict summary
+---------------
+Halt: _trap_class3 / FCU (TIN4), FCX=0, SP corrupt (0xfffffbcc).
+Root cause of FIRST fault: unknown from CSA (washed out). Milestone scratch=1 keeps
+pinmux OR board_console/asclin_init as primary suspects for the initial failure;
+console/asclin is NOT confirmed by return addresses. DIEAR readable but zero / N/A for FCU.
+Next: break earlier (BP on pinmux_init / asclin_init / mark sites) or instrument
+additional hil marks around asclin_init internals before console printk paths.

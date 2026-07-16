@@ -1,0 +1,66 @@
+TC275 blinky trap debug — scratch=1
+=====================================
+Date: 2026-07-16
+ELF (flashed): /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+  g_ulmk_board_hil_scratch @ 0x70008280
+TAS: up on :24817
+Reproduce: openocd tc275_no_wdt_disarm.cfg → resume 3s → halt
+
+Live state after halt
+---------------------
+scratch[0x70008280] = 1          # hil_mark(1) done; pinmux_init never finished
+halt PC (printk storm)          = 0xa00027bc  ulmk_kern_trap_panic / sched end
+D15                             = 0x8000a80   (PSW-like; not a clean TIN)
+PCX                             = 0x1700b9 → CSA @ 0x70002e40
+current A11                     = 0xa0006d7a  ulmk_arch_trap_entry (dump path)
+
+Trap class
+----------
+CSA chain enters via _trap_class4 (0xa000019c) → class 4 (protection / bus / data)
+
+ORIGINAL FAULT — UC0 (before printk storm)
+------------------------------------------
+First user Upper Context below the ISR/printk nest:
+
+  CSA[6] @ 0x70002cc0
+    PSW = 0x18001584   IO=1 IS=0 PRS=0 CDC=4
+    A10 = 0x70008228   (thread stack)
+    A11 = 0xa0009630   <<< ORIGINAL FAULT PC / CALL return address
+
+  addr2line (build ELF):  pinmux_init + 0x48
+  insn @ 0xa0009630:      st.w [%a14]-4, %d2
+  previous insn:          call ulmk_ep_create   (@ 0xa000962c → 0xa00090e2)
+
+Interpretation:
+  Fault during/around ulmk_ep_create() called from pinmux_init().
+  A11=0xa0009630 is the TriCore return address into pinmux_init after that CALL
+  (so the faulting PC was inside ulmk_ep_create, or at the store immediately after).
+
+User call chain (UC A11 frames, oldest → fault)
+-----------------------------------------------
+  CSA[10] 0xa0006e1e  _ulmk_thread_trampoline
+  CSA[9]  0xa000b8d8  ulmk_user_thread_entry+0x20
+  CSA[8]  0xa000723e  ulmk_root_thread+0x10
+  CSA[7]  0xa00087ec  board_services_init+0x14  (return from call pinmux_init)
+  CSA[6]  0xa0009630  pinmux_init+0x48          (return from call ulmk_ep_create)  ← FAULT
+
+Matches board_services_init:
+  hil_mark(1);          // scratch=1 observed
+  pinmux_init(0);       // trapped here — never hil_mark(0x11/0x70)
+
+nm (build ELF)
+--------------
+  a00087b0 T ulmk_board_hil_mark
+  a00087d8 T board_services_init
+  a0008862 T board_services_init_end
+  a00095e8 T pinmux_init
+  a00096c0 T pinmux_init_end
+  70008280 B g_ulmk_board_hil_scratch
+
+Note: .hil_tmp/ulmk is a DIFFERENT older ELF (scratch @ 0x70009480); do not
+addr2line against it for this run.
+
+Bottom line
+-----------
+Original fault PC (UC0 A11) = 0xa0009630 = pinmux_init+0x48
+Root cause locus: ulmk_ep_create from pinmux_init, class-4 trap, scratch stuck at 1.

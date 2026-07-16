@@ -179,6 +179,9 @@ void ulmk_kern_start(void);
  */
 void ulmk_board_init(void);
 
+void ulmk_board_cpu_endinit_clear(void);
+void ulmk_board_cpu_endinit_set(void);
+
 /*
  * ulmk_arch_init - one-time CPU and peripheral initialisation
  * Called by ulmk_kern_start() after ulmk_board_init() and after .data/.bss

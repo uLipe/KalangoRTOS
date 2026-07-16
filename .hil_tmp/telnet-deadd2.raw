@@ -1,0 +1,27 @@
+Open On-Chip Debugger
+> halt
+> reg PC
+PC (/32): 0xa0000162
+> reg PCX
+PCX (/32): 0x001701a8
+> reg PSW
+PSW (/32): 0x08000a80
+> reg a10
+a10 (/32): 0xfffffbcc
+> reg a11
+a11 (/32): 0xa0000178
+> reg d15
+d15 (/32): 0x00000004
+> mdw 0xF881C000 4
+0xf881c000: 00000000 fffffff8 70000000 70006a38 
+> mdw 0xF881C00C 1
+0xf881c00c: 70006a38 
+> mdw 0xF881C004 1
+0xf881c004: fffffff8 
+> mdw 0xF0036024 1
+0xf0036024: 00000038 
+> mdw 0xF0036100 4
+0xf0036100: fffc000f 00000008 fffc0008 fffc000f 
+> mdw 0x70008280 2
+0x70008280: 00000001 00000000 
+> exit

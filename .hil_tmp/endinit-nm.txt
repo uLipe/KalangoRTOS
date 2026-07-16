@@ -1,0 +1,5 @@
+a0000300 T _ulmk_int_table
+70007280 B _ulmk_isr_stack_top
+a0000100 T _ulmk_trap_table
+70008280 B g_ulmk_board_hil_scratch
+a00064e4 T ulmk_arch_cpu_idle

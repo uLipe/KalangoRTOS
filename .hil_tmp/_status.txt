@@ -1,0 +1,9 @@
+flash_size 95
+flash: ulmk (49800 B, sectors 0-3)
+  erase...
+  program...
+  start...
+  flash + start — done
+---
+1030528 /bin/bash -O extglob -c snap=$(command cat <&3) && builtin shopt -s extglob && builtin eval -- "$snap" && { builtin set +u 2>/dev/null || true; builtin eval "${__CURSOR_SANDBOX_ENV_RESTORE:-}" 2>/dev/null; builtin export PWD="$(builtin pwd)"; builtin shopt -s expand_aliases 2>/dev/null; builtin eval "$1"; }; COMMAND_EXIT_CODE=$?; dump_bash_state >&4; builtin exit $COMMAND_EXIT_CODE -- exec > /home/ulipe/fun/ulmk/.hil_tmp/_status.txt 2>&1 set +x +v python3 -c ' from pathlib import Path p=Path("/home/ulipe/fun/ulmk/.hil_tmp/flash.log") print("flash_size", p.stat().st_size if p.exists() else None) if p.exists():   t=p.read_bytes()[-6000:].decode("utf-8","replace").replace("\r","\n")   for ln in [x for x in t.splitlines() if x.strip()][-40:]:     print(ln) ' echo --- pgrep -af openocd || echo no_openocd echo STATUS_OK 
+STATUS_OK

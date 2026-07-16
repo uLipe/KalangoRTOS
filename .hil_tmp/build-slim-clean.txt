@@ -1,0 +1,108 @@
+--- clean ---
+--- configure ---
+Not searching for unused variables given on the command line.
+-- The C compiler identification is GNU 13.4.1
+-- The ASM compiler identification is GNU
+-- Found assembler: /opt/tricore-gcc-bin/tricore-elf-gcc
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /opt/tricore-gcc-bin/tricore-elf-gcc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Kernel/arch optimisation: -Ofast -fno-inline (speed)
+-- ULMK_ARCH=tricore  ULMK_CHIP_DIR=/board
+--   [component] tricore_asclin DISABLED
+--   [component] hello_world DISABLED
+--   [component] ping_pong DISABLED
+--   [component] board_adc_pot DISABLED
+--   [component] board_blinky ENABLED
+--   [component] board_can_loopback DISABLED
+--   [component] board_i2c_scanner DISABLED
+--   [component] board_pwm_led DISABLED
+--   [component] gpio_led_notify DISABLED
+--   [component] smp_can_demo DISABLED
+--   [component] board_leds DISABLED
+--   [component] silicon_baseline DISABLED
+--   [component] silicon_cap_neg DISABLED
+--   [component] silicon_destroy_waiters DISABLED
+--   [component] silicon_e2e DISABLED
+--   [component] silicon_fault_policy DISABLED
+--   [component] silicon_ipc_pi DISABLED
+--   [component] silicon_irq_stress DISABLED
+--   [component] silicon_kill_rendezvous DISABLED
+--   [component] silicon_mem_grant DISABLED
+--   [component] silicon_pool_exhaust DISABLED
+--   [component] silicon_recv_or_notif_race DISABLED
+--   [component] silicon_smp_smoke DISABLED
+--   [component] silicon_stress DISABLED
+--   [component] silicon_unit DISABLED
+--   [component] silicon_wcet DISABLED
+--   [component] ROOT_THREAD: board_blinky
+-- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter 
+-- Configuring done (0.2s)
+-- Generating done (0.0s)
+-- Build files have been written to: /build/ulipe-tricore-tc275_lite
+--- build ---
+ninja: Entering directory `/build/ulipe-tricore-tc275_lite'
+[1/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/percpu/klock.c.obj
+[2/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/syscall/syscall_wcet.c.obj
+[3/58] Building ASM object CMakeFiles/ulmk_kernel.dir/arch/tricore/ctx_switch.S.obj
+[4/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/percpu/percpu.c.obj
+[5/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/init/init.c.obj
+[6/58] Generating linker script /build/ulipe-tricore-tc275_lite/generated/ulmk.ld
+[generate_ld.py] wrote /build/ulipe-tricore-tc275_lite/generated/ulmk.ld
+[7/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/kernel_main.c.obj
+[8/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/sched/fifo_rt.c.obj
+[9/58] Building C object board_components/board_blinky/CMakeFiles/ulmk_comp_board_blinky.dir/src/root_thread.c.obj
+[10/58] Building ASM object CMakeFiles/ulmk.dir/arch/tricore/secondary.S.obj
+[11/58] Building ASM object CMakeFiles/ulmk.dir/arch/tricore/vectors.S.obj
+[12/58] Building ASM object CMakeFiles/ulmk.dir/arch/tricore/startup.S.obj
+[13/58] Building C object CMakeFiles/ulmk.dir/board/bmhd.c.obj
+[14/58] Building ASM object CMakeFiles/ulmk.dir/board/board_wdt_early.S.obj
+[15/58] Building C object CMakeFiles/ulmk_kernel.dir/arch/tricore/smp.c.obj
+[16/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/sched/bitmap_rt.c.obj
+[17/58] Building C object CMakeFiles/ulmk.dir/board/board_printk_stub.c.obj
+[18/58] Building C object CMakeFiles/ulmk.dir/board/board_hil.c.obj
+[19/58] Building C object CMakeFiles/ulmk.dir/board/board_services.c.obj
+[20/58] Building C object CMakeFiles/ulmk.dir/board/drivers/pinmux/src/client.c.obj
+[21/58] Building C object CMakeFiles/ulmk.dir/board/board_console.c.obj
+[22/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/printk/ulmk_printk.c.obj
+[23/58] Building C object CMakeFiles/ulmk.dir/board/board_leds.c.obj
+[24/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/sched/sched.c.obj
+[25/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/notif/notif.c.obj
+[26/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/syscall/syscall_router.c.obj
+[27/58] Building C object CMakeFiles/ulmk.dir/board/board_timer.c.obj
+[28/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/irq/irq.c.obj
+[29/58] Building C object CMakeFiles/ulmk.dir/board/drivers/asclin/src/client.c.obj
+[30/58] Building C object CMakeFiles/ulmk.dir/board/drivers/gpio/src/client.c.obj
+[31/58] Building C object CMakeFiles/ulmk.dir/board/drivers/i2c/src/client.c.obj
+[32/58] Building C object CMakeFiles/ulmk.dir/board/drivers/can/src/client.c.obj
+[33/58] Building C object CMakeFiles/ulmk.dir/board/drivers/pwm/src/client.c.obj
+[34/58] Building C object CMakeFiles/ulmk.dir/board/drivers/adc/src/client.c.obj
+[35/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/mem/tlsf.c.obj
+[36/58] Building C object CMakeFiles/ulmk.dir/board/drivers/pinmux/src/server.c.obj
+[37/58] Building C object CMakeFiles/ulmk.dir/board/deps/illd_tc2x/src/TC27D/BaseSw/iLLD/TC27D/Tricore/_PinMap/IfxVadc_PinMap.c.obj
+[38/58] Building C object CMakeFiles/ulmk.dir/board/deps/illd_tc2x/src/TC27D/BaseSw/iLLD/TC27D/Tricore/_PinMap/IfxPort_PinMap.c.obj
+[39/58] Building C object CMakeFiles/ulmk.dir/board/deps/illd_tc2x/src/TC27D/BaseSw/iLLD/TC27D/Tricore/_PinMap/IfxAsclin_PinMap.c.obj
+[40/58] Building C object CMakeFiles/ulmk.dir/kernel/init/user_entry.c.obj
+[41/58] Building C object CMakeFiles/ulmk.dir/board/deps/illd_tc2x/src/TC27D/BaseSw/iLLD/TC27D/Tricore/_PinMap/IfxMultican_PinMap.c.obj
+[42/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/thread/thread.c.obj
+[43/58] Building C object CMakeFiles/ulmk.dir/board/deps/illd_tc2x/src/TC27D/BaseSw/iLLD/TC27D/Tricore/_PinMap/IfxI2c_PinMap.c.obj
+[44/58] Building C object CMakeFiles/ulmk.dir/board/board_init.c.obj
+[45/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/ipc/ep.c.obj
+[46/58] Building C object CMakeFiles/ulmk_kernel.dir/kernel/mem/mem.c.obj
+[47/58] Building C object CMakeFiles/ulmk.dir/board/drivers/i2c/src/server.c.obj
+[48/58] Building C object CMakeFiles/ulmk.dir/board/drivers/adc/src/server.c.obj
+[49/58] Building C object CMakeFiles/ulmk.dir/board/deps/illd_tc2x/src/TC27D/BaseSw/iLLD/TC27D/Tricore/Scu/Std/IfxScuEru.c.obj
+[50/58] Building C object CMakeFiles/ulmk.dir/board/drivers/gpio/src/server.c.obj
+[51/58] Building C object CMakeFiles/ulmk.dir/board/drivers/can/src/server.c.obj
+[52/58] Building C object CMakeFiles/ulmk.dir/board/drivers/pwm/src/server.c.obj
+[53/58] Building C object CMakeFiles/ulmk.dir/board/deps/illd_tc2x/src/TC27D/BaseSw/iLLD/TC27D/Tricore/_PinMap/IfxGtm_PinMap.c.obj
+[54/58] Building C object CMakeFiles/ulmk.dir/board/drivers/asclin/src/server.c.obj
+[55/58] Building C object CMakeFiles/ulmk_kernel.dir/arch/tricore/arch.c.obj
+[56/58] Linking C static library libulmk_kernel.a
+[57/58] Linking C static library board_components/board_blinky/libulmk_comp_board_blinky.a
+[58/58] Linking C executable ulmk
+   text	   data	    bss	    dec	    hex	filename
+  48060	      8	 129016	 177084	  2b3bc	/build/ulipe-tricore-tc275_lite/ulmk
+Build OK → /build/ulipe-tricore-tc275_lite/ulmk

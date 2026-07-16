@@ -1,0 +1,22 @@
+FAIL
+
+# board_blinky pinmux-fix sample (2026-07-16)
+# Protocol: OpenOCD reset halt → resume → sleep 5s → halt → reg PC + mdw scratch
+# ELF: /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+# scratch: g_ulmk_board_hil_scratch @ 0x70008280
+
+| tag   | config                     | PC         | symbol              | scratch @0x70008280 | verdict |
+|-------|----------------------------|------------|---------------------|---------------------|---------|
+| naked | tc275_no_wdt_disarm.cfg    | 0xa0000162 | _trap_class3        | 00000001 00000000   | FAIL    |
+| hil   | tc275_lite_hil.cfg         | 0xa00064e8 | ulmk_arch_cpu_idle  | 00000003 00000063   | PASS    |
+
+## nm
+70008280 B g_ulmk_board_hil_scratch
+a00064e4 T ulmk_arch_cpu_idle
+a0000160 T _trap_class3
+
+## Summary
+VERDICT: FAIL
+- PASS requires naked idle (or scratch>=3) without _trap_class*
+- naked: PC=_trap_class3, scratch=1 → FAIL
+- hil: PC=ulmk_arch_cpu_idle (+4), scratch=3 → PASS

@@ -1,0 +1,7 @@
+70008280 B g_ulmk_board_hil_scratch
+a0000160 T _trap_class3
+a00064e4 T ulmk_arch_cpu_idle
+a00064ea T ulmk_arch_cpu_idle_end
+a0008c0c T ulmk_board_i2c0_hw_init
+a0008f6e T ulmk_board_i2c0_hw_init_end
+a0008f92 T ulmk_board_wdt_disable_early

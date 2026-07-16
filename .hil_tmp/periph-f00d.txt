@@ -1,0 +1,450 @@
+periph-f00d findings
+====================
+ELF: /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+deps: /home/ulipe/fun/ulmk_boards/tc275_lite/deps
+docker: /snap/bin/docker  image: ulipe-microkernel:dev
+
+VERDICT
+-------
+0xF00D0000 / 0xF00D0008 belong to I2C0 kernel/system registers:
+
+  MODULE_I2C0 base = 0xF00C0000  (IfxI2c_reg.h)
+  I2C0_CLC1        = 0xF00C0000  (clock control 1 at module base)
+  I2C0_CLC         = 0xF00D0000  (CLC at +0x10000 from MODULE base)
+  I2C0_MODID       = 0xF00D0004
+  I2C0_GPCTL       = 0xF00D0008
+  I2C0_ACCEN0      = 0xF00D000C
+  ...
+
+No MODULE_* macro is defined as 0xF00D0000 itself.
+The MODULE that owns that address space is MODULE_I2C0 @ 0xF00C0000
+(with CLC/GPCTL living at the +0x10000 "kernel" window 0xF00Dxxxx).
+
+Only IfxI2c_reg.h contains literal 0xF00D* addresses under deps.
+
+DISASSEMBLY DECODE (bsp_enable_module_clocks @ 0xa0008e06)
+----------------------------------------------------------
+Around 0xa000956c the code builds address 0xF00D0008:
+
+  movh  %d2, 61452          ; 0xF00C << 16 = 0xF00C0000
+  mov.a %a2, %d2
+  lea   %a2, [%a2]8         ; +8
+  addih.a %a2, %a2, 1       ; +0x10000 => 0xF00D0008 = I2C0_GPCTL
+  ld.w  %d2, [%a2]
+  insert %d2, %d2, 2, 0, 3  ; write bits[2:0]=2 into GPCTL?
+  st.w  [%a2], %d2
+
+Just before that (0xa0009550..955a):
+  same base construction with lea 12 + addih 1 => 0xF00D000C = I2C0_ACCEN0
+  st.w [%a2], -1            ; unlock ACCEN0
+
+Earlier in the same window: accesses at 0xF00C0040 (MODULE_I2C0 + 0x40).
+
+After 0xa0009572: SRC-style setup with movh 61443 (0xF003) + addi 24832
+  => 0xF0036100 (likely SRC_I2C0_*), then wait DISS/RMC style loop.
+
+IfxI2c_reg.h snippet (MODULE + F00D regs)
+-----------------------------------------
+#define MODULE_I2C0 /*lint --e(923)*/ (*(Ifx_I2C*)0xF00C0000u)
+/** \}  */
+/******************************************************************************/
+/******************************************************************************/
+/** \addtogroup IfxLld_I2c_Cfg_I2c0
+ * \{  */
+
+/** \brief  1000C, Access Enable Register 0 */
+#define I2C0_ACCEN0 /*lint --e(923)*/ (*(volatile Ifx_I2C_ACCEN0*)0xF00D000Cu)
+
+/** \brief  10010, Access Enable Register 1 */
+#define I2C0_ACCEN1 /*lint --e(923)*/ (*(volatile Ifx_I2C_ACCEN1*)0xF00D0010u)
+
+/** \brief  20, Address Configuration Register */
+#define I2C0_ADDRCFG /*lint --e(923)*/ (*(volatile Ifx_I2C_ADDRCFG*)0xF00C0020u)
+
+/** \brief  24, Bus Status Register */
+#define I2C0_BUSSTAT /*lint --e(923)*/ (*(volatile Ifx_I2C_BUSSTAT*)0xF00C0024u)
+
+/** \brief  10000, Clock Control Register */
+#define I2C0_CLC /*lint --e(923)*/ (*(volatile Ifx_I2C_CLC*)0xF00D0000u)
+
+/** \brief  0, Clock Control 1 Register */
+#define I2C0_CLC1 /*lint --e(923)*/ (*(volatile Ifx_I2C_CLC1*)0xF00C0000u)
+
+/** \brief  14, End Data Control Register */
+#define I2C0_ENDDCTRL /*lint --e(923)*/ (*(volatile Ifx_I2C_ENDDCTRL*)0xF00C0014u)
+
+/** \brief  68, Error Interrupt Request Source Clear Register */
+#define I2C0_ERRIRQSC /*lint --e(923)*/ (*(volatile Ifx_I2C_ERRIRQSC*)0xF00C0068u)
+
+/** \brief  60, Error Interrupt Request Source Mask Register */
+#define I2C0_ERRIRQSM /*lint --e(923)*/ (*(volatile Ifx_I2C_ERRIRQSM*)0xF00C0060u)
+
+/** \brief  64, Error Interrupt Request Source Status Register */
+#define I2C0_ERRIRQSS /*lint --e(923)*/ (*(volatile Ifx_I2C_ERRIRQSS*)0xF00C0064u)
+
+/** \brief  18, Fractional Divider Configuration Register */
+#define I2C0_FDIVCFG /*lint --e(923)*/ (*(volatile Ifx_I2C_FDIVCFG*)0xF00C0018u)
+
+/** \brief  1C, Fractional Divider High-speed Mode Configuration Register */
+#define I2C0_FDIVHIGHCFG /*lint --e(923)*/ (*(volatile Ifx_I2C_FDIVHIGHCFG*)0xF00C001Cu)
+
+/** \brief  38, Filled FIFO Stages Status Register */
+#define I2C0_FFSSTAT /*lint --e(923)*/ (*(volatile Ifx_I2C_FFSSTAT*)0xF00C0038u)
+
+/** \brief  28, FIFO Configuration Register */
+#define I2C0_FIFOCFG /*lint --e(923)*/ (*(volatile Ifx_I2C_FIFOCFG*)0xF00C0028u)
+
+/** \brief  10008, General Purpose Control Register */
+#define I2C0_GPCTL /*lint --e(923)*/ (*(volatile Ifx_I2C_GPCTL*)0xF00D0008u)
+
+/** \brief  8C, Interrupt Clear Register */
+#define I2C0_ICR /*lint --e(923)*/ (*(volatile Ifx_I2C_ICR*)0xF00C008Cu)
+
+/** \brief  8, Module Identification Register */
+#define I2C0_ID /*lint --e(923)*/ (*(volatile Ifx_I2C_ID*)0xF00C0008u)
+
+/** \brief  84, Interrupt Mask Control Register */
+#define I2C0_IMSC /*lint --e(923)*/ (*(volatile Ifx_I2C_IMSC*)0xF00C0084u)
+
+/** \brief  90, Interrupt Set Register */
+#define I2C0_ISR /*lint --e(923)*/ (*(volatile Ifx_I2C_ISR*)0xF00C0090u)
+
+/** \brief  10014, Kernel Reset Register 0 */
+#define I2C0_KRST0 /*lint --e(923)*/ (*(volatile Ifx_I2C_KRST0*)0xF00D0014u)
+
+/** \brief  10018, Kernel Reset Register 1 */
+#define I2C0_KRST1 /*lint --e(923)*/ (*(volatile Ifx_I2C_KRST1*)0xF00D0018u)
+
+/** \brief  1001C, Kernel Reset Status Clear Register */
+#define I2C0_KRSTCLR /*lint --e(923)*/ (*(volatile Ifx_I2C_KRSTCLR*)0xF00D001Cu)
+
+/** \brief  88, Masked Interrupt Status Register */
+#define I2C0_MIS /*lint --e(923)*/ (*(volatile Ifx_I2C_MIS*)0xF00C0088u)
+
+/** \brief  10004, Module Identification Register */
+#define I2C0_MODID /*lint --e(923)*/ (*(volatile Ifx_I2C_MODID*)0xF00D0004u)
+
+/** \brief  2C, Maximum Received Packet Size Control Register */
+#define I2C0_MRPSCTRL /*lint --e(923)*/ (*(volatile Ifx_I2C_MRPSCTRL*)0xF00C002Cu)
+
+grep MODULE_.*0xF00 in Ifx*_reg.h (excluding IfxMc_reg.h bulk)
+--------------------------------------------------------------
+IfxAsclin_reg.h:#define MODULE_ASCLIN0 /*lint --e(923)*/ (*(Ifx_ASCLIN*)0xF0000600u)
+IfxAsclin_reg.h:#define MODULE_ASCLIN1 /*lint --e(923)*/ (*(Ifx_ASCLIN*)0xF0000700u)
+IfxAsclin_reg.h:#define MODULE_ASCLIN2 /*lint --e(923)*/ (*(Ifx_ASCLIN*)0xF0000800u)
+IfxAsclin_reg.h:#define MODULE_ASCLIN3 /*lint --e(923)*/ (*(Ifx_ASCLIN*)0xF0000900u)
+IfxCan_reg.h:#define MODULE_CAN /*lint --e(923)*/ (*(Ifx_CAN*)0xF0018000u)
+IfxCbs_reg.h:#define MODULE_CBS /*lint --e(923)*/ ((*(Ifx_CBS *)0xF0000400u))
+IfxCcu6_reg.h:#define MODULE_CCU60 /*lint --e(923)*/ (*(Ifx_CCU6*)0xF0002A00u)
+IfxCcu6_reg.h:#define MODULE_CCU61 /*lint --e(923)*/ (*(Ifx_CCU6*)0xF0002B00u)
+IfxDma_reg.h:#define MODULE_DMA /*lint --e(923)*/ (*(Ifx_DMA*)0xF0010000u)
+IfxDsadc_reg.h:#define MODULE_DSADC /*lint --e(923)*/ (*(Ifx_DSADC*)0xF0024000u)
+IfxEray_reg.h:#define MODULE_ERAY0 /*lint --e(923)*/ (*(Ifx_ERAY*)0xF001C000u)
+IfxEth_reg.h:#define MODULE_ETH /*lint --e(923)*/ (*(Ifx_ETH*)0xF001D000u)
+IfxFce_reg.h:#define MODULE_FCE0 /*lint --e(923)*/ (*(Ifx_FCE*)0xF0003F00u)
+IfxGpt12_reg.h:#define MODULE_GPT120 /*lint --e(923)*/ (*(Ifx_GPT12*)0xF0002E00u)
+IfxHsct_reg.h:#define MODULE_HSCT /*lint --e(923)*/ (*(Ifx_HSCT*)0xF0090000u)
+IfxHssl_reg.h:#define MODULE_HSSL /*lint --e(923)*/ (*(Ifx_HSSL*)0xF0080000u)
+IfxI2c_reg.h:#define MODULE_I2C0 /*lint --e(923)*/ (*(Ifx_I2C*)0xF00C0000u)
+IfxInt_reg.h:#define MODULE_INT /*lint --e(923)*/ (*(Ifx_INT*)0xF0037000u)
+IfxIom_reg.h:#define MODULE_IOM /*lint --e(923)*/ (*(Ifx_IOM*)0xF0035000u)
+IfxMsc_reg.h:#define MODULE_MSC0 /*lint --e(923)*/ (*(Ifx_MSC*)0xF0002600u)
+IfxMsc_reg.h:#define MODULE_MSC1 /*lint --e(923)*/ (*(Ifx_MSC*)0xF0002700u)
+IfxMtu_reg.h:#define MODULE_MTU /*lint --e(923)*/ (*(Ifx_MTU*)0xF0060000u)
+IfxPort_reg.h:#define MODULE_P00 /*lint --e(923)*/ (*(Ifx_P*)0xF003A000u)
+IfxPort_reg.h:#define MODULE_P01 /*lint --e(923)*/ (*(Ifx_P*)0xF003A100u)
+IfxPort_reg.h:#define MODULE_P02 /*lint --e(923)*/ (*(Ifx_P*)0xF003A200u)
+IfxPort_reg.h:#define MODULE_P10 /*lint --e(923)*/ (*(Ifx_P*)0xF003B000u)
+IfxPort_reg.h:#define MODULE_P11 /*lint --e(923)*/ (*(Ifx_P*)0xF003B100u)
+IfxPort_reg.h:#define MODULE_P12 /*lint --e(923)*/ (*(Ifx_P*)0xF003B200u)
+IfxPort_reg.h:#define MODULE_P13 /*lint --e(923)*/ (*(Ifx_P*)0xF003B300u)
+IfxPort_reg.h:#define MODULE_P14 /*lint --e(923)*/ (*(Ifx_P*)0xF003B400u)
+IfxPort_reg.h:#define MODULE_P15 /*lint --e(923)*/ (*(Ifx_P*)0xF003B500u)
+IfxPort_reg.h:#define MODULE_P20 /*lint --e(923)*/ (*(Ifx_P*)0xF003C000u)
+IfxPort_reg.h:#define MODULE_P21 /*lint --e(923)*/ (*(Ifx_P*)0xF003C100u)
+IfxPort_reg.h:#define MODULE_P22 /*lint --e(923)*/ (*(Ifx_P*)0xF003C200u)
+IfxPort_reg.h:#define MODULE_P23 /*lint --e(923)*/ (*(Ifx_P*)0xF003C300u)
+IfxPort_reg.h:#define MODULE_P32 /*lint --e(923)*/ (*(Ifx_P*)0xF003D200u)
+IfxPort_reg.h:#define MODULE_P33 /*lint --e(923)*/ (*(Ifx_P*)0xF003D300u)
+IfxPort_reg.h:#define MODULE_P34 /*lint --e(923)*/ (*(Ifx_P*)0xF003D400u)
+IfxPort_reg.h:#define MODULE_P40 /*lint --e(923)*/ (*(Ifx_P*)0xF003E000u)
+IfxPsi5_reg.h:#define MODULE_PSI5 /*lint --e(923)*/ (*(Ifx_PSI5*)0xF0005000u)
+IfxPsi5s_reg.h:#define MODULE_PSI5S /*lint --e(923)*/ (*(Ifx_PSI5S*)0xF0007000u)
+IfxQspi_reg.h:#define MODULE_QSPI0 /*lint --e(923)*/ (*(Ifx_QSPI*)0xF0001C00u)
+IfxQspi_reg.h:#define MODULE_QSPI1 /*lint --e(923)*/ (*(Ifx_QSPI*)0xF0001D00u)
+IfxQspi_reg.h:#define MODULE_QSPI2 /*lint --e(923)*/ (*(Ifx_QSPI*)0xF0001E00u)
+IfxQspi_reg.h:#define MODULE_QSPI3 /*lint --e(923)*/ (*(Ifx_QSPI*)0xF0001F00u)
+IfxSbcu_reg.h:#define MODULE_SBCU0 /*lint --e(923)*/ (*(Ifx_SBCU*)0xF0030000u)
+IfxScu_reg.h:#define MODULE_SCU /*lint --e(923)*/ (*(Ifx_SCU*)0xF0036000u)
+IfxSent_reg.h:#define MODULE_SENT /*lint --e(923)*/ (*(Ifx_SENT*)0xF0003000u)
+IfxSmu_reg.h:#define MODULE_SMU /*lint --e(923)*/ (*(Ifx_SMU*)0xF0036800u)
+IfxSrc_reg.h:#define MODULE_SRC /*lint --e(923)*/ (*(Ifx_SRC*)0xF0038000u)
+IfxStm_reg.h:#define MODULE_STM0 /*lint --e(923)*/ (*(Ifx_STM*)0xF0000000u)
+IfxStm_reg.h:#define MODULE_STM1 /*lint --e(923)*/ (*(Ifx_STM*)0xF0000100u)
+IfxStm_reg.h:#define MODULE_STM2 /*lint --e(923)*/ (*(Ifx_STM*)0xF0000200u)
+IfxVadc_reg.h:#define MODULE_VADC /*lint --e(923)*/ (*(Ifx_VADC*)0xF0020000u)
+
+grep MODULE_.*0xF00 FULL (includes MC*; count below)
+----------------------------------------------------
+lines=142
+
+objdump -d --start-address=0xa0009500 --stop-address=0xa0009650
+---------------------------------------------------------------
+
+/elf/ulmk:     file format elf32-tricore
+
+
+Disassembly of section .user_runtime:
+
+a0009500 <bsp_enable_module_clocks+0x6fa>:
+a0009500:	00 2f       	.hword 0x2f00
+a0009502:	d9 23 00 10 	lea %a3,[%a2]64
+a0009506:	54 32       	ld.w %d2,[%a3]
+a0009508:	3b f0 03 30 	mov %d3,63
+a000950c:	37 32 06 20 	insert %d2,%d2,%d3,0,6
+a0009510:	d9 22 00 10 	lea %a2,[%a2]64
+a0009514:	74 22       	st.w [%a2],%d2
+a0009516:	91 c0 00 2f 	movh.a %a2,61452
+a000951a:	d9 23 00 10 	lea %a3,[%a2]64 <f00c0040 <_ulmk_user_text_end+0x500b1ac0>>
+a000951e:	54 32       	ld.w %d2,[%a3]
+a0009520:	b7 12 81 27 	insert %d2,%d2,1,15,1
+a0009524:	d9 22 00 10 	lea %a2,[%a2]64 <f00c0040 <_ulmk_user_text_end+0x500b1ac0>>
+a0009528:	74 22       	st.w [%a2],%d2
+a000952a:	91 c0 00 2f 	movh.a %a2,61452
+a000952e:	d9 23 00 10 	lea %a3,[%a2]64 <f00c0040 <_ulmk_user_text_end+0x500b1ac0>>
+a0009532:	54 32       	ld.w %d2,[%a3]
+a0009534:	b7 12 01 27 	insert %d2,%d2,1,14,1
+a0009538:	d9 22 00 10 	lea %a2,[%a2]64 <f00c0040 <_ulmk_user_text_end+0x500b1ac0>>
+a000953c:	74 22       	st.w [%a2],%d2
+a000953e:	91 c0 00 2f 	movh.a %a2,61452
+a0009542:	3b 00 02 20 	mov %d2,32
+a0009546:	e9 22 03 10 	st.b [%a2]67 <f00c0043 <_ulmk_user_text_end+0x500b1ac3>>,%d2
+a000954a:	7b c0 00 2f 	movh %d2,61452
+a000954e:	60 22       	mov.a %a2,%d2
+a0009550:	d9 22 0c 00 	lea %a2,[%a2]12
+a0009554:	11 12 00 20 	addih.a %a2,%a2,1
+a0009558:	82 f2       	mov %d2,-1
+a000955a:	74 22       	st.w [%a2],%d2
+a000955c:	7b c0 00 2f 	movh %d2,61452
+a0009560:	60 22       	mov.a %a2,%d2
+a0009562:	d9 22 08 00 	lea %a2,[%a2]8
+a0009566:	11 12 00 20 	addih.a %a2,%a2,1
+a000956a:	54 22       	ld.w %d2,[%a2]
+a000956c:	b7 22 03 20 	insert %d2,%d2,2,0,3
+a0009570:	74 22       	st.w [%a2],%d2
+a0009572:	b9 e2 fe ff 	ld.hu %d2,[%a14]-2
+a0009576:	7b 30 00 3f 	movh %d3,61443
+a000957a:	1b 03 10 36 	addi %d3,%d3,24832
+a000957e:	59 e3 e0 ef 	st.w [%a14]-96,%d3
+a0009582:	f9 e2 de ef 	st.h [%a14]-98,%d2
+a0009586:	99 e2 e0 ef 	ld.a %a2,[%a14]-96
+a000958a:	54 22       	ld.w %d2,[%a2]
+a000958c:	37 02 e1 20 	extr.u %d2,%d2,1,1
+a0009590:	8f f2 0f 21 	and %d2,%d2,255
+a0009594:	df 02 11 00 	jeq %d2,0,a00095b6 <bsp_enable_module_clocks+0x7b0>
+a0009598:	b9 e2 de ef 	ld.hu %d2,[%a14]-98
+a000959c:	06 22       	sh %d2,2
+a000959e:	8f 12 40 31 	or %d3,%d2,1
+a00095a2:	99 e2 e0 ef 	ld.a %a2,[%a14]-96
+a00095a6:	b9 22 02 00 	ld.hu %d2,[%a2]2
+a00095aa:	8f 02 01 20 	sh %d2,%d2,16
+a00095ae:	a6 32       	or %d2,%d3
+a00095b0:	99 e2 e0 ef 	ld.a %a2,[%a14]-96
+a00095b4:	74 22       	st.w [%a2],%d2
+a00095b6:	b9 e2 de ef 	ld.hu %d2,[%a14]-98
+a00095ba:	06 22       	sh %d2,2
+a00095bc:	8f 32 40 31 	or %d3,%d2,3
+a00095c0:	99 e2 e0 ef 	ld.a %a2,[%a14]-96
+a00095c4:	b9 22 02 00 	ld.hu %d2,[%a2]2
+a00095c8:	8f 02 01 20 	sh %d2,%d2,16
+a00095cc:	a6 32       	or %d2,%d3
+a00095ce:	99 e2 e0 ef 	ld.a %a2,[%a14]-96
+a00095d2:	74 22       	st.w [%a2],%d2
+a00095d4:	00 00       	nop 
+a00095d6:	99 e2 e0 ef 	ld.a %a2,[%a14]-96
+a00095da:	54 22       	ld.w %d2,[%a2]
+a00095dc:	37 02 61 20 	extr.u %d2,%d2,0,1
+a00095e0:	8f f2 0f 21 	and %d2,%d2,255
+a00095e4:	df 02 f9 7f 	jeq %d2,0,a00095d6 <bsp_enable_module_clocks+0x7d0>
+a00095e8:	00 00       	nop 
+a00095ea:	00 00       	nop 
+a00095ec:	00 90       	ret 
+
+a00095ee <ulmk_board_init>:
+a00095ee:	40 ae       	mov.aa %a14,%sp
+a00095f0:	6d ff ad f3 	call a0007d4a <wdt_disable_cpu0>
+a00095f4:	6d ff 4c f4 	call a0007e8c <wdt_disable_safety>
+a00095f8:	6d ff 3a f5 	call a000806c <pll_init_20mhz_200mhz>
+a00095fc:	6d ff 05 fc 	call a0008e06 <bsp_enable_module_clocks>
+a0009600:	00 00       	nop 
+a0009602:	00 90       	ret 
+
+a0009604 <ulmk_board_cpu_wdt_disable_self>:
+a0009604:	40 ae       	mov.aa %a14,%sp
+a0009606:	20 28       	sub.a %sp,40
+a0009608:	4d c0 e1 2f 	mfcr %d2,$core_id
+a000960c:	59 e2 f8 ff 	st.w [%a14]-8,%d2
+a0009610:	19 e2 f8 ff 	ld.w %d2,[%a14]-8
+a0009614:	8f 72 00 21 	and %d2,%d2,7
+a0009618:	59 e2 f8 ff 	st.w [%a14]-8,%d2
+a000961c:	19 e2 f8 ff 	ld.w %d2,[%a14]-8
+a0009620:	ff 32 e6 80 	jge.u %d2,3,a00097ec <ulmk_board_cpu_wdt_disable_self+0x1e8>
+a0009624:	7b 30 00 3f 	movh %d3,61443
+a0009628:	1b 03 00 36 	addi %d3,%d3,24576
+a000962c:	19 e2 f8 ff 	ld.w %d2,[%a14]-8
+a0009630:	53 c2 20 20 	mul %d2,%d2,12
+a0009634:	42 32       	add %d2,%d3
+a0009636:	60 22       	mov.a %a2,%d2
+a0009638:	d9 22 04 40 	lea %a2,[%a2]260
+a000963c:	54 22       	ld.w %d2,[%a2]
+a000963e:	37 02 e1 21 	extr.u %d2,%d2,3,1
+a0009642:	8f f2 0f 21 	and %d2,%d2,255
+a0009646:	df 02 d5 80 	jne %d2,0,a00097f0 <ulmk_board_cpu_wdt_disable_self+0x1ec>
+a000964a:	19 e2 f8 ff 	ld.w %d2,[%a14]-8
+a000964e:	53 c2       	.hword 0xc253
+
+
+FULL MODULE_.*0xF00 grep (all Ifx*_reg.h):
+------------------------------------------
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxAsclin_reg.h:#define MODULE_ASCLIN0 /*lint --e(923)*/ (*(Ifx_ASCLIN*)0xF0000600u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxAsclin_reg.h:#define MODULE_ASCLIN1 /*lint --e(923)*/ (*(Ifx_ASCLIN*)0xF0000700u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxAsclin_reg.h:#define MODULE_ASCLIN2 /*lint --e(923)*/ (*(Ifx_ASCLIN*)0xF0000800u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxAsclin_reg.h:#define MODULE_ASCLIN3 /*lint --e(923)*/ (*(Ifx_ASCLIN*)0xF0000900u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxCan_reg.h:#define MODULE_CAN /*lint --e(923)*/ (*(Ifx_CAN*)0xF0018000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxCbs_reg.h:#define MODULE_CBS /*lint --e(923)*/ ((*(Ifx_CBS *)0xF0000400u))
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxCcu6_reg.h:#define MODULE_CCU60 /*lint --e(923)*/ (*(Ifx_CCU6*)0xF0002A00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxCcu6_reg.h:#define MODULE_CCU61 /*lint --e(923)*/ (*(Ifx_CCU6*)0xF0002B00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxDma_reg.h:#define MODULE_DMA /*lint --e(923)*/ (*(Ifx_DMA*)0xF0010000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxDsadc_reg.h:#define MODULE_DSADC /*lint --e(923)*/ (*(Ifx_DSADC*)0xF0024000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxEray_reg.h:#define MODULE_ERAY0 /*lint --e(923)*/ (*(Ifx_ERAY*)0xF001C000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxEth_reg.h:#define MODULE_ETH /*lint --e(923)*/ (*(Ifx_ETH*)0xF001D000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxFce_reg.h:#define MODULE_FCE0 /*lint --e(923)*/ (*(Ifx_FCE*)0xF0003F00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxGpt12_reg.h:#define MODULE_GPT120 /*lint --e(923)*/ (*(Ifx_GPT12*)0xF0002E00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxHsct_reg.h:#define MODULE_HSCT /*lint --e(923)*/ (*(Ifx_HSCT*)0xF0090000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxHssl_reg.h:#define MODULE_HSSL /*lint --e(923)*/ (*(Ifx_HSSL*)0xF0080000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxI2c_reg.h:#define MODULE_I2C0 /*lint --e(923)*/ (*(Ifx_I2C*)0xF00C0000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxInt_reg.h:#define MODULE_INT /*lint --e(923)*/ (*(Ifx_INT*)0xF0037000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxIom_reg.h:#define MODULE_IOM /*lint --e(923)*/ (*(Ifx_IOM*)0xF0035000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC0 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC10 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061A00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC11 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061B00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC12 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061C00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC13 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061D00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC14 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061E00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC15 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061F00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC16 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC17 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062100u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC18 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062200u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC19 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062300u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC1 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061100u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC20 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062400u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC21 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062500u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC22 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062600u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC23 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062700u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC24 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062800u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC25 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062900u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC26 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062A00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC27 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062B00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC28 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062C00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC29 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062D00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC2 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061200u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC30 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062E00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC31 /*lint --e(923)*/ (*(Ifx_MC*)0xF0062F00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC32 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC33 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063100u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC34 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063200u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC35 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063300u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC36 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063400u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC37 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063500u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC38 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063600u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC39 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063700u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC3 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061300u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC40 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063800u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC41 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063900u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC42 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063A00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC43 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063B00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC44 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063C00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC45 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063D00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC46 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063E00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC47 /*lint --e(923)*/ (*(Ifx_MC*)0xF0063F00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC48 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC49 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064100u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC4 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061400u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC50 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064200u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC51 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064300u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC52 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064400u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC53 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064500u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC54 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064600u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC55 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064700u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC56 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064800u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC57 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064900u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC58 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064A00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC59 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064B00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC5 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061500u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC60 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064C00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC61 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064D00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC62 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064E00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC63 /*lint --e(923)*/ (*(Ifx_MC*)0xF0064F00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC64 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC65 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065100u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC66 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065200u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC67 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065300u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC68 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065400u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC69 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065500u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC6 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061600u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC70 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065600u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC71 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065700u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC72 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065800u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC73 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065900u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC74 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065A00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC75 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065B00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC76 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065C00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC77 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065D00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC78 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065E00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC79 /*lint --e(923)*/ (*(Ifx_MC*)0xF0065F00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC7 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061700u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC80 /*lint --e(923)*/ (*(Ifx_MC*)0xF0066000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC81 /*lint --e(923)*/ (*(Ifx_MC*)0xF0066100u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC82 /*lint --e(923)*/ (*(Ifx_MC*)0xF0066200u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC83 /*lint --e(923)*/ (*(Ifx_MC*)0xF0066300u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC84 /*lint --e(923)*/ (*(Ifx_MC*)0xF0066400u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC85 /*lint --e(923)*/ (*(Ifx_MC*)0xF0066500u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC86 /*lint --e(923)*/ (*(Ifx_MC*)0xF0066600u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC87 /*lint --e(923)*/ (*(Ifx_MC*)0xF0066700u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC8 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061800u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMc_reg.h:#define MODULE_MC9 /*lint --e(923)*/ (*(Ifx_MC*)0xF0061900u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMsc_reg.h:#define MODULE_MSC0 /*lint --e(923)*/ (*(Ifx_MSC*)0xF0002600u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMsc_reg.h:#define MODULE_MSC1 /*lint --e(923)*/ (*(Ifx_MSC*)0xF0002700u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxMtu_reg.h:#define MODULE_MTU /*lint --e(923)*/ (*(Ifx_MTU*)0xF0060000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P00 /*lint --e(923)*/ (*(Ifx_P*)0xF003A000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P01 /*lint --e(923)*/ (*(Ifx_P*)0xF003A100u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P02 /*lint --e(923)*/ (*(Ifx_P*)0xF003A200u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P10 /*lint --e(923)*/ (*(Ifx_P*)0xF003B000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P11 /*lint --e(923)*/ (*(Ifx_P*)0xF003B100u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P12 /*lint --e(923)*/ (*(Ifx_P*)0xF003B200u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P13 /*lint --e(923)*/ (*(Ifx_P*)0xF003B300u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P14 /*lint --e(923)*/ (*(Ifx_P*)0xF003B400u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P15 /*lint --e(923)*/ (*(Ifx_P*)0xF003B500u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P20 /*lint --e(923)*/ (*(Ifx_P*)0xF003C000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P21 /*lint --e(923)*/ (*(Ifx_P*)0xF003C100u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P22 /*lint --e(923)*/ (*(Ifx_P*)0xF003C200u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P23 /*lint --e(923)*/ (*(Ifx_P*)0xF003C300u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P32 /*lint --e(923)*/ (*(Ifx_P*)0xF003D200u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P33 /*lint --e(923)*/ (*(Ifx_P*)0xF003D300u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P34 /*lint --e(923)*/ (*(Ifx_P*)0xF003D400u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPort_reg.h:#define MODULE_P40 /*lint --e(923)*/ (*(Ifx_P*)0xF003E000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPsi5_reg.h:#define MODULE_PSI5 /*lint --e(923)*/ (*(Ifx_PSI5*)0xF0005000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxPsi5s_reg.h:#define MODULE_PSI5S /*lint --e(923)*/ (*(Ifx_PSI5S*)0xF0007000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxQspi_reg.h:#define MODULE_QSPI0 /*lint --e(923)*/ (*(Ifx_QSPI*)0xF0001C00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxQspi_reg.h:#define MODULE_QSPI1 /*lint --e(923)*/ (*(Ifx_QSPI*)0xF0001D00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxQspi_reg.h:#define MODULE_QSPI2 /*lint --e(923)*/ (*(Ifx_QSPI*)0xF0001E00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxQspi_reg.h:#define MODULE_QSPI3 /*lint --e(923)*/ (*(Ifx_QSPI*)0xF0001F00u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxSbcu_reg.h:#define MODULE_SBCU0 /*lint --e(923)*/ (*(Ifx_SBCU*)0xF0030000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxScu_reg.h:#define MODULE_SCU /*lint --e(923)*/ (*(Ifx_SCU*)0xF0036000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxSent_reg.h:#define MODULE_SENT /*lint --e(923)*/ (*(Ifx_SENT*)0xF0003000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxSmu_reg.h:#define MODULE_SMU /*lint --e(923)*/ (*(Ifx_SMU*)0xF0036800u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxSrc_reg.h:#define MODULE_SRC /*lint --e(923)*/ (*(Ifx_SRC*)0xF0038000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxStm_reg.h:#define MODULE_STM0 /*lint --e(923)*/ (*(Ifx_STM*)0xF0000000u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxStm_reg.h:#define MODULE_STM1 /*lint --e(923)*/ (*(Ifx_STM*)0xF0000100u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxStm_reg.h:#define MODULE_STM2 /*lint --e(923)*/ (*(Ifx_STM*)0xF0000200u)
+/home/ulipe/fun/ulmk_boards/tc275_lite/deps/illd_tc2x/src/TC27D/BaseSw/Infra/Sfr/TC27D/_Reg/IfxVadc_reg.h:#define MODULE_VADC /*lint --e(923)*/ (*(Ifx_VADC*)0xF0020000u)

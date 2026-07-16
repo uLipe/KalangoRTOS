@@ -1,0 +1,9 @@
+warning: Architecture rejected target-supplied description
+0xa0000020 in _start ()
+Breakpoint 1 at 0xa00035d0
+Breakpoint 2 at 0xa00072ac
+Breakpoint 3 at 0xa00072d8
+SPAWN uattr=0x7000841c cpu_byte[28]=204 stack=70 prio=2 priv=1879086028 heap=1
+/elf/peek5.gdb:17: Error in sourced command file:
+Invalid argument syntax
+[Inferior 1 (Remote target) detached]

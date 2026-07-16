@@ -1,0 +1,9 @@
+=== ocd regs ===
+Error: Target not examined yet
+Error: Failed to run ocds sequence
+=== gdb ===
+tricore-elf-gdb: /lib/x86_64-linux-gnu/libm.so.6: version `GLIBC_2.38' not found (required by tricore-elf-gdb)
+tricore-elf-gdb: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.36' not found (required by tricore-elf-gdb)
+tricore-elf-gdb: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.38' not found (required by tricore-elf-gdb)
+=== addr2line hot PCs ===
+0xa0006d58: 

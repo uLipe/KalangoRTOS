@@ -1,0 +1,76 @@
+BMHD TC27x layout fix — HIL verdict
+====================================
+Date: 2026-07-16
+Board: ../ulmk_boards/tc275_lite
+Component: board_blinky
+ELF: /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk
+TAS: 127.0.0.1:24817 (tas_server up)
+bmhd.c rebuilt in link (bmhd.c.obj)
+
+SUCCESS criteria (naked):
+  ulmk_arch_cpu_idle  OR  scratch @ 0x70008280 == 00000003
+
+VERDICT: FAIL
+  Naked did NOT reach ulmk_arch_cpu_idle; scratch != 00000003.
+  Both naked and HIL halt in _trap_class3 after 5s run.
+
+-----------------------------------------------------------------------------
+1) Build
+-----------------------------------------------------------------------------
+  python3 tools/dev.py build --board ../ulmk_boards/tc275_lite \
+    --no-components --component board_blinky
+  → Build OK → /build/ulipe-tricore-tc275_lite/ulmk
+  → bmhd.c was recompiled
+
+2) Flash
+-----------------------------------------------------------------------------
+  ../ulmk_boards/tc275_lite/scripts/flash.sh <ELF>
+  → flash + start — done (49800 B, sectors 0-3)
+
+3) BMHD dump (flash @ 0xA0000000, openocd tc275_lite_hil.cfg, mdw 8)
+-----------------------------------------------------------------------------
+  OpenOCD words (host endian display of 32-bit LE memory):
+    0xa0000000: a0000020 b3590078 00000000 00000000
+                00000000 00000000 bba9d932 445626cd
+
+  Little-endian bytes (matches expected STAD / BMI+ID / CRC head):
+    A0000000: 20 00 00 A0   STAD = 0xA0000020
+    A0000004: 78 00 59 B3   BMI  = 0x0078 , BMHDID = 0xB359
+    A0000008: 00 00 00 00
+    A000000C: 00 00 00 00
+    A0000010: 00 00 00 00
+    A0000014: 00 00 00 00
+    A0000018: 32 D9 A9 BB   CRC head = 0xBBA9D932
+    A000001C: CD 26 56 44   (check word) = 0x445626CD
+
+  ELF .bmhd section identical to flash image (objdump -s -j .bmhd).
+  BMHD layout: PASS (programmed image matches TC27x expectation).
+
+4) NAKED sample (FIRST)
+-----------------------------------------------------------------------------
+  cfg: /home/ulipe/fun/ulmk/.hil_tmp/tc275_no_wdt_disarm.cfg
+       (hil.cfg minus reset-end WDT/CBS DAP disarm)
+  -c: gdb port disabled; init; halt; resume; sleep 5000; halt;
+      mdw 0x70008280 1; reg PC; shutdown
+
+  scratch 0x70008280: 00000001
+  PC:                 0xa0000178
+  addr2line:          _trap_class3 (??:?)
+  ulmk_arch_cpu_idle: a00064e4 (NOT current PC)
+
+  Naked SUCCESS criteria: FAIL
+
+5) HIL sample (same -c sequence, tc275_lite_hil.cfg WITH WDT disarm)
+-----------------------------------------------------------------------------
+  scratch 0x70008280: 00000001
+  PC:                 0xa0000178
+  addr2line:          _trap_class3 (??:?)
+
+  Same trap as naked — WDT disarm on reset-end did not change outcome.
+
+-----------------------------------------------------------------------------
+Summary
+-----------------------------------------------------------------------------
+  BMHD flash contents: OK (STAD/BMI/ID/CRC as expected)
+  Boot progress (naked SUCCESS): FAIL — Class 3 trap, scratch stuck at 1
+  Overall BMHD-fix boot verdict: FAIL

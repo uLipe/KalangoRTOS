@@ -1,0 +1,6 @@
+warning: Architecture rejected target-supplied description
+0xa00027bc in ulmk_kern_trap_panic ()
+PC=0xa00027bc
+/out/a14-diear.gdb:6: Error in sourced command file:
+cannot subscript something of type `void'
+[Inferior 1 (Remote target) detached]

@@ -1,0 +1,6 @@
+a0000020 T _start
+a0000000 R _ulmk_bmhd
+a0009dd0 T pinmux_init
+a0009ea8 T pinmux_init_end
+a00064e4 T ulmk_arch_cpu_idle
+a00064ea T ulmk_arch_cpu_idle_end

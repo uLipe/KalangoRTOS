@@ -1,0 +1,28 @@
+attach-summary (TC275 Lite, no reset issued this session)
+============================================================
+OpenOCD: listening on 127.0.0.1:3333 and :4444 (confirmed).
+
+PC:     0xa0000020  nearest symbol: _start
+In ulmk_kern_trap_panic?  NO  (trap_panic @ 0xa0002874)
+
+PCX:    0x00000000
+PSW:    0x18000b80  (IO=2 supervisor, IS=1, PRS=0, CDE=1, CDC=0x0)
+a10:    0xf0036000
+a11:    0xafffd154
+d15:    0x00000000
+fcx/lcx (via GDB): 0 / 0
+
+Console / HIL scratch (mdw 0x70009480..): all zeros
+  g_ulmk_board_hil_scratch @ 0x70009480 = 0
+  g_ulmk_console_log_len   @ 0x70009484 = 0
+  g_ulmk_console_log       @ 0x70009488 = empty
+  Console log text: (none)
+
+GDB: attached, halted at _start; remote closed mid-session after info registers.
+  info symbol $PC -> _start; bt -> No stack.
+  (x/8i $PC / info symbol after reconnect failed — connection drop)
+
+Interpretation: live state looks like post-reset / early boot entry
+(_start, empty CSA links, empty console ring) — overnight trap context
+was likely lost (e.g. prior hil.cfg connect_assert_srst), not recoverable
+from this attach.

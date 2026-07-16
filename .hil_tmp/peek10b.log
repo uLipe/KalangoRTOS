@@ -1,0 +1,10 @@
+warning: Architecture rejected target-supplied description
+0xa0006754 in ulmk_arch_cpu_idle ()
+scratch=c200 send=1 isr=0 seen=0
+'g_ulmk_percpu' has unknown type; cast it to its declared type
+GPSR10=20350c08 ICR1=88000 PC1=a000279c
+pc0=0xa0006754
+#0  0xa0006754 in ulmk_arch_cpu_idle ()
+#1  0xa000279c in idle_thread_entry ()
+#2  0xa0009238 in ulmk_user_thread_entry ()
+[Inferior 1 (Remote target) detached]

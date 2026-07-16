@@ -1,0 +1,214 @@
+ÿûÿûÿýÿþOpen On-Chip Debugger
+> reset halt
+> reg
+===== TriCore registers
+(0) d0 (/32)
+(1) d1 (/32)
+(2) d2 (/32)
+(3) d3 (/32)
+(4) d4 (/32)
+(5) d5 (/32)
+(6) d6 (/32)
+(7) d7 (/32)
+(8) d8 (/32)
+(9) d9 (/32)
+(10) d10 (/32)
+(11) d11 (/32)
+(12) d12 (/32)
+(13) d13 (/32)
+(14) d14 (/32)
+(15) d15 (/32)
+(16) a0 (/32)
+(17) a1 (/32)
+(18) a2 (/32)
+(19) a3 (/32)
+(20) a4 (/32)
+(21) a5 (/32)
+(22) a6 (/32)
+(23) a7 (/32)
+(24) a8 (/32)
+(25) a9 (/32)
+(26) a10 (/32)
+(27) a11 (/32)
+(28) a12 (/32)
+(29) a13 (/32)
+(30) a14 (/32)
+(31) a15 (/32)
+(32) PCX (/32)
+(33) PSW (/32)
+(34) PC (/32)
+> help reg
+  cti names
+        Lists all registered CTI objects by name (command valid any time)
+  dap init
+        Initialize all registered DAP instances (command valid any time)
+  dap names
+        Lists all registered DAP instances by name (command valid any time)
+  flash write_image [erase] [unlock] filename [offset [file_type]]
+        Write an image to flash.  Optionally first unprotect and/or erase
+        the region to be used. Allow optional offset from beginning of bank
+        (defaults to zero)
+  gdb report_register_access_error ('enable'|'disable')
+        enable or disable reporting register access errors (configuration
+        command)
+  gdb sync
+        next stepi will return immediately allowing GDB to fetch register
+        state without affecting target state (command valid any time)
+get_reg list
+      Get register values from the target
+reg [(register_number|register_name) [(value|'force')]]
+      display (reread from target with "force") or set a register; with no
+      arguments, displays all registers and their values
+set_reg dict
+      Set target register values
+  swo names
+        Lists all registered TPIU and SWO objects by name (command valid
+        any time)
+  tc27x.cpu0 get_reg list
+        Get register values from the target
+  tc27x.cpu0 set_reg dict
+        Set target register values
+  tpiu names
+        Lists all registered TPIU and SWO objects by name (command valid
+        any time)
+> help
+adapter
+      adapter command group (command valid any time)
+  adapter assert |deassert [srst|trst [assert|deassert srst|trst]]
+        Controls SRST and TRST lines.
+  adapter deassert |assert [srst|trst [deassert|assert srst|trst]]
+        Controls SRST and TRST lines.
+  adapter driver driver_name
+        Select a debug adapter driver (configuration command)
+  adapter gpio [
+            
+            do|tdi|tms|tck|trst|swdio|swdio_dir|swclk|srst|led[gpio_number]
+            [-chip chip_number] [-active-high|-active-low]
+            [-push-pull|-open-drain|-open-source]
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            e|-pull-up|-pull-down][-init-inactive|-init-active|-init-input]
+            ]
+        gpio adapter command group (configuration command)
+  adapter list
+        List all built-in debug adapter drivers (command valid any time)
+  adapter name
+        Returns the name of the currently selected adapter (driver)
+        (command valid any time)
+  adapter serial serial_string
+        Set the serial number of the adapter (configuration command)
+  adapter speed [khz]
+        With an argument, change to the specified maximum jtag speed.  For
+        JTAG, 0 KHz signifies adaptive clocking. With or without argument,
+        display current setting. (command valid any time)
+  adapter srst
+        srst adapter command group (command valid any time)
+    adapter srst delay [milliseconds]
+          delay after deasserting SRST in ms (command valid any time)
+    adapter srst pulse_width [milliseconds]
+          SRST assertion pulse width in ms (command valid any time)
+  adapter transports transport ...
+        Declare transports the adapter supports. (configuration command)
+  adapter usb
+        usb adapter command group (command valid any time)
+    adapter usb location [<bus>-port[.port]...]
+          display or set the USB bus location of the USB device
+          (configuration command)
+add_help_text command_name helptext_string
+      Add new command help text; Command can be multiple tokens. (command
+      valid any time)
+add_script_search_dir <directory>
+      dir to search for config files and scripts (command valid any time)
+add_usage_text command_name usage_string
+      Add new command usage text; command can be multiple tokens. (command
+      valid any time)
+bindto [name]
+      Specify address by name on which to listen for incoming TCP/IP
+      connections (configuration command)
+bp [<address> [<asid>] <length> ['hw'|'hw_ctx']]
+      list or set hardware or software breakpoint
+capture command
+      Capture progress output and return as tcl return value. If the
+      progress output was empty, return tcl return value. (command valid
+      any time)
+command
+      core command group (introspection) (command valid any time)
+  command mode [command_name ...]
+        Returns the command modes allowed by a command: 'any', 'config', or
+        'exec'. If no command is specified, returns the current command
+        mode. Returns 'unknown' if an unknown command is given. Command can
+        be multiple tokens. (command valid any time)
+cti
+      CTI commands (configuration command)
+  cti create name '-chain-position' name [options ...]
+        Creates a new CTI object (command valid any time)
+  cti names
+        Lists all registered CTI objects by name (command valid any time)
+dap
+      DAP commands (configuration command)
+  dap create name '-chain-position' name
+        Creates a new DAP instance (command valid any time)
+  dap info [ap_num | 'root']
+        display ROM table for specified MEM-AP (default MEM-AP of current
+        target) or the ADIv6 root ROM table of current target's DAP
+  dap init
+        Initialize all registered DAP instances (command valid any time)
+  dap names
+        Lists all registered DAP instances by name (command valid any time)
+debug_level number
+      Sets the verbosity level of debugging output. 0 shows errors only; 1
+      adds warnings; 2 (default) adds other info; 3 adds debugging; 4 adds
+      extra verbose debugging. (command valid any time)
+debug_reason
+      displays the debug reason of this target
+dump_image filename address size
+echo [-n] string
+      Logs a message at "user" priority. Option "-n" suppresses trailing
+      newline (command valid any time)
+exit
+      exit telnet session (command valid any time)
+fast_load
+      loads active fast load image to current target - mainly for profiling
+      purposes
+fast_load_image filename [address ['bin'|'ihex'|'elf'|'s19' [min_address
+          [max_length]]]]
+      Load image into server memory for later use by fast_load; primarily
+      for profiling (command valid any time)
+find <file>
+      print full path to file according to OpenOCD search rules (command
+      valid any time)
+flash
+      NOR flash command group (command valid any time)
+  flash bank bank_id driver_name base_address size_bytes chip_width_bytes
+            bus_width_bytes target [driver_options ...]
+        Define a new bank with the given name, using the specified NOR
+        flash driver. (configuration command)
+  flash banks
+        Display table with information about flash banks. (command valid
+        any time)
+  flash erase_address ['pad'] ['unlock'] address length
+        Erase flash sectors starting at address and continuing for length
+        bytes.  If 'pad' is specified, data outside that range may also be
+        erased: the start address may be decreased, and length increased,
+        so that all of the first and last sectors are erased. If 'unlock'
+        is specified, then the flash is unprotected before erasing.
+  flash erase_check bank_id
+        Check erase state of all blocks in a flash bank.
+  flash erase_sector bank_id first_sector_num (last_sector_num|'last')
+        Erase a range of sectors in a flash bank.
+  flash fillb address value n
+        Fill n bytes with 8-bit value, starting at word address.  (No
+        autoerase.)
+  flash filld address value n
+        Fill n double-words with 64-bit value, starting at word address. 
+        (No autoerase.)
+  flash fillh address value n
+        

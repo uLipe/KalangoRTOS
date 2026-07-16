@@ -1,0 +1,66 @@
+=== DEADD / naked-trap dump — 2026-07-16 ===
+ELF: /home/ulipe/fun/build/ulipe-tricore-tc275_lite/ulmk  (blinky, already flashed)
+CFG naked: /home/ulipe/fun/ulmk/.hil_tmp/tc275_no_wdt_disarm.cfg
+Protocol: OpenOCD reset halt → resume → sleep 3s → halt
+mfcr: NOT supported by this OpenOCD (invalid command name "mfcr")
+
+---------------------------------------------------------------------------
+PART1 — naked reset sample (trap)
+---------------------------------------------------------------------------
+PC     = 0xa0000162  _trap_class3 (+2)
+PCX    = 0x001701a8  → CSA head 0x70006a00
+PSW    = 0x08000a80
+A10    = 0xfffffbcc  (invalid SP — ISR/trap nesting)
+A11    = 0xa0000178  _trap_class3 (+24)
+D15    = 0x4         (Class3 TIN=4 = FCU free-context underflow)
+FCX    = 0x00000000  (empty free list — confirms FCU)
+LCX    = 0x000701a8
+
+CSFR MMIO via mdw (core0 base 0xF8810000 + offset):
+  DATR  @ 0xF881C000 = 0x00000000
+  DSTR  @ 0xF881C004 = 0xfffffff8
+  ?     @ 0xF881C008 = 0x70000000
+  DEADD @ 0xF881C00C = 0x70006a38
+
+*** FAULTING DATA ADDRESS (DEADD) = 0x70006a38 ***
+  - DSPR CSA pool near _ulmk_csa_pool end (pool ..0x70006a40)
+  - NOT near 0xF00* PORT space
+  - Note: current trap is Class3/FCU (not Class1 data protection); DEADD
+    may be stale leftover. Still no PORT address observed.
+
+SCU peek (readable): 0xF0036024 = 0x00000038
+PORT mdw 0xF003A000 / 0xF003B000: OCDS sequence FAIL (unreadable this session)
+hil scratch @0x70008280 after naked: 00000001 00000000  (died early)
+
+CSA A11 chain (8 frames) — addr2line:
+  F0  A11=0xa0006d58  ulmk_arch_trap_entry
+  F1  A11=0xa000019c  _trap_class4
+  F2  A11=0xa00032b2  _ulmk_printk
+  F3  A11=0xa0006d58  ulmk_arch_trap_entry
+  F4  A11=0xa000019c  _trap_class4
+  F5  A11=0xa00032b2  _ulmk_printk
+  F6  A11=0xa0006d58  ulmk_arch_trap_entry
+  F7  A11=0xa000019c  _trap_class4
+  → nested trap/printk loop exhausting CSA → FCU (Class3 TIN4)
+
+GDB info registers: available (d0-d15,a0-a15,lcx,fcx,pcx,psw,pc).
+  "info registers all" can drop GDB (reg_num=37) — avoid.
+
+---------------------------------------------------------------------------
+PART2 — attach without reset after HIL start
+---------------------------------------------------------------------------
+Sequence: hil.cfg reset+resume → kill openocd → sleep 2s →
+          tc275_attach_only.cfg (reset_config none) → halt sample
+
+ATTACH_WITHOUT_RESET_AFTER_HIL = SUCCESS
+
+Sample after attach-halt (board had kept running):
+  PC     = 0xa00064e8  ulmk_arch_cpu_idle
+  PCX    = 0x003700ae
+  DEADD  = 0x70006a38  (unchanged / stale)
+  scratch= 00000003 00000063  (healthy blinky progress)
+
+=> Attach-without-reset works on a RUNNING hil-started target.
+   Suitable for button-press sampling (halt-only, no SRST).
+
+Raw artifacts: telnet-deadd2.raw gdb-deadd2.raw telnet-attach-after-hil.raw

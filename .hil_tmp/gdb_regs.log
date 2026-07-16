@@ -1,0 +1,46 @@
+warning: Architecture rejected target-supplied description
+0xa0000162 in _trap_class3 ()
+Remote connection closed
+"monitor" command not supported by this target.
+"monitor" command not supported by this target.
+"monitor" command not supported by this target.
+d0             0x3fffc0            4194240
+d1             0x70000000          1879048192
+d2             0x0                 0
+d3             0x10                16
+d4             0x3                 3
+d5             0x4                 4
+d6             0x0                 0
+d7             0xa00               2560
+d8             0xfffffbcc          -1076
+d9             0x25                37
+d10            0x6c                108
+d11            0x7a                122
+d12            0x0                 0
+d13            0x800               2048
+d14            0x3000              12288
+d15            0x4                 4
+a0             0x70008000          0x70008000 <root_stack_g+3456>
+a1             0xa0008000          0xa0008000 <pll_init_20mhz_200mhz+2482>
+a2             0xa0005f5a          0xa0005f5a
+a3             0xa0005f07          0xa0005f07
+a4             0xa0005ee0          0xa0005ee0
+a5             0x70002a0c          0x70002a0c
+a6             0x0                 0x0
+a7             0x0                 0x0
+a8             0x70008000          0x70008000 <root_stack_g+3456>
+a9             0xa0008000          0xa0008000 <pll_init_20mhz_200mhz+2482>
+a10            0xfffffbcc          0xfffffbcc
+a11            0xa0000178          0xa0000178 <_trap_class3+24>
+a12            0xa0005ee0          0xa0005ee0
+a13            0xa0005ee1          0xa0005ee1
+a14            0xa0003204          0xa0003204 <_ulmk_printk+312>
+a15            0xa000316c          0xa000316c <_ulmk_printk+160>
+lcx            0x701a8             459176
+fcx            0x0                 0
+pcx            0x1701a8            1507752
+psw            0x8000a80           134220416
+pc             0xa0000162          0xa0000162 <_trap_class3+2>
+"monitor" command not supported by this target.
+"monitor" command not supported by this target.
+"monitor" command not supported by this target.

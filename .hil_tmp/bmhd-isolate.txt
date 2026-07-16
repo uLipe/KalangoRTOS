@@ -1,0 +1,13 @@
+=== naked + force PC=_start (no CBS) ===
+Info : [tc27x.cpu0] Examination succeed
+PC (/32): 0xa0000020
+0x70008280: 00000001 
+PC (/32): 0xa0000178
+=== naked BootROM path (no force PC) ===
+Info : [tc27x.cpu0] Examination succeed
+0x70008280: 00000001 
+PC (/32): 0xa0000162
+0xa0000000: a0000020 b3590078 00000000 00000000 00000000 00000000 bba9d932 445626cd 
+=== naked reset halt only (BootROM entry PC) ===
+Info : [tc27x.cpu0] Examination succeed
+PC (/32): 0xa0000020

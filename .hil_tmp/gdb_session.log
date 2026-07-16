@@ -1,0 +1,8 @@
+warning: Architecture rejected target-supplied description
+0xa0000162 in _trap_class3 ()
+PC=0xa0000162 D15=0x4
+PCXI=Value can't be converted to integer.
+Argument to arithmetic operation not a number or boolean.
+Invalid argument syntax
+Invalid argument syntax
+[Inferior 1 (Remote target) detached]

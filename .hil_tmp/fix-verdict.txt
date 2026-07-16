@@ -1,0 +1,18 @@
+FIX: no mem_map in timer/asclin/gpio; slim board_init; services restored
+===== naked =====
+Error: Target not examined yet
+Info : [tc27x.cpu0] Examination succeed
+0x70008280: 00000001 
+PC (/32): 0xa00027dc
+ulmk_kern_trap_panic
+??:?
+
+===== hil =====
+Error: Target not examined yet
+Info : [tc27x.cpu0] Examination succeed
+0x70008280: 00000001 
+PC (/32): 0xa00027dc
+ulmk_kern_trap_panic
+??:?
+
+NAKED: FAIL

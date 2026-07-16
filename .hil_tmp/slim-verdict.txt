@@ -1,0 +1,11 @@
+VERDICT slim board_init (ASCLIN+STM only)
+===== naked =====
+Error: Target not examined yet
+
+===== cbs =====
+Error: Target not examined yet
+
+===== hil =====
+Error: Target not examined yet
+
+NAKED: FAIL
