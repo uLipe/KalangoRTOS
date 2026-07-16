@@ -20,6 +20,9 @@
     .section .text._ulmk_cpu1_start, "ax"
     .global _ulmk_cpu1_start
     .type   _ulmk_cpu1_start, @function
+	.set WDTCPU1_CON0, 0xF003610C
+	.set WDTCPU1_CON1, 0xF0036110
+
 _ulmk_cpu1_start:
     disable
 
@@ -27,10 +30,66 @@ _ulmk_cpu1_start:
     lea     %a10, [%a10] lo:_ulmk_park_stack_cpu1_top
 
     /*
-     * WDTCPU1 is disarmed by OCDS (hil.cfg) and/or
-     * ulmk_board_cpu_wdt_disable_self() once C can run.  Do not touch
-     * EndInit here — a stuck ENDINIT wait hangs the core forever.
-     *
+     * Disarm WDTCPU1 before CSA construction.  OpenOCD reset-end may
+     * already have set DR, but button/PORST and flash paths without a
+     * sticky DAP poke leave the default timeout armed — CSA init is
+     * long enough to expire it.  Own-core EndInit only (never from CPU0).
+     */
+    movh.a  %a2, hi:WDTCPU1_CON0
+    lea     %a2, [%a2] lo:WDTCPU1_CON0
+    ld.w    %d0, [%a2]0
+    extr.u  %d8, %d0, 2, 14		/* PW */
+    mov     %d1, 0x3F
+    xor     %d8, %d1
+    extr.u  %d9, %d0, 16, 16		/* REL */
+    extr.u  %d2, %d0, 1, 1		/* LCK? */
+    jz      %d2, .L_wdt1_cle2
+    sh      %d0, %d8, 2
+    mov     %d1, 1
+    or      %d0, %d1
+    sh      %d1, %d9, 16
+    or      %d0, %d1
+    st.w    [%a2]0, %d0
+.L_wdt1_cle2:
+    sh      %d0, %d8, 2
+    mov     %d1, 2			/* ENDINIT=0 LCK=1 */
+    or      %d0, %d1
+    sh      %d1, %d9, 16
+    or      %d0, %d1
+    st.w    [%a2]0, %d0
+.L_wdt1_wait0:
+    ld.w    %d0, [%a2]0
+    and     %d1, %d0, 1
+    jnz     %d1, .L_wdt1_wait0
+
+    movh.a  %a3, hi:WDTCPU1_CON1
+    lea     %a3, [%a3] lo:WDTCPU1_CON1
+    mov     %d0, 8			/* DR=1 */
+    st.w    [%a3]0, %d0
+
+    ld.w    %d0, [%a2]0
+    extr.u  %d9, %d0, 16, 16
+    extr.u  %d2, %d0, 1, 1
+    jz      %d2, .L_wdt1_set2
+    sh      %d0, %d8, 2
+    mov     %d1, 1
+    or      %d0, %d1
+    sh      %d1, %d9, 16
+    or      %d0, %d1
+    st.w    [%a2]0, %d0
+.L_wdt1_set2:
+    sh      %d0, %d8, 2
+    mov     %d1, 3			/* ENDINIT=1 LCK=1 */
+    or      %d0, %d1
+    sh      %d1, %d9, 16
+    or      %d0, %d1
+    st.w    [%a2]0, %d0
+.L_wdt1_wait1:
+    ld.w    %d0, [%a2]0
+    and     %d1, %d0, 1
+    jz      %d1, .L_wdt1_wait1
+
+    /*
      * CSA free list for DSPR1 @ 0x6xxx_xxxx:
      *   link = 0x00060000 | extr.u(addr, 6, 16)
      */
