@@ -38,33 +38,18 @@
  *   Lower (SVLCX/RSLCX): PCXI A11 A2 A3 D0-D3 A4-A7 D4-D7
  *
  * For a freshly fabricated thread "to", ulmk_arch_ctx_init() builds:
- *   lower_csa[0]  = upper_link | UL_FLAG  (→ upper frame)
- *   lower_csa[1]  = _ulmk_thread_trampoline (A11 after RSLCX; RFE uses
- *                                          this for PC before restoring upper)
- *   lower_csa[8]  = arg pointer           (A4 after RSLCX, ABI pointer arg)
+ *   lower_csa[0]  = upper_link | UL_FLAG | PIE
+ *   lower_csa[1]  = ulmk_user_thread_entry (A11 after RSLCX)
+ *   lower_csa[8]  = thread entry fn       (A4 — ABI arg0)
+ *   lower_csa[9]  = thread arg            (A5 — ABI arg1)
  *   upper_csa[1]  = PSW
  *   upper_csa[2]  = stack_top             (A10)
- *   upper_csa[3]  = _ulmk_thread_trampoline (A11 register after RFE)
- *   upper_csa[10] = entry function        (A14 after RFE, trampoline calls it)
+ *   upper_csa[3]  = ulmk_user_thread_entry (RFE PC; must be in CPR 1)
  *
- * -------------------------------------------------------------------------
- * _ulmk_thread_trampoline — first instruction of every new thread
- * -------------------------------------------------------------------------
- *
- * After RSLCX + RFE:
- *   A10 = stack_top      (upper_csa[2] via RFE)
- *   A14 = entry function (upper_csa[10] via RFE)
- *   A4  = arg pointer    (lower_csa[8] via RSLCX)
- *
- * The trampoline JUMPS (JI, no CALL) to the common userspace entry
- * ulmk_user_thread_entry(entry, arg): A4 = entry, A5 = arg (TriCore ABI
- * pointer args A4-A7).  Jumping keeps the CSA chain depth identical to a
- * direct entry call; that shim runs the entry and, if it returns, issues
- * ulmk_thread_exit() so the thread is reaped cleanly.
+ * PC lands directly in .user_runtime so PRS 1 threads never fetch CPR 0.
  */
 
     .extern ulmk_arch_cpu_halt
-    .extern ulmk_user_thread_entry
 
 /* ---------------------------------------------------------------------------
  * ulmk_arch_ctx_switch
@@ -111,19 +96,3 @@ ulmk_arch_ctx_switch:
                                   * jump to A11 (entry or return address)  */
 
     .size ulmk_arch_ctx_switch, . - ulmk_arch_ctx_switch
-
-/* ---------------------------------------------------------------------------
- * _ulmk_thread_trampoline
- * ------------------------------------------------------------------------ */
-
-    .global _ulmk_thread_trampoline
-    .type   _ulmk_thread_trampoline, @function
-
-_ulmk_thread_trampoline:
-    mov.aa  %a5, %a4             /* a5 = arg  (2nd param)                  */
-    mov.aa  %a4, %a14            /* a4 = entry (1st param)                 */
-    movh.a  %a15, hi:ulmk_user_thread_entry
-    lea     %a15, [%a15] lo:ulmk_user_thread_entry
-    ji      %a15                 /* jump: ulmk_user_thread_entry(entry,arg)*/
-
-    .size _ulmk_thread_trampoline, . - _ulmk_thread_trampoline

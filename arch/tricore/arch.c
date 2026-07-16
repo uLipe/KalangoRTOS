@@ -184,7 +184,7 @@ void ulmk_arch_csa_pool_init(uintptr_t pool_base, size_t pool_size)
 	 */
 }
 
-extern void _ulmk_thread_trampoline(void);
+extern void ulmk_user_thread_entry(void (*entry)(void *arg), void *arg);
 
 /*
  * Fabricate the initial two-frame CSA chain for a new thread.
@@ -253,9 +253,8 @@ void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,
 		upper_csa[i] = 0u;
 	upper_csa[1]  = psw;
 	upper_csa[2]  = (uint32_t)stack_top;
-	upper_csa[3]  = (uint32_t)(uintptr_t)_ulmk_thread_trampoline;
-	upper_csa[10] = (uint32_t)(uintptr_t)entry;	/* A14: entry fn */
-
+	upper_csa[3]  = (uint32_t)(uintptr_t)ulmk_user_thread_entry;
+	
 	lower_link = csa_alloc();
 	lower_csa  = csa_link_to_addr(lower_link);
 	for (i = 0u; i < 16u; i++)
@@ -266,8 +265,9 @@ void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,
 	 * are left disabled in every new thread, blocking timer preemption.
 	 */
 	lower_csa[0] = upper_link | UL_CSA_UL_FLAG | (1u << 21);
-	lower_csa[1] = (uint32_t)(uintptr_t)_ulmk_thread_trampoline;
-	lower_csa[8] = (uint32_t)(uintptr_t)arg;	/* A4: pointer arg */
+	lower_csa[1] = (uint32_t)(uintptr_t)ulmk_user_thread_entry;
+	lower_csa[8] = (uint32_t)(uintptr_t)entry;	/* A4 */
+	lower_csa[9] = (uint32_t)(uintptr_t)arg;	/* A5 */
 
 	ctx->pcxi = lower_link;
 }
@@ -466,11 +466,10 @@ static void mpu_write_cpr(uint8_t slot, uint32_t lower, uint32_t upper)
  * ISYNC is issued at the end to flush the pipeline.
  */
 static void mpu_write_enables(uint8_t prs, uint32_t dpre, uint32_t dpwe,
-			      uint32_t cpre, uint32_t cpxe)
+			      uint32_t cpxe)
 {
 	mpu_mtcr(ULMK_ARCH_CSFR_DPRE_0 + (uint32_t)prs * 4u, dpre);
 	mpu_mtcr(ULMK_ARCH_CSFR_DPWE_0 + (uint32_t)prs * 4u, dpwe);
-	mpu_mtcr(ULMK_ARCH_CSFR_CPRE_0 + (uint32_t)prs * 4u, cpre);
 	mpu_mtcr(ULMK_ARCH_CSFR_CPXE_0 + (uint32_t)prs * 4u, cpxe);
 	__asm__ volatile("isync" ::: "memory");
 }
@@ -503,7 +502,7 @@ static uint8_t g_mpu_live;
 
 static uint32_t mpu_range_upper(uintptr_t end)
 {
-	return (uint32_t)end - 8u;
+	return (uint32_t)end & ~7u;
 }
 
 void ulmk_arch_mpu_init(void)
@@ -518,7 +517,6 @@ void ulmk_arch_mpu_init(void)
 	uintptr_t kram_hi;
 	uintptr_t uram_lo;
 	uintptr_t uram_hi;
-	uint32_t  prs1_cpre;
 	uint32_t  prs1_cpxe;
 	uint32_t  prs0_cpr;
 
@@ -549,7 +547,7 @@ void ulmk_arch_mpu_init(void)
 
 	/* Zero all PRS enable registers */
 	for (i = 0u; i < ULMK_ARCH_NUM_PRS; i++)
-		mpu_write_enables(i, 0u, 0u, 0u, 0u);
+		mpu_write_enables(i, 0u, 0u, 0u);
 
 	kexec_lo = (uintptr_t)_ulmk_kernel_exec_start;
 	kexec_hi = (uintptr_t)_ulmk_kernel_exec_end;
@@ -593,10 +591,8 @@ void ulmk_arch_mpu_init(void)
 
 	__asm__ volatile("isync" ::: "memory");
 
-	prs1_cpre = 0u;
 	prs1_cpxe = 0u;
 	if (utext_hi > utext_lo) {
-		prs1_cpre = (1u << ULMK_ARCH_MPU_CPR_USER);
 		prs1_cpxe = (1u << ULMK_ARCH_MPU_CPR_USER);
 	}
 
@@ -612,11 +608,7 @@ void ulmk_arch_mpu_init(void)
 	if (utext_hi > utext_lo)
 		prs0_cpr |= (1u << ULMK_ARCH_MPU_CPR_USER);
 
-	mpu_write_enables(0u,
-			  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
-			  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
-			  prs0_cpr,
-			  prs0_cpr);
+	mpu_write_enables(0u, (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u, (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u, prs0_cpr);
 
 	/*
 	 * PRS 1 (userspace): user RAM + MMIO/flash read; execute only user CPR.
@@ -627,7 +619,6 @@ void ulmk_arch_mpu_init(void)
 			  (1u << ULMK_ARCH_MPU_MMIO_DPR),
 			  (1u << ULMK_ARCH_MPU_URAM_DPR) |
 			  (1u << ULMK_ARCH_MPU_MMIO_DPR),
-			  prs1_cpre,
 			  prs1_cpxe);
 
 	/* PRS 2, 3: remain zeroed (unused) */
@@ -652,7 +643,7 @@ void ulmk_arch_mpu_disable(void)
 }
 
 static void mpu_prs1_static_enables(uint32_t *dpre, uint32_t *dpwe,
-				    uint32_t *cpre, uint32_t *cpxe)
+				    uint32_t *cpxe)
 {
 	uintptr_t utext_lo;
 	uintptr_t utext_hi;
@@ -667,10 +658,8 @@ static void mpu_prs1_static_enables(uint32_t *dpre, uint32_t *dpwe,
 		(1u << ULMK_ARCH_MPU_MMIO_DPR);
 	*dpwe = (1u << ULMK_ARCH_MPU_URAM_DPR) |
 		(1u << ULMK_ARCH_MPU_MMIO_DPR);
-	*cpre = 0u;
 	*cpxe = 0u;
 	if (utext_hi > utext_lo) {
-		*cpre = (1u << ULMK_ARCH_MPU_CPR_USER);
 		*cpxe = (1u << ULMK_ARCH_MPU_CPR_USER);
 	}
 }
@@ -719,7 +708,6 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 {
 	uint32_t dpre;
 	uint32_t dpwe;
-	uint32_t cpre;
 	uint32_t cpxe;
 	uint8_t  i;
 	uint8_t  prog;
@@ -740,11 +728,7 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 		if (utext_hi > utext_lo)
 			prs0_cpr |= (1u << ULMK_ARCH_MPU_CPR_USER);
 
-		mpu_write_enables(0u,
-				  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
-				  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
-				  prs0_cpr,
-				  prs0_cpr);
+		mpu_write_enables(0u, (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u, (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u, prs0_cpr);
 		g_mpu_prs     = 0u;
 		g_mpu_regions = NULL;
 		g_mpu_count   = 0u;
@@ -773,7 +757,7 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 		return;
 	}
 
-	mpu_prs1_static_enables(&dpre, &dpwe, &cpre, &cpxe);
+	mpu_prs1_static_enables(&dpre, &dpwe, &cpxe);
 
 	/*
 	 * Fast append: mem_map grew the table by one non-STACK region and the
@@ -795,7 +779,7 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 			if (regions[i].perms & ULMK_PERM_WRITE)
 				dpwe |= (1u << d_slot);
 		}
-		mpu_write_enables(prs, dpre, dpwe, cpre, cpxe);
+		mpu_write_enables(prs, dpre, dpwe, cpxe);
 		g_mpu_count = count;
 		g_mpu_live  = count;
 		return;
@@ -817,7 +801,7 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 			mpu_write_dpr(d_slot, 0u, 0u);
 	}
 
-	mpu_write_enables(prs, dpre, dpwe, cpre, cpxe);
+	mpu_write_enables(prs, dpre, dpwe, cpxe);
 
 	g_mpu_prs     = prs;
 	g_mpu_regions = regions;
