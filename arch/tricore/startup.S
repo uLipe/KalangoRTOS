@@ -21,6 +21,7 @@
     .extern _small_data3_
     .extern _small_data4_
     .extern ulmk_kern_start
+    .extern ulmk_board_wdt_disable_early
 
     .section .text._start, "ax"
     .global _start
@@ -29,9 +30,34 @@ _start:
     /* 0. Interrupts off until the kernel unlocks them. */
     disable
 
-    /* 1. Supervisor stack */
+    /*
+     * Board hook: disable CPU0 + Safety WDT before CSA construction.
+     * Default timeout can expire during the CSA loop on standalone reset
+     * (OpenOCD reset-end pokes WDT only under OCDS).  Weak stub is ji %a11.
+     * No CALL (CSA not ready).  ji needs a register operand; local .L labels
+     * have no hi/lo reloc — use a global continue label.
+     */
+    movh.a  %a11, hi:_start_after_wdt
+    lea     %a11, [%a11] lo:_start_after_wdt
+    movh.a  %a2, hi:ulmk_board_wdt_disable_early
+    lea     %a2, [%a2] lo:ulmk_board_wdt_disable_early
+    ji      %a2
+    .global _start_after_wdt
+_start_after_wdt:
+
+    /* 1. Supervisor stack + clear PSW.IS
+     *
+     * SSW / cold reset may leave PSW.IS=1.  board_init runs before arch_init
+     * programs ISP; an early class-4 with IS=1 then nests on a bad ISP and
+     * cascades.  Force IS=0 so A10 is the task/kernel stack throughout bring-up.
+     */
     movh.a  %a10, hi:_ulmk_kernel_stack_top
     lea     %a10, [%a10] lo:_ulmk_kernel_stack_top
+    mfcr    %d0, 0xFE04
+    mov     %d1, 0x200			/* PSW.IS */
+    andn    %d0, %d0, %d1
+    mtcr    0xFE04, %d0
+    isync
 
     /* 2. CSA free list construction.
      *

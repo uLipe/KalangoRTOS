@@ -204,6 +204,18 @@ void ulmk_kern_start(void);
 void ulmk_board_init(void);
 
 /*
+ * CPU EndInit unlock/relock for EndInit-protected CSFRs (BTV, BIV, ISP,
+ * SYSCON.PROTEN, …).  Board provides a strong implementation (WDT password
+ * sequence).  Weak no-ops in arch cover QEMU / boards without EndInit.
+ *
+ * OpenOCD's CBS_OCNTRL unlock makes these writes succeed without EndInit on
+ * the flash path; button/PORST do not — without these hooks BTV/ISP stay at
+ * reset defaults and the first SYSCALL class-4 traps (red ESR0).
+ */
+void ulmk_board_cpu_endinit_clear(void);
+void ulmk_board_cpu_endinit_set(void);
+
+/*
  * ulmk_arch_init - one-time CPU and peripheral initialisation
  * Called by ulmk_kern_start() after ulmk_board_init() and after .data/.bss
  * init.  Fills @info and returns; control passes to ulmk_kern_main().
