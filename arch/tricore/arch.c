@@ -203,7 +203,7 @@ void ulmk_arch_csa_pool_init(uintptr_t pool_base, size_t pool_size)
 	 */
 }
 
-extern void _ulmk_thread_trampoline(void);
+extern void ulmk_user_thread_entry(void (*entry)(void *arg), void *arg);
 
 /*
  * Fabricate the initial two-frame CSA chain for a new thread.
@@ -212,22 +212,24 @@ extern void _ulmk_thread_trampoline(void);
  *   Upper context (CALL/RFE): PCXI PSW A10 A11 D8-D11 A12-A15 D12-D15
  *   Lower context (SVLCX/RSLCX): PCXI A11 A2 A3 D0-D3 A4-A7 D4-D7
  *
- * RFE restores the upper context; PC is taken from A11 pre-restore.
- * lower_csa[1] = trampoline sets the jump target for the first RFE.
+ * First PC after RSLCX+RFE is upper A11.  That must be
+ * ulmk_user_thread_entry in .user_runtime (CPR 1): driver/user threads run
+ * with PSW.PRS=1 and cannot fetch from .kernel_text (CPR 0).  A kernel-side
+ * trampoline here causes class-1 MPX (tin=4) on the first instruction.
  *
  * Fabricated frames:
  *
  *   Upper CSA (UL=1):
  *     [0]  PCXI = 0     (terminal)
- *     [1]  PSW          (privilege)
+ *     [1]  PSW          (privilege + PRS)
  *     [2]  A10          (stack_top)
- *     [3]  A11          (trampoline — restored into A11 register by RFE)
- *     [10] A14          (entry function address — loaded by RFE into A14)
+ *     [3]  A11          (ulmk_user_thread_entry — RFE PC)
  *
  *   Lower CSA (UL=0):
- *     [0]  PCXI         (upper_link | UL_FLAG)
- *     [1]  A11          (trampoline — RFE uses this for PC before restore)
- *     [8]  A4           (arg pointer — restored by RSLCX, ABI-correct)
+ *     [0]  PCXI         (upper_link | UL_FLAG | PIE)
+ *     [1]  A11          (same entry; consistent with RSLCX restore)
+ *     [8]  A4           (thread entry fn — ABI arg0)
+ *     [9]  A5           (thread arg — ABI arg1)
  *
  * ctx->pcxi = lower_link (UL=0).
  */
@@ -241,6 +243,7 @@ void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,
 	uint32_t *lower_csa;
 	uint32_t psw;
 	uint32_t i;
+	uint32_t entry_pc;
 
 	/*
 	 * Build the initial PSW from the current kernel PSW, overriding the
@@ -266,14 +269,15 @@ void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,
 	if (priv != ULMK_PRIV_KERNEL)
 		psw |= (uint32_t)ULMK_ARCH_PRS_USER << 12;
 
+	entry_pc = (uint32_t)(uintptr_t)ulmk_user_thread_entry;
+
 	upper_link = csa_alloc();
 	upper_csa  = csa_link_to_addr(upper_link);
 	for (i = 0u; i < 16u; i++)
 		upper_csa[i] = 0u;
-	upper_csa[1]  = psw;
-	upper_csa[2]  = (uint32_t)stack_top;
-	upper_csa[3]  = (uint32_t)(uintptr_t)_ulmk_thread_trampoline;
-	upper_csa[10] = (uint32_t)(uintptr_t)entry;	/* A14: entry fn */
+	upper_csa[1] = psw;
+	upper_csa[2] = (uint32_t)stack_top;
+	upper_csa[3] = entry_pc;
 
 	lower_link = csa_alloc();
 	lower_csa  = csa_link_to_addr(lower_link);
@@ -285,8 +289,9 @@ void ulmk_arch_ctx_init(ulmk_arch_ctx_t *ctx,
 	 * are left disabled in every new thread, blocking timer preemption.
 	 */
 	lower_csa[0] = upper_link | UL_CSA_UL_FLAG | (1u << 21);
-	lower_csa[1] = (uint32_t)(uintptr_t)_ulmk_thread_trampoline;
-	lower_csa[8] = (uint32_t)(uintptr_t)arg;	/* A4: pointer arg */
+	lower_csa[1] = entry_pc;
+	lower_csa[8] = (uint32_t)(uintptr_t)entry;	/* A4 */
+	lower_csa[9] = (uint32_t)(uintptr_t)arg;	/* A5 */
 
 	ctx->pcxi = lower_link;
 }
@@ -493,15 +498,17 @@ static void mpu_write_cpr(uint8_t slot, uint32_t lower, uint32_t upper)
 }
 
 /*
- * Write DPRE, DPWE, CPRE, CPXE enable registers for a given PRS.
+ * Write DPRE, DPWE, CPXE enable registers for a given PRS.
  * ISYNC is issued at the end to flush the pipeline.
+ *
+ * TC2xx/TC3xx have no separate CPRE CSFR — only CPXE at 0xE000+prs*4.
+ * Writing a phantom "CPXE" at 0xE040 hits Safety RGNLA on TC27x.
  */
 static void mpu_write_enables(uint8_t prs, uint32_t dpre, uint32_t dpwe,
-			      uint32_t cpre, uint32_t cpxe)
+			      uint32_t cpxe)
 {
 	mpu_mtcr(ULMK_ARCH_CSFR_DPRE_0 + (uint32_t)prs * 4u, dpre);
 	mpu_mtcr(ULMK_ARCH_CSFR_DPWE_0 + (uint32_t)prs * 4u, dpwe);
-	mpu_mtcr(ULMK_ARCH_CSFR_CPRE_0 + (uint32_t)prs * 4u, cpre);
 	mpu_mtcr(ULMK_ARCH_CSFR_CPXE_0 + (uint32_t)prs * 4u, cpxe);
 	__asm__ volatile("isync" ::: "memory");
 }
@@ -532,9 +539,15 @@ static uint8_t g_mpu_count;
 static uint8_t g_mpu_prs = 0xFFu;
 static uint8_t g_mpu_live;
 
+/*
+ * AURIX CPR/DPR: address belongs to the range iff
+ *   lower <= addr < upper
+ * (`end` is the exclusive linker symbol).  Bits [2:0] of the bound registers
+ * are ignored; keep an 8-byte aligned exclusive upper.
+ */
 static uint32_t mpu_range_upper(uintptr_t end)
 {
-	return (uint32_t)end - 8u;
+	return (uint32_t)end & ~7u;
 }
 
 void ulmk_arch_mpu_init(void)
@@ -549,7 +562,6 @@ void ulmk_arch_mpu_init(void)
 	uintptr_t kram_hi;
 	uintptr_t uram_lo;
 	uintptr_t uram_hi;
-	uint32_t  prs1_cpre;
 	uint32_t  prs1_cpxe;
 	uint32_t  prs0_cpr;
 
@@ -562,10 +574,12 @@ void ulmk_arch_mpu_init(void)
 	extern uint8_t _ulmk_user_ram_start[];
 	extern uint8_t _ulmk_user_pool_end[];
 
-	/* Disable protection during reconfiguration */
+	/* Disable protection during reconfiguration (SYSCON is EndInit). */
+	ulmk_board_cpu_endinit_clear();
 	__asm__ volatile("mfcr %0, 0xFE14" : "=d"(syscon));
 	mpu_mtcr(ULMK_ARCH_CSFR_SYSCON, syscon & ~ULMK_ARCH_SYSCON_PROTEN);
 	__asm__ volatile("isync" ::: "memory");
+	ulmk_board_cpu_endinit_set();
 
 	g_mpu_regions = NULL;
 	g_mpu_count   = 0u;
@@ -580,7 +594,7 @@ void ulmk_arch_mpu_init(void)
 
 	/* Zero all PRS enable registers */
 	for (i = 0u; i < ULMK_ARCH_NUM_PRS; i++)
-		mpu_write_enables(i, 0u, 0u, 0u, 0u);
+		mpu_write_enables(i, 0u, 0u, 0u);
 
 	kexec_lo = (uintptr_t)_ulmk_kernel_exec_start;
 	kexec_hi = (uintptr_t)_ulmk_kernel_exec_end;
@@ -624,20 +638,17 @@ void ulmk_arch_mpu_init(void)
 
 	__asm__ volatile("isync" ::: "memory");
 
-	prs1_cpre = 0u;
 	prs1_cpxe = 0u;
-	if (utext_hi > utext_lo) {
-		prs1_cpre = (1u << ULMK_ARCH_MPU_CPR_USER);
+	if (utext_hi > utext_lo)
 		prs1_cpxe = (1u << ULMK_ARCH_MPU_CPR_USER);
-	}
 
 	/*
 	 * PRS 0 (kernel): all static DPR slots + kernel CPR execute.
 	 * DPR 0 already covers the full address space.  The kernel also needs
-	 * execute over the userspace CPR: the thread trampoline and the common
-	 * userspace entry live in user text, and kernel-privileged threads
-	 * (e.g. idle) start there too.  Granting the trusted kernel execute of
-	 * user text keeps isolation intact (PRS 1 still cannot reach CPR 0).
+	 * execute over the userspace CPR: ulmk_user_thread_entry lives in user
+	 * text, and kernel-privileged threads (e.g. idle) start there too.
+	 * Granting the trusted kernel execute of user text keeps isolation
+	 * intact (PRS 1 still cannot reach CPR 0).
 	 */
 	prs0_cpr = (1u << ULMK_ARCH_MPU_CPR_KERNEL);
 	if (utext_hi > utext_lo)
@@ -646,7 +657,6 @@ void ulmk_arch_mpu_init(void)
 	mpu_write_enables(0u,
 			  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
 			  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
-			  prs0_cpr,
 			  prs0_cpr);
 
 	/*
@@ -658,7 +668,6 @@ void ulmk_arch_mpu_init(void)
 			  (1u << ULMK_ARCH_MPU_MMIO_DPR),
 			  (1u << ULMK_ARCH_MPU_URAM_DPR) |
 			  (1u << ULMK_ARCH_MPU_MMIO_DPR),
-			  prs1_cpre,
 			  prs1_cpxe);
 
 	/* PRS 2, 3: remain zeroed (unused) */
@@ -668,22 +677,26 @@ void ulmk_arch_mpu_enable(void)
 {
 	uint32_t syscon;
 
+	ulmk_board_cpu_endinit_clear();
 	__asm__ volatile("mfcr %0, 0xFE14" : "=d"(syscon));
 	mpu_mtcr(ULMK_ARCH_CSFR_SYSCON, syscon | ULMK_ARCH_SYSCON_PROTEN);
 	__asm__ volatile("isync" ::: "memory");
+	ulmk_board_cpu_endinit_set();
 }
 
 void ulmk_arch_mpu_disable(void)
 {
 	uint32_t syscon;
 
+	ulmk_board_cpu_endinit_clear();
 	__asm__ volatile("mfcr %0, 0xFE14" : "=d"(syscon));
 	mpu_mtcr(ULMK_ARCH_CSFR_SYSCON, syscon & ~ULMK_ARCH_SYSCON_PROTEN);
 	__asm__ volatile("isync" ::: "memory");
+	ulmk_board_cpu_endinit_set();
 }
 
 static void mpu_prs1_static_enables(uint32_t *dpre, uint32_t *dpwe,
-				    uint32_t *cpre, uint32_t *cpxe)
+				    uint32_t *cpxe)
 {
 	uintptr_t utext_lo;
 	uintptr_t utext_hi;
@@ -698,12 +711,9 @@ static void mpu_prs1_static_enables(uint32_t *dpre, uint32_t *dpwe,
 		(1u << ULMK_ARCH_MPU_MMIO_DPR);
 	*dpwe = (1u << ULMK_ARCH_MPU_URAM_DPR) |
 		(1u << ULMK_ARCH_MPU_MMIO_DPR);
-	*cpre = 0u;
 	*cpxe = 0u;
-	if (utext_hi > utext_lo) {
-		*cpre = (1u << ULMK_ARCH_MPU_CPR_USER);
+	if (utext_hi > utext_lo)
 		*cpxe = (1u << ULMK_ARCH_MPU_CPR_USER);
-	}
 }
 
 static void mpu_write_user_slot(uint8_t idx, const ulmk_arch_region_t *r,
@@ -750,7 +760,6 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 {
 	uint32_t dpre;
 	uint32_t dpwe;
-	uint32_t cpre;
 	uint32_t cpxe;
 	uint8_t  i;
 	uint8_t  prog;
@@ -774,7 +783,6 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 		mpu_write_enables(0u,
 				  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
 				  (1u << ULMK_ARCH_MPU_NUM_DPR) - 1u,
-				  prs0_cpr,
 				  prs0_cpr);
 		g_mpu_prs     = 0u;
 		g_mpu_regions = NULL;
@@ -804,7 +812,7 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 		return;
 	}
 
-	mpu_prs1_static_enables(&dpre, &dpwe, &cpre, &cpxe);
+	mpu_prs1_static_enables(&dpre, &dpwe, &cpxe);
 
 	/*
 	 * Fast append: mem_map grew the table by one non-STACK region and the
@@ -826,7 +834,7 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 			if (regions[i].perms & ULMK_PERM_WRITE)
 				dpwe |= (1u << d_slot);
 		}
-		mpu_write_enables(prs, dpre, dpwe, cpre, cpxe);
+		mpu_write_enables(prs, dpre, dpwe, cpxe);
 		g_mpu_count = count;
 		g_mpu_live  = count;
 		return;
@@ -848,7 +856,7 @@ static void mpu_program_regions(uint8_t prs, const ulmk_arch_region_t *regions,
 			mpu_write_dpr(d_slot, 0u, 0u);
 	}
 
-	mpu_write_enables(prs, dpre, dpwe, cpre, cpxe);
+	mpu_write_enables(prs, dpre, dpwe, cpxe);
 
 	g_mpu_prs     = prs;
 	g_mpu_regions = regions;
@@ -951,11 +959,13 @@ void ulmk_arch_irq_vectors_init(uintptr_t btv, uintptr_t biv, uintptr_t isp_top)
 	uint32_t biv32 = (uint32_t)biv;
 	uint32_t isp32 = (uint32_t)isp_top;
 
+	ulmk_board_cpu_endinit_clear();
 	__asm__ volatile("dsync" ::: "memory");
 	__asm__ volatile("mtcr 0xFE24, %0" :: "d"(btv32));	/* BTV */
 	__asm__ volatile("mtcr 0xFE20, %0" :: "d"(biv32));	/* BIV, VSS=0 → 32-byte slots */
 	__asm__ volatile("mtcr 0xFE28, %0" :: "d"(isp32));	/* ISP */
 	__asm__ volatile("isync" ::: "memory");
+	ulmk_board_cpu_endinit_set();
 }
 
 void ulmk_arch_irq_src_configure(uint8_t srpn, uint8_t priority, uint8_t cpu_id)
@@ -1454,3 +1464,14 @@ void ulmk_arch_spin_unlock_irqrestore(ulmk_spinlock_t *lock,
 }
 
 /* send_ipi / secondary / park — arch/tricore/smp.c */
+
+/*
+ * Weak no-ops: QEMU and boards without CPU EndInit.  tc275_lite overrides.
+ */
+__attribute__((weak)) void ulmk_board_cpu_endinit_clear(void)
+{
+}
+
+__attribute__((weak)) void ulmk_board_cpu_endinit_set(void)
+{
+}
