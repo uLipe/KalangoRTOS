@@ -2,9 +2,9 @@
  * Layer 1 — kernel-owned, arch-independent.
  * Kernel executable code and read-only data.
  *
- * Not MPU-aligned: the kernel runs in supervisor mode and does not need
- * a protection range for its own code.  ALIGN(32) satisfies TriCore's
- * 32-byte instruction fetch granularity.
+ * ALIGN(32) at the start for TriCore fetch granularity.  ALIGN(ULMK_MPU_ALIGN)
+ * at the end so CPR 0 (programmed from _ulmk_kernel_exec_*) covers every
+ * instruction in the section — an unaligned end leaves a hole at the tail.
  *
  * Input sections are selected exclusively from the kernel static library
  * (libulmk_kernel.a) so that component code is never mixed in here.
@@ -20,6 +20,7 @@
          * .user_runtime makes mret fetchable from U-mode (illegal tin=2).
          */
         *libulmk_kernel.a:(.text .text.* .rodata.* .rodata)
+        . = ALIGN(ULMK_MPU_ALIGN);
         _ulmk_kernel_text_end = .;
         _ulmk_kernel_exec_end = .;
     } > KERNEL_FLASH
