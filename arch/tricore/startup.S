@@ -11,6 +11,9 @@
  *   2. Build CSA free list (FCX/LCX) — mandatory before ANY call
  *   3. Set small-data address registers (A0, A1, A8, A9)
  *   4. Jump to ulmk_kern_start() — does not return
+ *
+ * Board-specific bring-up (WDT, PLL, …) belongs in ulmk_board_init(), called
+ * from ulmk_kern_start() — never from this file.
  */
 
     .extern _ulmk_kernel_stack_top
@@ -21,7 +24,6 @@
     .extern _small_data3_
     .extern _small_data4_
     .extern ulmk_kern_start
-    .extern ulmk_board_wdt_disable_early
 
     .section .text._start, "ax"
     .global _start
@@ -30,23 +32,16 @@ _start:
     /* 0. Interrupts off until the kernel unlocks them. */
     disable
 
-    /*
-     * Board hook: disable CPU0 + Safety WDT before CSA construction.
+    /* 1. Supervisor stack + clear PSW.IS
+     *
+     * SSW / cold reset may leave PSW.IS=1.  board_init runs before arch_init
+     * programs ISP; an early class-4 with IS=1 then nests on a bad ISP and
+     * cascades.  Force IS=0 so A10 is the task/kernel stack throughout bring-up.
      */
-    movh.a  %a11, hi:_start_after_wdt
-    lea     %a11, [%a11] lo:_start_after_wdt
-    movh.a  %a2, hi:ulmk_board_wdt_disable_early
-    lea     %a2, [%a2] lo:ulmk_board_wdt_disable_early
-    ji      %a2
-    .global _start_after_wdt
-_start_after_wdt:
-
-    /* 1. Supervisor stack + clear PSW.IS */
-
     movh.a  %a10, hi:_ulmk_kernel_stack_top
     lea     %a10, [%a10] lo:_ulmk_kernel_stack_top
     mfcr    %d0, 0xFE04
-    mov     %d1, 0x200
+    mov     %d1, 0x200			/* PSW.IS */
     andn    %d0, %d0, %d1
     mtcr    0xFE04, %d0
     isync
@@ -114,7 +109,7 @@ _start_after_wdt:
     movh.a  %a9, hi:_small_data4_
     lea     %a9, [%a9] lo:_small_data4_
 
-    /* 4. Common C runtime bring-up (relocates .data/.bss, calls kernel). */
+    /* 4. Common C runtime bring-up (relocates .data/.bss, calls board_init). */
     j       ulmk_kern_start
 
 .L_hang:
