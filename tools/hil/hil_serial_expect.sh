@@ -55,9 +55,11 @@ sleep 0.2
 
 if [[ -n "${ULMK_HIL_OCD:-}" && -n "${ULMK_HIL_OCD_CFG:-}" ]]; then
 	pkill -9 -x openocd 2>/dev/null || true
+	# Prefer hot-attach release (WDT disarm + HARR clear).  "reset halt" races
+	# the OCDS sequencer on TAS and can leave the core stuck at STAD.
 	"${ULMK_HIL_OCD}" -s "${ULMK_HIL_OCD_SCRIPTS}" -s "${ULMK_HIL_OCD_BOARD_DIR}" \
 		-f "${ULMK_HIL_OCD_CFG}" \
-		-c "gdb port disabled; init; reset halt; resume; shutdown" \
+		-c "gdb port disabled; reset_config none separate; init; targets tc27x.cpu0; ulmk_release_run; resume; after 200; shutdown" \
 		>/dev/null 2>&1 || true
 fi
 
