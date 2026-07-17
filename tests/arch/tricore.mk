@@ -17,7 +17,6 @@ ARCH_LDFLAGS := -mcpu=tc39xx
 
 ARCH_KERNEL_SRCS := \
 	$(ROOT)/arch/tricore/startup.S \
-	$(ROOT)/arch/tricore/board_wdt_early_stub.S \
 	$(ROOT)/arch/tricore/arch.c \
 	$(ROOT)/arch/tricore/smp.c \
 	$(ROOT)/arch/tricore/ctx_switch.S \

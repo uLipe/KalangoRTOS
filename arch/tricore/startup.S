@@ -11,6 +11,9 @@
  *   2. Build CSA free list (FCX/LCX) — mandatory before ANY call
  *   3. Set small-data address registers (A0, A1, A8, A9)
  *   4. Jump to ulmk_kern_start() — does not return
+ *
+ * Board-specific bring-up (WDT, PLL, …) belongs in ulmk_board_init(), called
+ * from ulmk_kern_start() — never from this file.
  */
 
     .extern _ulmk_kernel_stack_top
@@ -21,7 +24,6 @@
     .extern _small_data3_
     .extern _small_data4_
     .extern ulmk_kern_start
-    .extern ulmk_board_wdt_disable_early
 
     .section .text._start, "ax"
     .global _start
@@ -29,21 +31,6 @@
 _start:
     /* 0. Interrupts off until the kernel unlocks them. */
     disable
-
-    /*
-     * Board hook: disable CPU0 + Safety WDT before CSA construction.
-     * Default timeout can expire during the CSA loop on standalone reset
-     * (OpenOCD reset-end pokes WDT only under OCDS).  Weak stub is ji %a11.
-     * No CALL (CSA not ready).  ji needs a register operand; local .L labels
-     * have no hi/lo reloc — use a global continue label.
-     */
-    movh.a  %a11, hi:_start_after_wdt
-    lea     %a11, [%a11] lo:_start_after_wdt
-    movh.a  %a2, hi:ulmk_board_wdt_disable_early
-    lea     %a2, [%a2] lo:ulmk_board_wdt_disable_early
-    ji      %a2
-    .global _start_after_wdt
-_start_after_wdt:
 
     /* 1. Supervisor stack + clear PSW.IS
      *
@@ -122,7 +109,7 @@ _start_after_wdt:
     movh.a  %a9, hi:_small_data4_
     lea     %a9, [%a9] lo:_small_data4_
 
-    /* 4. Common C runtime bring-up (relocates .data/.bss, calls kernel). */
+    /* 4. Common C runtime bring-up (relocates .data/.bss, calls board_init). */
     j       ulmk_kern_start
 
 .L_hang:
