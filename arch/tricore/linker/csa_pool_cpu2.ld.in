@@ -1,0 +1,24 @@
+/* arch/tricore/linker/csa_pool_cpu2.ld.in
+ * Layer 2 — TriCore SMP: CSA + ISP + park stack in DSPR2 (KERNEL_RAM_CPU2).
+ * Included by generate_ld.py when HAVE_CSA_CPU2 = 1 in the chip memory.ld.
+ *
+ * CPU2 must never share FCX/LCX with CPU0/CPU1 — CSA is a per-core CSFR.
+ */
+
+    .csa_pool_cpu2 (NOLOAD) : ALIGN(64) {
+        _ulmk_csa_pool_cpu2_start = .;
+        . += ULMK_CSA_POOL_CPU2_SIZE;
+        _ulmk_csa_pool_cpu2_end = .;
+    } > KERNEL_RAM_CPU2
+
+    .isr_stack_cpu2 (NOLOAD) : ALIGN(8) {
+        _ulmk_isr_stack_cpu2_bottom = .;
+        . += ULMK_ISR_STACK_SIZE;
+        _ulmk_isr_stack_cpu2_top = .;
+    } > KERNEL_RAM_CPU2
+
+    .park_stack_cpu2 (NOLOAD) : ALIGN(8) {
+        _ulmk_park_stack_cpu2_bottom = .;
+        . += ULMK_KERNEL_STACK_SIZE;
+        _ulmk_park_stack_cpu2_top = .;
+    } > KERNEL_RAM_CPU2
