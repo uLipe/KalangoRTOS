@@ -11,7 +11,7 @@
 #include <arch_config.h>
 #include <board_config.h>
 
-#if defined(ULMK_BOARD_CPU1_PC)
+#if defined(ULMK_BOARD_CPU1_PC) || defined(ULMK_BOARD_CPU2_PC)
 #include <board_smp.h>
 #endif
 
@@ -36,6 +36,10 @@ extern char _trap_class0[];
 extern char _ulmk_int_table[];
 extern char _ulmk_isr_stack_cpu1_top[];
 extern void _ulmk_cpu1_start(void);
+#if defined(ULMK_BOARD_CPU2_PC)
+extern char _ulmk_isr_stack_cpu2_top[];
+extern void _ulmk_cpu2_start(void);
+#endif
 
 static volatile uint32_t *ipi_src(uint32_t cpu)
 {
@@ -151,12 +155,24 @@ static void ipi_src_arm(uint32_t cpu)
 
 void ulmk_arch_secondary_init(void)
 {
-	uint32_t cpu = ulmk_arch_cpu_id();
+	uint32_t  cpu = ulmk_arch_cpu_id();
+	uintptr_t isp;
+
+	if (cpu == 1u) {
+		isp = (uintptr_t)_ulmk_isr_stack_cpu1_top;
+#if defined(ULMK_BOARD_CPU2_PC)
+	} else if (cpu == 2u) {
+		isp = (uintptr_t)_ulmk_isr_stack_cpu2_top;
+#endif
+	} else {
+		for (;;)
+			;
+	}
 
 	ulmk_arch_irq_vectors_init(
 		(uintptr_t)_trap_class0,
 		(uintptr_t)_ulmk_int_table,
-		(uintptr_t)_ulmk_isr_stack_cpu1_top);
+		isp);
 	ulmk_arch_mpu_init();
 	ulmk_arch_mpu_enable();
 	/*
@@ -191,7 +207,12 @@ void ulmk_arch_start_secondary(uint32_t cpu_id, void (*entry)(void))
 #if defined(ULMK_BOARD_CPU1_PC)
 	if (cpu_id == 1u)
 		ulmk_board_cpu_start(1u, _ulmk_cpu1_start);
-#else
+#endif
+#if defined(ULMK_BOARD_CPU2_PC)
+	if (cpu_id == 2u)
+		ulmk_board_cpu_start(2u, _ulmk_cpu2_start);
+#endif
+#if !defined(ULMK_BOARD_CPU1_PC) && !defined(ULMK_BOARD_CPU2_PC)
 	(void)cpu_id;
 #endif
 
@@ -213,7 +234,7 @@ void ulmk_arch_smp_park(void)
 			;
 	}
 
-#if defined(ULMK_BOARD_CPU1_PC)
+#if defined(ULMK_BOARD_CPU1_PC) || defined(ULMK_BOARD_CPU2_PC)
 	/* Own WDT — cannot be unlocked safely from CPU0. */
 	ulmk_board_cpu_wdt_disable_self();
 #endif
