@@ -628,7 +628,8 @@ def _killall() -> None:
 # ---------------------------------------------------------------------------
 
 def _discover_tests(kind: str, arch: str | None = None,
-                    *, include_smp: bool = False) -> list[str]:
+                    *, include_smp: bool = False,
+                    include_smp4: bool = False) -> list[str]:
     result = []
     if kind == "e2e":
         # Prefer sdk_suite/<case>/; keep legacy *_e2e dirs as fallback.
@@ -638,11 +639,18 @@ def _discover_tests(kind: str, arch: str | None = None,
                     continue
                 if d.name == "arch_whitebox":
                     continue
-                # smp_* cases need QEMU multi-hart (RISC-V virt only) and are
-                # opt-in via --include-smp so UP CI jobs stay single-core.
-                if d.name.startswith("smp_"):
-                    if not include_smp or arch != "riscv":
+                # smp4_*: 4-hart scale cases — only with --include-smp4.
+                if d.name.startswith("smp4_"):
+                    if not include_smp4 or arch != "riscv":
                         continue
+                # smp_*: 2-hart cases — --include-smp (full UP+smp) or
+                # --include-smp4 (smp-only scale job also reuses them).
+                elif d.name.startswith("smp_"):
+                    if not (include_smp or include_smp4) or arch != "riscv":
+                        continue
+                elif include_smp4:
+                    # smp4 job: skip UP suite — only smp_* + smp4_*.
+                    continue
                 if (d / "Makefile").exists():
                     result.append(f"sdk_suite/{d.name}")
             if result:
@@ -672,14 +680,19 @@ def _sdk_cache_vars(arch: str, make_extra: str, test_name: str = "") -> str:
     """Make variables for a shared SDK cache directory inside the container."""
     board = "qemu_tc3xx"
     if arch == "riscv":
-        board = "qemu_riscv_virt"
+        m = re.search(r"BOARD=boards/(\S+)", make_extra)
+        if not m:
+            m = re.search(r"BOARD=(\S+)", make_extra)
+        board = m.group(1) if m else "qemu_riscv_virt"
+        if board.startswith("boards/"):
+            board = board[len("boards/"):]
     elif arch == "arm":
         m = re.search(r"ARM_BOARD=(\S+)", make_extra)
         board = m.group(1) if m else "qemu_mps2_an500"
     tag = f"{arch}_{board}_gcc"
     # SMP sdk_suite cases build a separate kernel with ULMK_CONFIG_ENABLE_SMP=1.
     base = test_name.rsplit("/", 1)[-1] if test_name else ""
-    if base.startswith("smp_"):
+    if base.startswith("smp_") or base.startswith("smp4_"):
         tag += "_smp"
     return f"SDK_CACHE=/workspace/tests/sdk_suite/_sdk_cache/{tag}"
 
@@ -747,7 +760,7 @@ def _run_all_shell(kind: str, tests: list[str], arch: str,
     rec_arch = result_arch if result_arch is not None else arch
     lines = [CONTAINER_PATH, "FAILED=''"]
     if kind == "e2e" and tests:
-        cache = _sdk_cache_vars(arch, make_extra)
+        cache = _sdk_cache_vars(arch, make_extra, tests[0])
         ext = f" {make_extra}" if make_extra else ""
         lines.append(
             f"echo '=== warming SDK cache ===' && "
@@ -778,24 +791,43 @@ def _run_tests(args: argparse.Namespace) -> None:
     kind      = args.kind
     test_name = args.test
     include_smp = bool(getattr(args, "include_smp", False))
+    include_smp4 = bool(getattr(args, "include_smp4", False))
 
     _killall()
 
     board_host, _, _ = _resolve_board_path(getattr(args, "board", None))
     arch = _board_arch(_parse_board_cmake(board_host))
 
-    if include_smp:
+    if include_smp and include_smp4:
+        sys.exit("error: use either --include-smp or --include-smp4, not both")
+
+    if include_smp or include_smp4:
         if kind != "e2e":
-            sys.exit("error: --include-smp is only valid with 'tests e2e'")
+            sys.exit(
+                "error: --include-smp/--include-smp4 is only valid with "
+                "'tests e2e'"
+            )
         if arch != "riscv":
             sys.exit(
-                "error: --include-smp requires a RISC-V board "
-                "(boards/qemu_riscv_virt); QEMU SMP is not supported elsewhere"
+                "error: --include-smp/--include-smp4 requires a RISC-V board "
+                "(QEMU SMP is not supported elsewhere)"
+            )
+        if include_smp4 and board_host.name != "qemu_riscv_virt_smp4":
+            sys.exit(
+                "error: --include-smp4 requires "
+                "--board boards/qemu_riscv_virt_smp4"
             )
 
     # ARM ships two QEMU boards (mps2-an500 / mps2-an505) under one arch; the
     # test Makefiles pick the board via ARM_BOARD, so forward the selected one.
-    make_extra = f"ARM_BOARD={board_host.name}" if arch == "arm" else ""
+    # RISC-V smp4 board: override BOARD + SMP_N so smp_* reuse the 4-hart ELF.
+    make_extra = ""
+    if arch == "arm":
+        make_extra = f"ARM_BOARD={board_host.name}"
+    elif arch == "riscv" and board_host.name != "qemu_riscv_virt":
+        make_extra = f"BOARD=boards/{board_host.name}"
+        if include_smp4 or board_host.name == "qemu_riscv_virt_smp4":
+            make_extra += " SMP_N=4"
     board_name = board_host.name
     json_arch = "host" if kind == "unit" else arch
     json_board = "" if kind == "unit" else board_name
@@ -807,14 +839,20 @@ def _run_tests(args: argparse.Namespace) -> None:
         json_path.mkdir(parents=True, exist_ok=True)
         docker_env = ["-e", "ULMK_TEST_JSON_DIR=/test-results"]
 
-    # Single --test sdk_suite/smp_* on RISC-V may omit --include-smp.
+    # Single --test sdk_suite/smp*_ on RISC-V may omit the include flags.
+    base = test_name.rsplit("/", 1)[-1] if test_name else ""
     discover_smp = include_smp or (
-        bool(test_name) and arch == "riscv" and
-        test_name.rsplit("/", 1)[-1].startswith("smp_")
+        bool(test_name) and arch == "riscv" and base.startswith("smp_")
+        and not base.startswith("smp4_")
+    )
+    discover_smp4 = include_smp4 or (
+        bool(test_name) and arch == "riscv" and base.startswith("smp4_")
     )
 
     if args.list:
-        tests = _discover_tests(kind, arch, include_smp=include_smp)
+        tests = _discover_tests(
+            kind, arch, include_smp=include_smp, include_smp4=include_smp4
+        )
         if kind == "integ":
             tests = _filter_integ_tests(tests, arch)
         print(f"{kind} tests ({len(tests)}) [ARCH={arch}]:")
@@ -823,7 +861,9 @@ def _run_tests(args: argparse.Namespace) -> None:
         return
 
     if test_name:
-        available = _discover_tests(kind, arch, include_smp=discover_smp)
+        available = _discover_tests(
+            kind, arch, include_smp=discover_smp, include_smp4=discover_smp4
+        )
         if kind == "integ":
             available = _filter_integ_tests(available, arch)
         if test_name not in available:
@@ -851,7 +891,9 @@ def _run_tests(args: argparse.Namespace) -> None:
         cmd += [IMAGE_NAME, "/bin/bash", "-c", shell_cmd]
         os.execvp("docker", cmd)
     else:
-        tests = _discover_tests(kind, arch, include_smp=include_smp)
+        tests = _discover_tests(
+            kind, arch, include_smp=include_smp, include_smp4=include_smp4
+        )
         if kind == "integ":
             tests = _filter_integ_tests(tests, arch)
         if not tests:
@@ -1037,6 +1079,7 @@ examples:
             "  tests integ             QEMU integration tests\n"
             "  tests e2e               SDK consumer end-to-end tests (UP)\n"
             "  tests e2e --include-smp RISC-V: UP suite + smp_* cases\n"
+            "  tests e2e --include-smp4 RISC-V 4-hart: smp_* + smp4_* only\n"
             "  tests <kind> --list     show available suites\n"
             "  tests <kind> --test NAME run one suite\n"
             "  tests <kind> --board PATH  select architecture via board"
@@ -1068,6 +1111,14 @@ examples:
         "--include-smp",
         action="store_true",
         help="e2e only (RISC-V): also run sdk_suite/smp_* multi-hart cases",
+    )
+    tests_p.add_argument(
+        "--include-smp4",
+        action="store_true",
+        help=(
+            "e2e only (RISC-V smp4 board): run smp_* + smp4_* only "
+            "(no full UP suite)"
+        ),
     )
     tests_p.add_argument(
         "--json-dir",

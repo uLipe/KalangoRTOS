@@ -206,3 +206,19 @@ areas:
     riscv: covered
     arm: missing
     note: CI job integ-tests-riscv-smp (--include-smp); QEMU multi-hart only
+
+  - id: smp.riscv4
+    title: SMP 4-hart scale (QEMU virt_smp4)
+    cases:
+      - sdk_suite/smp_smoke
+      - sdk_suite/smp_affinity
+      - sdk_suite/smp_ipc_cross
+      - sdk_suite/smp_stress
+      - sdk_suite/smp_vs_up
+      - sdk_suite/smp4_smoke
+      - sdk_suite/smp4_ipc_star
+      - sdk_suite/smp4_stress
+    tricore: missing
+    riscv: covered
+    arm: missing
+    note: CI job integ-tests-riscv-smp4 (--include-smp4); board qemu_riscv_virt_smp4

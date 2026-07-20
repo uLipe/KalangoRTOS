@@ -32,15 +32,16 @@ CC         := riscv-none-elf-gcc
 QEMU       := qemu-system-riscv32
 MACHINE    := virt
 QEMU_EXTRA := -bios none -m 16M
-BOARD      := boards/qemu_riscv_virt
+BOARD      ?= boards/qemu_riscv_virt
 ARCH_FLAGS := -march=rv32imac_zicsr_zifencei -mabi=ilp32
-# Optional: CASE Makefile sets SMP=1 for multi-hart SDK + QEMU -smp 2
+# Optional: CASE Makefile sets SMP=1 for multi-hart SDK + QEMU -smp $(SMP_N)
 SMP        ?= 0
+SMP_N      ?= 2
 ifeq ($(SMP),1)
 ifneq ($(ARCH),riscv)
 $(error SMP sdk_suite cases require ARCH=riscv)
 endif
-QEMU_EXTRA += -smp 2
+QEMU_EXTRA += -smp $(SMP_N)
 SDK_SMP_FLAG := --enable-smp
 TAG_SUFFIX := _smp
 else
@@ -127,7 +128,7 @@ sdk:
 
 all: sdk $(TARGET)
 
-$(TARGET): sdk $(CASE_SRCS) $(COMMON)/sdk_test_util.h
+$(TARGET): sdk $(KERNEL_A) $(BOARD_A) $(LD) $(CASE_SRCS) $(COMMON)/sdk_test_util.h
 	$(CC) $(CFLAGS) $(LDFLAGS) \
 		$(CASE_SRCS) \
 		-Wl,--start-group $(BOARD_A) $(KERNEL_A) -Wl,--end-group \

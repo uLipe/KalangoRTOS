@@ -275,6 +275,48 @@ jobs:
           path: ci-results/e2e-riscv-smp/
           if-no-files-found: warn
 
+  # ── RISC-V SMP×4: smp_* sanity + smp4_* scale (no full UP suite) ──────────
+  integ-tests-riscv-smp4:
+    name: SDK suite (RISC-V SMP 4-hart)
+    needs: docker-image
+    runs-on: ubuntu-latest
+    # ~9 min local (9 QEMU cases × per-case timeout + SDK build); 45 gives
+    # generous headroom on slower CI runners without a 90 min dead-hang ceiling.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: |
+          IMG="${{ needs.docker-image.outputs.image }}:sha-${{ github.sha }}"
+          docker pull "$IMG"
+          docker tag  "$IMG" ulipe-microkernel:dev
+
+      - name: Run SMP×4 suite (smp_* + smp4_*)
+        run: |
+          python3 tools/dev.py tests e2e \
+            --board boards/qemu_riscv_virt_smp4 \
+            --include-smp4 \
+            --json-dir ci-results/e2e-riscv-smp4
+
+      - name: Upload RISC-V SMP4 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-riscv-smp4
+          path: ci-results/e2e-riscv-smp4/
+          if-no-files-found: warn
+
   # ── ARM Cortex-M: build (mps2-an500 M7 + mps2-an505 M33) ──────────────────
   build-arm:
     name: Build kernel (ARM ${{ matrix.board }})
@@ -357,6 +399,7 @@ jobs:
       - integ-tests-tricore
       - integ-tests-riscv
       - integ-tests-riscv-smp
+      - integ-tests-riscv-smp4
       - integ-tests-arm
     if: always()
     runs-on: ubuntu-latest
