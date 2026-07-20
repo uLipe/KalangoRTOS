@@ -100,6 +100,9 @@
 #define ULMK_ARCH_CSA_FRAME_SIZE	64
 #define ULMK_ARCH_CSA_MIN_COUNT	64
 
+/* CSA frames come from the affinity hart's FCX — never fabricate remotely. */
+#define ULMK_ARCH_CTX_FABRICATE_ON_AFFINITY_CPU	1
+
 /* =========================================================================
  * CPU idle — board may force NOP idle (QEMU WAIT quirk)
  * ========================================================================= */

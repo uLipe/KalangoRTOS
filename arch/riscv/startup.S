@@ -11,7 +11,8 @@
 	.extern ulmk_arch_smp_park
 	.extern g_ulmk_secondary_stack
 
-	.equ	ULMK_SECONDARY_STACK_SIZE, 2048
+	/* Keep in sync with ULMK_SECONDARY_STACK_SIZE in arch/riscv/smp.c */
+	.equ	ULMK_SECONDARY_STACK_SIZE, 4096
 
 	.section .text._start, "ax", @progbits
 	.global _start
@@ -35,7 +36,8 @@ _start:
  */
 .Lpark_secondary:
 	la      t1, g_ulmk_secondary_stack
-	slli    t2, t0, 11              /* hart * 2048 */
+	/* STACK_SIZE=4096 → hart << 12; keep in sync with smp.c */
+	slli    t2, t0, 12
 	add     t1, t1, t2
 	li      t2, ULMK_SECONDARY_STACK_SIZE
 	add     sp, t1, t2

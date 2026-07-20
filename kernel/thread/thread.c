@@ -33,6 +33,14 @@
 #endif
 
 /*
+ * When 1, remote-affinity threads defer ulmk_arch_ctx_init() until first
+ * schedule on that CPU (TriCore FCX).  Default 0: fabricate at create time.
+ */
+#ifndef ULMK_ARCH_CTX_FABRICATE_ON_AFFINITY_CPU
+#define ULMK_ARCH_CTX_FABRICATE_ON_AFFINITY_CPU	0
+#endif
+
+/*
  * Thread registry: all allocated TCBs (static + dynamic).
  * ulmk_tid_t is an opaque handle (TCB pointer); lookup is O(1) via cast.
  */
@@ -117,10 +125,13 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 	th->start_entry = attr->entry;
 	th->start_arg   = attr->arg;
 	/*
-	 * Arch context that consumes a per-CPU resource (TriCore FCX) must be
-	 * built on the affinity CPU.  Fabricate now only when local.
+	 * Some arches (TriCore CSA/FCX) must fabricate on the affinity CPU.
+	 * Others only write the thread stack — safe from the creator, and
+	 * required: lazy remote ctx + concurrent remote spawns races the
+	 * first schedule (instruction fault in trap epilogue on RV32).
 	 */
-	if (attr->cpu != (uint8_t)ulmk_arch_cpu_id()) {
+	if (attr->cpu != (uint8_t)ulmk_arch_cpu_id() &&
+	    ULMK_ARCH_CTX_FABRICATE_ON_AFFINITY_CPU) {
 		th->ctx       = (ulmk_arch_ctx_t){ 0 };
 		th->ctx_ready = 0u;
 	} else {

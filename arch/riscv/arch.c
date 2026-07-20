@@ -490,11 +490,13 @@ struct pmp_cpu_cache {
 	uint8_t dyn;
 };
 
+/*
+ * prs=0xFF forces the first mpu_switch on every hart to program PMP.
+ * Zero-init would equal ULMK_ARCH_PRS_KERNEL and skip the first rewrite
+ * on CPU2+ when NUM_CPU > 2.
+ */
 static struct pmp_cpu_cache g_pmp_cache[ULMK_ARCH_NUM_CPU] = {
-	[0] = { .prs = 0xFFu },
-#if ULMK_ARCH_NUM_CPU > 1
-	[1] = { .prs = 0xFFu },
-#endif
+	[0 ... ULMK_ARCH_NUM_CPU - 1] = { .prs = 0xFFu },
 };
 
 static uint8_t pmp_dyn_count(const ulmk_arch_region_t *regions, uint8_t count)

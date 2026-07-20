@@ -192,10 +192,11 @@ static void idle_thread_entry(void *arg)
 /*
  * Idle runs on its own stack and absorbs IPIs / ISRs.  Trap frame alone is
  * ~144 bytes on RISC-V; the C IRQ path needs several hundred more.  SMP
- * idle is hit by remote enqueue IPIs — 256 was overflowing and corrupting
- * mepc (INST_FAULT mtval=0).
+ * idle is hit by remote enqueue IPIs — 256 overflowed into mepc (INST_FAULT
+ * mtval=0).  Concurrent wakes on 3+ harts still blew 2048 (adjacent idle
+ * stacks corrupt each other → INST_FAULT at trap epilogue).
  */
-#define ULMK_IDLE_STACK_SIZE	(2048u + ULMK_ARCH_KSTACK_SIZE)
+#define ULMK_IDLE_STACK_SIZE	(4096u + ULMK_ARCH_KSTACK_SIZE)
 
 static ulmk_thread_t idle_thread_g[ULMK_NR_CPUS] UL_KERNEL_BSS;
 static uint8_t     idle_stack_g[ULMK_NR_CPUS][ULMK_IDLE_STACK_SIZE]

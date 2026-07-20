@@ -28,7 +28,15 @@ static volatile uint32_t g_smp_gate = SMP_GATE_WAIT;
  * Park stacks live in .data (not BSS) so CPU0's BSS clear cannot trash a
  * secondary hart spinning before ulmk_arch_smp_mark_ready().
  */
-uint8_t g_ulmk_secondary_stack[SMP_MAX_HARTS][2048]
+/*
+ * Must absorb printk + mpu_init + sched_start before the switch to idle.
+ * 2048 overflowed into the next hart's park stack / trailing .data (idle
+ * TCBs sit immediately after) when three secondaries raced on -smp 4 —
+ * corrupted ctx → U-mode INST_FAULT at the trap epilogue (mtval=0x…f2).
+ */
+#define ULMK_SECONDARY_STACK_SIZE	4096u
+
+uint8_t g_ulmk_secondary_stack[SMP_MAX_HARTS][ULMK_SECONDARY_STACK_SIZE]
 	__attribute__((aligned(16))) = { { 1 } };
 static volatile uint32_t g_secondary_release[SMP_MAX_HARTS];
 static void (*g_secondary_entry[SMP_MAX_HARTS])(void);
