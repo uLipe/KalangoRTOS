@@ -22,4 +22,9 @@ static inline uint32_t ulmk_arch_cpu_id(void)
 	return 0u;
 }
 
+static inline uint32_t ulmk_arch_timer_wheel_cpu(void)
+{
+	return 0u;
+}
+
 #endif /* ULMK_ARCH_H */

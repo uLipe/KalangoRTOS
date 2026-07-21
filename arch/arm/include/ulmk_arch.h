@@ -93,6 +93,7 @@ uint32_t ulmk_arch_cycle_read(void);
 /* Periodic kernel tick (SysTick).  Called by kernel only. */
 void ulmk_arch_tick_init(uint32_t tick_hz);
 void ulmk_arch_tick_ack(void);
+uint32_t ulmk_arch_timer_wheel_cpu(void);
 
 void ulmk_arch_csa_pool_init(uintptr_t pool_base, size_t pool_size);
 

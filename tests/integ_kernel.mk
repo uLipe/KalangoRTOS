@@ -40,6 +40,8 @@ INTEG_KERNEL_SRCS ?= \
 	$(ROOT)/kernel/thread/thread.c \
 	$(ROOT)/kernel/ipc/ep.c \
 	$(ROOT)/kernel/notif/notif.c \
+	$(ROOT)/kernel/time/timer_wheel.c \
+	$(ROOT)/kernel/time/sleep.c \
 	$(ROOT)/kernel/syscall/syscall_router.c \
 	$(ROOT)/kernel/syscall/syscall_wcet.c \
 	$(INTEG_KERNEL_STUB) \

@@ -227,6 +227,18 @@ void ulmk_arch_init(ulmk_boot_info_t *info);
 void ulmk_arch_tick_init(uint32_t tick_hz);
 void ulmk_arch_tick_ack(void);
 
+/*
+ * Index of the timing wheel used by timer_add/tick on this arch.
+ *
+ * TriCore SMP: STM0 has one reliable compare on CPU0 — every hart arms
+ * wheel 0 so the CPU0 tick advances all sleeps (secondaries are tickless
+ * and wake via IPI).  Matches the old board_timer model (all sleeps
+ * serialized on CPU0) without a userspace timer server.
+ *
+ * RISC-V / ARM: per-hart local tick → return ulmk_arch_cpu_id().
+ */
+uint32_t ulmk_arch_timer_wheel_cpu(void);
+
 /* =========================================================================
  * Arch-internal syscall entry (arch/tricore/arch.c)
  * vectors.S parks TIN + D4–D7 on the stack and passes that frame pointer;

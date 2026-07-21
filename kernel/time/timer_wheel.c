@@ -17,6 +17,7 @@
 #include <kernel/include/ulmk_percpu.h>
 #ifndef UL_UNIT_TEST
 #include <kernel/include/ulmk_klock.h>
+#include <ulmk_arch.h>
 #endif
 
 struct timer_wheel {
@@ -42,7 +43,14 @@ static struct timer_wheel g_wheels[ULMK_NR_CPUS] ULMK_TIMER_WHEEL_SECTION;
 
 static struct timer_wheel *wheel_of(void)
 {
-	return &g_wheels[ulmk_arch_cpu_id() % (uint32_t)ULMK_NR_CPUS];
+	uint32_t cpu;
+
+#ifndef UL_UNIT_TEST
+	cpu = ulmk_arch_timer_wheel_cpu() % (uint32_t)ULMK_NR_CPUS;
+#else
+	cpu = 0u;
+#endif
+	return &g_wheels[cpu];
 }
 
 static unsigned int calc_index(uint64_t expires, unsigned int lvl, uint64_t clk)
@@ -246,18 +254,43 @@ void ulmk_timer_run(void)
 	expire_list(&pending);
 }
 
-void ulmk_timer_tick(void)
+static void wheel_advance_collect(struct timer_wheel *w, sys_dlist_t *pending)
 {
-	struct timer_wheel *w;
-#ifndef UL_UNIT_TEST
-	ulmk_arch_irq_key_t key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_timer);
-#endif
+	unsigned int lvl;
 
-	w = wheel_of();
 	w->clk++;
 
+	for (lvl = 0u; lvl < ULMK_TIMER_LVL_DEPTH; lvl++) {
+		uint64_t gran = ULMK_TIMER_LVL_GRAN(lvl);
+		unsigned int bucket;
+
+		if (lvl > 0u && (w->clk & (gran - 1u)) != 0u)
+			continue;
+
+		bucket = (unsigned int)((w->clk >> ULMK_TIMER_LVL_SHIFT(lvl)) &
+				       ULMK_TIMER_LVL_MASK);
+		if ((w->pending[lvl] & (1ull << bucket)) == 0u)
+			continue;
+		collect_bucket(w, lvl, bucket, pending);
+	}
+}
+
+void ulmk_timer_tick(void)
+{
+	sys_dlist_t pending;
+#ifndef UL_UNIT_TEST
+	ulmk_arch_irq_key_t key;
+#endif
+
+	sys_dlist_init(&pending);
+
+#ifndef UL_UNIT_TEST
+	key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_timer);
+#endif
+	wheel_advance_collect(wheel_of(), &pending);
 #ifndef UL_UNIT_TEST
 	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_timer, key);
 #endif
-	ulmk_timer_run();
+
+	expire_list(&pending);
 }

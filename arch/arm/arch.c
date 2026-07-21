@@ -452,6 +452,11 @@ void ulmk_arch_tick_ack(void)
 	/* SysTick auto-reloads; COUNTFLAG clear is implicit on handler entry. */
 }
 
+uint32_t ulmk_arch_timer_wheel_cpu(void)
+{
+	return ulmk_arch_cpu_id();
+}
+
 /*
  * All configurable exceptions share one priority level so SVC, SysTick and
  * external IRQs never preempt each other (they tail-chain instead) — this keeps

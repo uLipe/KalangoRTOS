@@ -52,16 +52,27 @@ static void sleep_timeout_cb(struct ulmk_timeout *to)
 {
 	ulmk_thread_t *th =
 		SYS_DLIST_CONTAINER_OF(to, ulmk_thread_t, timeout);
+#ifndef UL_UNIT_TEST
+	ulmk_arch_irq_key_t key;
+#endif
 
+#ifndef UL_UNIT_TEST
+	key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_thread);
+#endif
 	if (!th || th->state != UL_THREAD_STATE_BLOCKED ||
-	    th->blocked_reason != UL_BLOCKED_SLEEP)
+	    th->blocked_reason != UL_BLOCKED_SLEEP) {
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_thread, key);
+#endif
 		return;
+	}
 
 	th->block_status   = ULMK_OK;
 	th->blocked_reason = UL_BLOCKED_NONE;
 	th->state          = UL_THREAD_STATE_READY;
 	ulmk_sched_enqueue(th);
 #ifndef UL_UNIT_TEST
+	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_thread, key);
 	ulmk_sched_request_resched();
 	ulmk_sched_kick_pending();
 #endif

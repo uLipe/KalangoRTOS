@@ -826,3 +826,8 @@ void ulmk_arch_tick_ack(void)
 
 	clint_mtimecmp_write(hart, next);
 }
+
+uint32_t ulmk_arch_timer_wheel_cpu(void)
+{
+	return ulmk_arch_cpu_id();
+}

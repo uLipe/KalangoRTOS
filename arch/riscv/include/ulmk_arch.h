@@ -127,6 +127,7 @@ void ulmk_arch_init(ulmk_boot_info_t *info);
 /* Periodic kernel tick (CLINT mtimecmp).  Called by kernel only. */
 void ulmk_arch_tick_init(uint32_t tick_hz);
 void ulmk_arch_tick_ack(void);
+uint32_t ulmk_arch_timer_wheel_cpu(void);
 
 void ulmk_arch_syscall_entry(void);
 void ulmk_arch_trap_entry(uint8_t trap_class, uint8_t tin);
