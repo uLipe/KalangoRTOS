@@ -10,5 +10,6 @@
 ulmk_tid_t board_console_start(const ulmk_boot_info_t *info);
 void       board_console_putc(char c);
 void       board_console_puts(const char *s);
+void       board_console_printf(const char *fmt, ...);
 
 #endif /* BOARD_CONSOLE_H */
