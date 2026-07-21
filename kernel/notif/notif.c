@@ -15,6 +15,7 @@
 #include <kernel/include/ulmk_notif_internal.h>
 #include <kernel/include/ulmk_ep_internal.h>
 #include <kernel/include/ulmk_sched.h>
+#include <kernel/include/ulmk_timeout_internal.h>
 #ifndef UL_UNIT_TEST
 #include <kernel/include/ulmk_klock.h>
 #endif
@@ -29,6 +30,39 @@
 #ifdef UL_UNIT_TEST
 ulmk_notif_obj_t notif_pool[ULMK_CONFIG_MAX_NOTIFS];
 #endif
+
+static void notif_wait_timeout_cb(struct ulmk_timeout *to)
+{
+	ulmk_thread_t *th =
+		SYS_DLIST_CONTAINER_OF(to, ulmk_thread_t, timeout);
+	ulmk_notif_obj_t *n;
+#ifndef UL_UNIT_TEST
+	ulmk_arch_irq_key_t key;
+#endif
+
+#ifndef UL_UNIT_TEST
+	key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_ipc);
+#endif
+	if (!th || th->state != UL_THREAD_STATE_BLOCKED ||
+	    th->blocked_reason != UL_BLOCKED_NOTIF)
+		goto out;
+
+	n = ulmk_notif_by_id(th->blocked_notif);
+	if (n && n->waiter == th)
+		n->waiter = NULL;
+
+	th->blocked_notif  = ULMK_NOTIF_INVALID;
+	th->block_status   = ULMK_ETIMEOUT;
+	th->blocked_reason = UL_BLOCKED_NONE;
+	th->state          = UL_THREAD_STATE_READY;
+	ulmk_sched_enqueue_locked(th);
+
+out:
+#ifndef UL_UNIT_TEST
+	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+	ulmk_sched_kick_pending();
+#endif
+}
 
 int ulmk_notif_obj_init(ulmk_notif_obj_t *n, ulmk_notif_t id)
 {
@@ -99,6 +133,8 @@ int notif_signal_impl(ulmk_notif_t notif_id, uint32_t bits)
 	n->bits          &= ~delivered;
 	n->waiter         = NULL;
 	w->notif_received = delivered;
+	if (w->timeout.cb)
+		ulmk_timeout_disarm(w);
 
 	if (w->blocked_reason == UL_BLOCKED_IPC_OR_NOTIF) {
 		ulmk_recv_or_notif_result_t *rn = w->rn_result_outptr;
@@ -203,6 +239,89 @@ int notif_wait_impl(ulmk_notif_t notif_id, uint32_t mask, uint32_t *out)
 	return 0;
 }
 
+int notif_wait_timeout_impl(ulmk_notif_t notif_id, uint32_t mask,
+			    uint32_t *out, uint32_t timeout_ms)
+{
+	ulmk_notif_obj_t *n;
+	ulmk_thread_t *cur;
+	uint32_t matched;
+#ifndef UL_UNIT_TEST
+	ulmk_arch_irq_key_t key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_ipc);
+#endif
+
+	if (ulmk_ms_to_ticks(timeout_ms) == 0u) {
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+		return -ULMK_EINVAL;
+	}
+
+	n = ulmk_notif_by_id(notif_id);
+	if (!n || !out) {
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+		return -ULMK_EINVAL;
+	}
+
+	matched = n->bits & mask;
+	if (matched) {
+		n->bits &= ~matched;
+		*out = matched;
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+		return 0;
+	}
+
+	cur = ulmk_sched_current();
+	if (!cur) {
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+		return -ULMK_EINVAL;
+	}
+
+	cur->blocked_reason    = UL_BLOCKED_NOTIF;
+	cur->notif_wait_mask   = mask;
+	cur->blocked_notif     = notif_id;
+	cur->notif_bits_outptr = out;
+	cur->block_status      = 0;
+
+	if (ulmk_timeout_arm(cur, timeout_ms, notif_wait_timeout_cb) != ULMK_OK) {
+		cur->blocked_reason    = UL_BLOCKED_NONE;
+		cur->blocked_notif     = ULMK_NOTIF_INVALID;
+		cur->notif_bits_outptr = NULL;
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+		return -ULMK_EINVAL;
+	}
+
+	cur->state = UL_THREAD_STATE_BLOCKED;
+	ulmk_sched_dequeue_locked(cur);
+
+	n->waiter    = cur;
+	n->wait_mask = mask;
+
+	matched = n->bits & mask;
+	if (matched) {
+		n->bits   &= ~matched;
+		n->waiter  = NULL;
+		ulmk_timeout_disarm(cur);
+		cur->state = UL_THREAD_STATE_READY;
+		cur->blocked_reason = UL_BLOCKED_NONE;
+		cur->blocked_notif  = ULMK_NOTIF_INVALID;
+		ulmk_sched_enqueue_locked(cur);
+		*out = matched;
+	}
+
+#ifndef UL_UNIT_TEST
+	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+	return 0;
+}
+
 uint32_t notif_poll_impl(ulmk_notif_t notif_id, uint32_t mask)
 {
 	ulmk_notif_obj_t *n = ulmk_notif_by_id(notif_id);
@@ -228,6 +347,7 @@ int notif_destroy_impl(ulmk_notif_t notif_id)
 	w = n->waiter;
 	n->waiter = NULL;
 	if (w) {
+		ulmk_timeout_disarm(w);
 		if (w->blocked_reason == UL_BLOCKED_IPC_OR_NOTIF)
 			ulmk_ep_recv_queue_remove(w);
 
@@ -288,6 +408,14 @@ uint32_t ulmk_kern_notif_wait(uint32_t notif_id, uint32_t mask,
 	return (uint32_t)(int32_t)notif_wait_impl(
 		(ulmk_notif_t)notif_id, mask,
 		(uint32_t *)(uintptr_t)bits_ptr);
+}
+
+uint32_t ulmk_kern_notif_wait_timeout(uint32_t notif_id, uint32_t mask,
+				      uint32_t bits_ptr, uint32_t timeout_ms)
+{
+	return (uint32_t)(int32_t)notif_wait_timeout_impl(
+		(ulmk_notif_t)notif_id, mask,
+		(uint32_t *)(uintptr_t)bits_ptr, timeout_ms);
 }
 
 uint32_t ulmk_kern_notif_poll(uint32_t notif_id, uint32_t mask)

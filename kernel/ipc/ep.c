@@ -30,6 +30,7 @@
 #include <kernel/include/ulmk_ep_internal.h>
 #include <kernel/include/ulmk_notif_internal.h>
 #include <kernel/include/ulmk_sched.h>
+#include <kernel/include/ulmk_timeout_internal.h>
 #include <kernel/syscall/syscall_router.h>
 #include <ulmk_arch.h>
 
@@ -188,6 +189,8 @@ void prepare_server_delivery(ulmk_thread_t *server,
 
 static void wake_blocked_on_destroy(ulmk_thread_t *th, int status)
 {
+	ulmk_timeout_disarm(th);
+
 	if (sys_dnode_is_linked(&th->ipc_node)) {
 		sys_dlist_remove(&th->ipc_node);
 		sys_dnode_init(&th->ipc_node);
@@ -206,6 +209,34 @@ static void wake_blocked_on_destroy(ulmk_thread_t *th, int status)
 	th->blocked_ep       = ULMK_EP_INVALID;
 	th->state            = UL_THREAD_STATE_READY;
 	ulmk_sched_enqueue(th);
+}
+
+static void ep_call_timeout_cb(struct ulmk_timeout *to)
+{
+	ulmk_thread_t *th =
+		SYS_DLIST_CONTAINER_OF(to, ulmk_thread_t, timeout);
+#ifndef UL_UNIT_TEST
+	ulmk_arch_irq_key_t key;
+#endif
+
+#ifndef UL_UNIT_TEST
+	key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_ipc);
+#endif
+	if (!th || th->state != UL_THREAD_STATE_BLOCKED ||
+	    th->blocked_reason != UL_BLOCKED_IPC_CALL)
+		goto out;
+
+	ulmk_ep_recv_queue_remove(th);
+	th->block_status   = ULMK_ETIMEOUT;
+	th->blocked_reason = UL_BLOCKED_NONE;
+	th->state          = UL_THREAD_STATE_READY;
+	ulmk_sched_enqueue_locked(th);
+
+out:
+#ifndef UL_UNIT_TEST
+	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+	ulmk_sched_kick_pending();
+#endif
 }
 
 /* =========================================================================
@@ -279,6 +310,75 @@ int ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg)
 	 * writes *ipc_msg_outptr; ulmk_kern_syscall_ret_resolve() picks up
 	 * block_status on resume.
 	 */
+	return 0;
+}
+
+int ep_call_timeout_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg,
+			 uint32_t timeout_ms)
+{
+	ulmk_endpoint_t *ep;
+	ulmk_thread_t *cur;
+	ulmk_thread_t *srv = NULL;
+#ifndef UL_UNIT_TEST
+	ulmk_arch_irq_key_t key;
+#endif
+
+	if (!msg || ulmk_ms_to_ticks(timeout_ms) == 0u)
+		return -ULMK_EINVAL;
+
+#ifndef UL_UNIT_TEST
+	key = ulmk_arch_spin_lock_irqsave(&g_ulmk_lock_ipc);
+#endif
+	ep = ulmk_ep_by_id(ep_id);
+	if (!ep) {
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+		return -ULMK_EINVAL;
+	}
+
+	cur = ulmk_sched_current();
+	if (!cur) {
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+		return -ULMK_EINVAL;
+	}
+
+	cur->ipc_sender     = ULMK_TID_INVALID;
+	cur->blocked_reason = UL_BLOCKED_IPC_CALL;
+	cur->blocked_ep     = ep_id;
+	cur->ipc_msg_outptr = msg;
+	cur->block_status   = 0;
+
+	if (ulmk_timeout_arm(cur, timeout_ms, ep_call_timeout_cb) != ULMK_OK) {
+		cur->blocked_reason = UL_BLOCKED_NONE;
+		cur->blocked_ep     = ULMK_EP_INVALID;
+		cur->ipc_msg_outptr = NULL;
+#ifndef UL_UNIT_TEST
+		ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+		return -ULMK_EINVAL;
+	}
+
+	if (!sys_dlist_is_empty(&ep->recv_queue)) {
+		srv = ipc_pop_head(&ep->recv_queue);
+		prepare_server_delivery(srv, cur, msg);
+		srv->state = UL_THREAD_STATE_READY;
+	} else {
+		ipc_enqueue_tail(&ep->send_queue, cur);
+	}
+
+	cur->state = UL_THREAD_STATE_BLOCKED;
+#ifndef UL_UNIT_TEST
+	ulmk_arch_spin_unlock_irqrestore(&g_ulmk_lock_ipc, key);
+#endif
+	ulmk_sched_dequeue(cur);
+	if (srv)
+		ulmk_sched_enqueue(srv);
+#ifndef UL_UNIT_TEST
+	ulmk_sched_kick_pending();
+#endif
 	return 0;
 }
 
@@ -370,6 +470,8 @@ int ep_reply_impl(ulmk_tid_t sender_tid, const ulmk_msg_t *reply)
 
 	if (cur)
 		cur->priority = cur->saved_prio;
+
+	ulmk_timeout_disarm(caller);
 
 	/* One hop into the caller's staged buffer (or TCB bounce fallback). */
 	if (caller->ipc_msg_outptr) {
@@ -568,6 +670,15 @@ uint32_t ulmk_kern_ep_call(uint32_t ep_id, uint32_t msg_ptr)
 	return (uint32_t)(int32_t)ep_call_impl(
 		(ulmk_ep_t)ep_id,
 		(ulmk_msg_t *)(uintptr_t)msg_ptr);
+}
+
+uint32_t ulmk_kern_ep_call_timeout(uint32_t ep_id, uint32_t msg_ptr,
+				   uint32_t timeout_ms)
+{
+	return (uint32_t)(int32_t)ep_call_timeout_impl(
+		(ulmk_ep_t)ep_id,
+		(ulmk_msg_t *)(uintptr_t)msg_ptr,
+		timeout_ms);
 }
 
 uint32_t ulmk_kern_ep_recv(uint32_t ep_id, uint32_t msg_ptr,

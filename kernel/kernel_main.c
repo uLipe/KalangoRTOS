@@ -19,6 +19,7 @@
 #include <kernel/include/ulmk_percpu.h>
 #include <kernel/include/ulmk_printk.h>
 #include <kernel/include/ulmk_syscall_wcet_internal.h>
+#include <kernel/include/ulmk_timer.h>
 #include <kernel/syscall/syscall_router.h>
 
 /* Linker-provided user pool boundaries (defined in .user_pool section). */
@@ -54,6 +55,34 @@ void ulmk_kern_ipi_from_isr(void)
 	ulmk_kern_sched_dispatch(true);
 }
 #endif
+
+void ulmk_kern_timer_tick(void)
+{
+	ulmk_arch_tick_ack();
+	ulmk_timer_tick();
+	if (!ulmk_percpu()->current)
+		return;
+	/*
+	 * Arches that cannot switch from the tick trap (RISC-V) only arm
+	 * needs_resched — drained on syscall exit / idle.  Handler-mode
+	 * (ARM) and deferred-CSA (TriCore) arches switch inline here.
+	 */
+	if (ulmk_arch_sched_defer_to_thread())
+		ulmk_sched_request_resched();
+	else
+		ulmk_kern_sched_dispatch(true);
+}
+
+uint32_t ulmk_kern_tick_start(void)
+{
+	static bool started;
+
+	if (!started) {
+		started = true;
+		ulmk_arch_tick_init(ULMK_CONFIG_TICK_HZ);
+	}
+	return (uint32_t)(int32_t)ULMK_OK;
+}
 
 /*
  * After trap-exit switch, pick up destroy errors / recv_or_notif notif rc
@@ -178,8 +207,25 @@ void ulmk_kern_trap_panic(void)
 static void idle_thread_entry(void *arg)
 {
 	(void)arg;
-	for (;;)
+	for (;;) {
+		/*
+		 * Idle may be resumed via ctx_switch from a path that left
+		 * interrupts masked.  Without re-enabling, the tick never
+		 * arrives and sleepers park forever.
+		 */
+		ulmk_arch_cpu_irq_enable();
+		/*
+		 * Only arches that defer the tick reschedule to thread context
+		 * (RISC-V) drain here.  On Handler-mode / deferred-CSA arches
+		 * the switch already happened in the ISR; draining from idle
+		 * Thread mode would ctx_switch with reduced privilege (ARM:
+		 * unprivileged fetch of kernel text → MemManage).
+		 */
+		if (ulmk_arch_sched_defer_to_thread() &&
+		    ulmk_percpu()->needs_resched)
+			ulmk_kern_sched_dispatch(false);
 		ulmk_arch_cpu_idle();
+	}
 }
 
 /* =========================================================================
@@ -221,6 +267,7 @@ void ulmk_kern_secondary_main(void)
 	ulmk_arch_cycle_enable();
 #endif
 	ulmk_arch_secondary_init();
+	ulmk_arch_tick_init(ULMK_CONFIG_TICK_HZ);
 	/*
 	 * online + secondary_mark_ready happen inside ulmk_sched_start() only
 	 * after current is set — otherwise a remote IPI can run dispatch with
@@ -256,6 +303,9 @@ void ulmk_kern_main(const ulmk_boot_info_t *info)
 	ulmk_sched_init();
 	ulmk_sched_set_class(&ulmk_bitmap_rt_class);
 	UL_LOG_DBG("sched init done");
+
+	ulmk_timer_init();
+	UL_LOG_DBG("timer init done");
 
 	ulmk_irq_table_init();
 	UL_LOG_DBG("irq table init done");
@@ -319,6 +369,7 @@ void ulmk_kern_main(const ulmk_boot_info_t *info)
 
 	ulmk_arch_mpu_enable();
 	UL_LOG_DBG("mpu enabled");
+
 
 	ulmk_arch_smp_mark_ready();
 

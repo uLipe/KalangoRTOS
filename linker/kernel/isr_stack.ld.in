@@ -8,3 +8,12 @@
         . += ULMK_ISR_STACK_SIZE;
         _ulmk_isr_stack_top = .;
     } > KERNEL_RAM
+
+    /*
+     * TriCore small-data ABI anchors A0 at ORIGIN(KERNEL_RAM)+0x8000.  An ISR
+     * stack that straddles that address corrupts the GP window and hangs the
+     * first userspace RFE (seen when .kernel_bss grew for the timer wheel).
+     */
+    ASSERT(_ulmk_isr_stack_top <= ORIGIN(KERNEL_RAM) + 0x8000 ||
+           _ulmk_isr_stack_bottom >= ORIGIN(KERNEL_RAM) + 0x8000,
+           "ISR stack overlaps TriCore _small_data_ anchor at RAM+0x8000")

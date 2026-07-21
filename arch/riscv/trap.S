@@ -134,6 +134,8 @@ _trap_handler:
 	lw      t0, TF_MEPC(sp)
 	csrw    mepc, t0
 	lw      t0, TF_MSTATUS(sp)
+	/* MIE must stay clear until mret; nested IRQ here corrupts mepc. */
+	andi    t0, t0, ~8
 	csrw    mstatus, t0
 	addi    sp, sp, TF_SIZE
 	mret

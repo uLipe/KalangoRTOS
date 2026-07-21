@@ -126,6 +126,18 @@ areas:
     riscv: covered
     arm: covered
 
+  - id: sleep.kernel
+    title: Kernel sleep / cancel / IPC timeout
+    cases:
+      - sdk_suite/sleep
+      - sdk_suite/sleep_cancel
+      - sdk_suite/ipc_timeout
+      - sdk_suite/notif_timeout
+      - timer_unit
+    tricore: covered
+    riscv: covered
+    arm: covered
+
   - id: boot.bss
     title: Boot / BSS
     cases: [sdk_suite/boot_bss]

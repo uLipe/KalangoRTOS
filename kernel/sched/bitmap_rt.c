@@ -81,8 +81,10 @@ static void bitmap_rt_enqueue(ulmk_thread_t *t)
 	struct cpu_rq *q = rq_of_cpu(t->cpu);
 	uint8_t        p = t->priority;
 
-	sys_dlist_append(&q->level[p], &t->sched_node);
-	bitmap_set(q, p);
+	if (!sys_dnode_is_linked(&t->sched_node)) {
+		sys_dlist_append(&q->level[p], &t->sched_node);
+		bitmap_set(q, p);
+	}
 	t->state = UL_THREAD_STATE_READY;
 	ulmk_arch_spin_unlock_irqrestore(&rq_lock, key);
 }

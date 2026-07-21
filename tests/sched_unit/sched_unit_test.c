@@ -43,6 +43,7 @@ void ulmk_arch_mpu_switch(const ulmk_arch_region_t *r, uint8_t n, uint8_t p)
 {
 	(void)r; (void)n; (void)p;
 }
+void ulmk_arch_tick_init(uint32_t tick_hz) { (void)tick_hz; }
 void ulmk_thread_free(ulmk_thread_t *t) { (void)t; }
 
 /* =========================================================================

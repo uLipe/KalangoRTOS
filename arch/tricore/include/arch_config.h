@@ -23,6 +23,23 @@
 #error "board_config.h must define ULMK_BOARD_SRC_BASE (SoC SRC block base)"
 #endif
 
+/* Kernel tick: STM0 compare → SRPN (board may override). */
+#ifndef ULMK_BOARD_IRQ_TICK
+#ifdef ULMK_BOARD_IRQ_STM0
+#define ULMK_BOARD_IRQ_TICK		ULMK_BOARD_IRQ_STM0
+#else
+#define ULMK_BOARD_IRQ_TICK		1u
+#endif
+#endif
+
+#ifndef ULMK_BOARD_TICK_CLOCK_HZ
+#ifdef ULMK_BOARD_FSTM_HZ
+#define ULMK_BOARD_TICK_CLOCK_HZ	ULMK_BOARD_FSTM_HZ
+#else
+#define ULMK_BOARD_TICK_CLOCK_HZ	50000000u
+#endif
+#endif
+
 #ifndef ULMK_BOARD_SRC_SRE_BIT
 #error "board_config.h must define ULMK_BOARD_SRC_SRE_BIT"
 #endif

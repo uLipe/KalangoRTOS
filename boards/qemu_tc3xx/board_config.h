@@ -22,8 +22,10 @@
 #define ULMK_BOARD_SRC_BASE		0xF0038000u
 #define ULMK_BOARD_SRC_SRE_BIT		10u	/* QEMU tc4x_mode=0 */
 
-/* STM0 compare-match → SRPN 1 (board_timer.c) */
+/* STM0 compare-match → SRPN 50 (kernel arch tick; keep clear of low SRPNs) */
 #define ULMK_BOARD_SRC_STM0_SR0		0xF0038300u	/* IR slot 0xC0 */
+#define ULMK_BOARD_IRQ_TICK		50u
+#define ULMK_BOARD_TICK_CLOCK_HZ	50000000u
 
 /* ── Timer peripheral (STM0) ───────────────────────────────────────────── */
 

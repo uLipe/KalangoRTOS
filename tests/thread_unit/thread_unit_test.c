@@ -100,6 +100,25 @@ void ulmk_arch_mpu_switch(const ulmk_arch_region_t *r, uint8_t n, uint8_t p)
 
 ulmk_thread_t *ulmk_sched_current(void) { return g_current; }
 
+uint32_t ulmk_ms_to_ticks(uint32_t ms)
+{
+	return ms ? ms : 1u;
+}
+
+int ulmk_timeout_arm(ulmk_thread_t *th, uint32_t ms,
+		     void (*cb)(struct ulmk_timeout *to))
+{
+	(void)th;
+	(void)ms;
+	(void)cb;
+	return 0;
+}
+
+void ulmk_timeout_disarm(ulmk_thread_t *th)
+{
+	(void)th;
+}
+
 void ulmk_sched_enqueue(ulmk_thread_t *t)
 {
 	if (t) t->state = UL_THREAD_STATE_READY;

@@ -76,6 +76,11 @@ static inline bool ulmk_arch_sched_isr_preempt_deferred(void)
 	return false;
 }
 
+static inline bool ulmk_arch_sched_defer_to_thread(void)
+{
+	return false;
+}
+
 static inline void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from,
 					  const ulmk_arch_ctx_t *to,
 					  unsigned int flags)

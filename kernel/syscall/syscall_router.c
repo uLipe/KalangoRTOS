@@ -78,6 +78,20 @@ uint32_t ulmk_syscall_router(uint32_t nr,
 	case ULMK_SYS_EXIT:
 		return ulmk_kern_exit();
 
+	case ULMK_SYS_SLEEP:
+		return ulmk_kern_sleep(a0);
+
+	case ULMK_SYS_SLEEP_CANCEL:
+		REQUIRE_DRIVER(a0);
+		return ulmk_kern_sleep_cancel(a0);
+
+	case ULMK_SYS_EP_CALL_TIMEOUT:
+		return ulmk_kern_ep_call_timeout(a0, a1, a2);
+
+	case ULMK_SYS_TICK_START:
+		REQUIRE_DRIVER(a0);
+		return ulmk_kern_tick_start();
+
 	/* ── Thread query (any privilege) ────────────────────────────── */
 	case ULMK_SYS_THREAD_SELF:
 		return ulmk_kern_thread_self();
@@ -122,6 +136,9 @@ uint32_t ulmk_syscall_router(uint32_t nr,
 
 	case ULMK_SYS_NOTIF_WAIT:
 		return ulmk_kern_notif_wait(a0, a1, a2);
+
+	case ULMK_SYS_NOTIF_WAIT_TIMEOUT:
+		return ulmk_kern_notif_wait_timeout(a0, a1, a2, a3);
 
 	case ULMK_SYS_NOTIF_POLL:
 		return ulmk_kern_notif_poll(a0, a1);

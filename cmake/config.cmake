@@ -10,6 +10,8 @@ set(ULMK_CONFIG_SYSCALL_WCET     0  CACHE STRING
 	"Syscall cycle-counter slot (0=off, 1=WCET HIL / silicon_wcet)")
 set(ULMK_CONFIG_ENABLE_SMP       0  CACHE STRING
 	"Enable SMP (0=UP, 1=multi-CPU; requires ULMK_ARCH_NUM_CPU>1)")
+set(ULMK_CONFIG_TICK_HZ          1000 CACHE STRING
+	"Kernel timing-wheel tick rate in Hz (default 1000)")
 
 if("${ULMK_CONFIG_ENABLE_SMP}" STREQUAL "1")
 	if("${ULMK_ARCH}" STREQUAL "arm")

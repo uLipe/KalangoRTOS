@@ -248,10 +248,15 @@ _arch_generic_preempt_isr:
     /*
      * Book path: store from PCXI, load to PCXI, one dsync, mtcr, rslcx, rfe.
      * No C mid-switch (avoids an extra Upper CSA from CALL).
+     *
+     * disable BEFORE mtcr PCXI — same rule as ulmk_arch_ctx_switch.  A nested
+     * tick between mtcr and rslcx would splice ISR frames onto the destination
+     * chain and CTYP (class 3 tin 6) on the next RSLCX/RET.
      */
     mfcr    %d0, 0xFE00
     st.w    [%a15] 0, %d0
     ld.w    %d0, [%a14] 0
+    disable
     dsync
     mtcr    0xFE00, %d0
     isync
@@ -262,7 +267,6 @@ _arch_generic_preempt_isr:
     mtcr    0xFE04, %d1
     isync
 
-    disable
     rslcx
     rfe
 

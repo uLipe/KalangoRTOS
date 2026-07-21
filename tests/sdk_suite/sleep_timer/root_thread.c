@@ -25,7 +25,6 @@ static void supervisor(void *arg)
 	while ((g_done_mask & 0x7u) != 0x7u)
 		ulmk_thread_yield();
 
-	/* Print serially so concurrent putc cannot scramble sentinels. */
 	sdk_puts("sleep_timer: thread A done\n");
 	sdk_puts("sleep_timer: thread B done\n");
 	sdk_puts("sleep_timer: thread C done\n");
@@ -35,8 +34,6 @@ static void supervisor(void *arg)
 
 void ulmk_root_thread(const ulmk_boot_info_t *info)
 {
-	ulmk_tid_t tid;
-
 	board_services_init(info);
 	sdk_puts("sleep_timer: start\n");
 	sdk_puts("sleep_timer: thread A alive (sleep 10)\n");
@@ -44,7 +41,6 @@ void ulmk_root_thread(const ulmk_boot_info_t *info)
 	sdk_spawn("A", sleeper, (void *)(uintptr_t)0x1u, 5u, 2048u, 0u);
 	sdk_spawn("B", sleeper, (void *)(uintptr_t)0x2u, 5u, 2048u, 0u);
 	sdk_spawn("C", sleeper, (void *)(uintptr_t)0x4u, 5u, 2048u, 0u);
-	tid = sdk_spawn("sup", supervisor, NULL, 6u, 2048u, 0u);
-	(void)tid;
+	sdk_spawn("sup", supervisor, NULL, 6u, 2048u, 0u);
 	ulmk_thread_exit();
 }

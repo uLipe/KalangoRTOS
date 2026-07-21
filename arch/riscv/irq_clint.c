@@ -98,6 +98,12 @@ void riscv_clint_dispatch(uint32_t mcause)
 	is_soft  = mcause == MCAUSE_MSOFT;
 	is_timer = mcause == MCAUSE_MTIMER;
 
+	/* Kernel owns MTIP — advance the timing wheel, not notif bindings. */
+	if (is_timer) {
+		ulmk_kern_timer_tick();
+		return;
+	}
+
 #if ULMK_CONFIG_ENABLE_SMP
 	/*
 	 * Reschedule IPI: clear this hart's MSIP; kernel marks needs_resched.
@@ -115,8 +121,6 @@ void riscv_clint_dispatch(uint32_t mcause)
 
 		addr = g_src_addr[srpn];
 		if (is_soft && addr != ULMK_ARCH_CLINT_MSIP0)
-			continue;
-		if (is_timer && addr != ULMK_ARCH_CLINT_MTIMECMP0)
 			continue;
 
 		ulmk_kern_irq_dispatch((uint8_t)srpn);

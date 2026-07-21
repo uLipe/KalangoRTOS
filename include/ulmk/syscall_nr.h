@@ -31,8 +31,10 @@
 /* ── Scheduling / exit ───────────────────────────────────────────── */
 #define ULMK_SYS_YIELD               10  /* void  ulmk_thread_yield(void)             */
 #define ULMK_SYS_EXIT                11  /* void  ulmk_thread_exit(void) [noreturn]   */
-/* slot 12 reserved — formerly ULMK_SYS_SLEEP_US */
-/* slots 13-14 reserved — former kernel timer syscalls removed (timer is board policy) */
+#define ULMK_SYS_SLEEP               12  /* int   ulmk_sleep_ms(ms)                   */
+#define ULMK_SYS_SLEEP_CANCEL        13  /* int   ulmk_sleep_cancel(tid)              */
+#define ULMK_SYS_EP_CALL_TIMEOUT     14  /* int   ulmk_ep_call_timeout(ep,msg*,ms)    */
+#define ULMK_SYS_TICK_START          15  /* void  ulmk_tick_start(void) — board init  */
 
 /* ── Thread query (any privilege) ───────────────────────────────── */
 #define ULMK_SYS_THREAD_SELF         20  /* ulmk_tid_t ulmk_thread_self(void)           */
@@ -55,6 +57,7 @@
 #define ULMK_SYS_NOTIF_WAIT          42  /* int        ulmk_notif_wait(notif, mask, bits*) */
 #define ULMK_SYS_NOTIF_POLL          43  /* uint32_t   ulmk_notif_poll(notif, mask)   */
 #define ULMK_SYS_NOTIF_DESTROY       44  /* int        ulmk_notif_destroy(notif)      */
+#define ULMK_SYS_NOTIF_WAIT_TIMEOUT  45  /* int ulmk_notif_wait_timeout(n,mask,bits*,ms) */
 
 /* ── IRQ (requires IO >= 1 / ULMK_PRIV_DRIVER) ────────────────────── */
 #define ULMK_SYS_IRQ_BIND            60  /* int ulmk_irq_bind(srpn, notif, bit)       */

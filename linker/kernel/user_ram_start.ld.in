@@ -1,9 +1,23 @@
 /* linker/kernel/user_ram_start.ld.in
  * First byte of userspace static RAM (component domains before user_pool).
- * Empty userspace .data when no component globals are present.
+ *
+ * Collect remaining initialised .data (SDK root_thread.o, board .o files not
+ * archived into libulmk_kernel.a) into a userspace-visible section.  Kernel
+ * .data is taken earlier by kernel_data.ld.in from libulmk_kernel.a only —
+ * orphans must not sit in KERNEL_RAM ahead of _ulmk_user_ram_start or
+ * unprivileged threads fault on them (ARMv8-M PMSAv8 with PRIVDEFENA).
+ *
+ * startup (kernel/init/init.c) copies [__ulmk_user_data_load ..) → RAM using
+ * _ulmk_user_data_start / _ulmk_user_data_end.
  */
 
     _ulmk_user_ram_start = .;
-    _ulmk_user_data_start = .;
-    _ulmk_user_data_end = .;
-    __ulmk_user_data_load = .;
+
+    __ulmk_user_data_load = LOADADDR(.user_data);
+    .user_data : ALIGN(8) {
+        _ulmk_user_data_start = .;
+        /* Anything not already claimed by .kernel_data / domain sections. */
+        *(.data .data.* .sdata .sdata.*)
+        . = ALIGN(8);
+        _ulmk_user_data_end = .;
+    } > KERNEL_RAM AT > KERNEL_FLASH

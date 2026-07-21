@@ -47,6 +47,7 @@ typedef enum {
 #define ULMK_EDEADLK	 -5
 #define ULMK_ESRCH	 -6
 #define ULMK_ETIMEOUT	 -7
+#define ULMK_ECANCELED	 -8
 
 /* =========================================================================
  * Opaque handles
@@ -236,6 +237,46 @@ static inline int ulmk_thread_yield(void)
 }
 
 /**
+ * @brief Block the calling thread for at least @p ms milliseconds.
+ *
+ * Maximum range is limited by the kernel timing wheel (~4 minutes at
+ * 1 kHz).  Longer requests return @c ULMK_EINVAL.
+ *
+ * @return @c ULMK_OK, @c ULMK_EINVAL, or @c ULMK_ECANCELED if cancelled.
+ */
+static inline int ulmk_sleep_ms(uint32_t ms)
+{
+	uint32_t r;
+	ULMK_SYSCALL_1(ULMK_SYS_SLEEP, ms, r);
+	return (int)r;
+}
+
+/**
+ * @brief Cancel a blocked @c ulmk_sleep_ms on @p tid.
+ * @return @c ULMK_OK, @c ULMK_ESRCH, or @c ULMK_EINVAL if not sleeping.
+ * @pre Caller privilege >= @c ULMK_PRIV_DRIVER.
+ */
+static inline int ulmk_sleep_cancel(ulmk_tid_t tid)
+{
+	uint32_t r;
+	ULMK_SYSCALL_1(ULMK_SYS_SLEEP_CANCEL, tid, r);
+	return (int)r;
+}
+
+/**
+ * @brief Arm the kernel periodic tick (board bring-up).
+ *
+ * Called once from board_timer_start() after console IPC is ready so the
+ * first userspace RFE is not racing the timer IRQ on sensitive emulators.
+ */
+static inline void ulmk_tick_start(void)
+{
+	uint32_t r;
+	ULMK_SYSCALL_0(ULMK_SYS_TICK_START, r);
+	(void)r;
+}
+
+/**
  * @brief Create a runnable thread.
  * @param attr Thread attributes: entry, arg, stack_size, priority, privilege
  *             and optional per-thread heap size.
@@ -357,6 +398,19 @@ static inline int ulmk_ep_call(ulmk_ep_t ep, ulmk_msg_t *msg)
 {
 	uint32_t r;
 	ULMK_SYSCALL_2(ULMK_SYS_EP_CALL, ep, msg, r);
+	return (int)r;
+}
+
+/**
+ * @brief Synchronous endpoint call with a bounded wait.
+ * @param timeout_ms Maximum wait; 0 is invalid (use @c ulmk_ep_call).
+ * @return @c ULMK_OK, @c ULMK_ETIMEOUT, or an error code.
+ */
+static inline int ulmk_ep_call_timeout(ulmk_ep_t ep, ulmk_msg_t *msg,
+				     uint32_t timeout_ms)
+{
+	uint32_t r;
+	ULMK_SYSCALL_3(ULMK_SYS_EP_CALL_TIMEOUT, ep, msg, timeout_ms, r);
 	return (int)r;
 }
 
@@ -522,6 +576,20 @@ static inline int ulmk_notif_wait(ulmk_notif_t notif, uint32_t mask, uint32_t *b
 {
 	uint32_t r;
 	ULMK_SYSCALL_3(ULMK_SYS_NOTIF_WAIT, notif, mask, bits, r);
+	return (int)r;
+}
+
+/**
+ * @brief Wait for notification bits with a bounded wait.
+ * @param timeout_ms Maximum wait; overflow of the wheel returns @c ULMK_EINVAL.
+ * @return @c ULMK_OK, @c ULMK_ETIMEOUT, or an error code.
+ */
+static inline int ulmk_notif_wait_timeout(ulmk_notif_t notif, uint32_t mask,
+					uint32_t *bits, uint32_t timeout_ms)
+{
+	uint32_t r;
+	ULMK_SYSCALL_4(ULMK_SYS_NOTIF_WAIT_TIMEOUT, notif, mask, bits,
+		       timeout_ms, r);
 	return (int)r;
 }
 

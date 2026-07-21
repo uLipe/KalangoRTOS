@@ -176,26 +176,19 @@ bool ulmk_arch_sched_isr_preempt_deferred(void)
 	return false;
 }
 
-static void systick_start(void);
+/*
+ * Cortex-M exceptions run in Handler mode on MSP; the synchronous coroutine
+ * switch is safe there.  No need to defer the reschedule to thread context.
+ */
+bool ulmk_arch_sched_defer_to_thread(void)
+{
+	return false;
+}
 
 void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
 			    unsigned int flags)
 {
-	static bool tick_started;
-
 	(void)flags;
-
-	/*
-	 * Start the periodic quantum tick only once real scheduling begins.
-	 * Arming it in ulmk_arch_init() would let SysTick fire during
-	 * kernel_main() — after interrupts are enabled but before the first
-	 * thread exists — dispatching with no current thread.
-	 */
-	if (!tick_started) {
-		tick_started = true;
-		systick_start();
-	}
-
 	ulmk_arch_ctx_switch(from, to);
 }
 
@@ -233,7 +226,7 @@ void _arm_svc_dispatch(uint32_t *frame)
 
 void _arm_systick_dispatch(void)
 {
-	ulmk_kern_sched_dispatch(true);
+	ulmk_kern_timer_tick();
 	ulmk_kern_trap_mpu_restore();
 }
 
@@ -430,14 +423,17 @@ void ulmk_arch_syscall_entry(void)
 }
 
 /* =========================================================================
- * SysTick — periodic scheduler quantum tick
+ * SysTick — periodic kernel timing-wheel tick
  * ========================================================================= */
 
-static void systick_start(void)
+void ulmk_arch_tick_init(uint32_t tick_hz)
 {
 	uint32_t reload;
 
-	reload = (BOARD_CPU_HZ / ULMK_CONFIG_TICK_HZ);
+	if (tick_hz == 0u)
+		tick_hz = 1000u;
+
+	reload = BOARD_CPU_HZ / tick_hz;
 	if (reload == 0u)
 		reload = 1u;
 	reload -= 1u;
@@ -449,6 +445,11 @@ static void systick_start(void)
 	REG32(ULMK_ARCH_SYSTICK_CTRL) = ULMK_ARCH_SYSTICK_ENABLE |
 					ULMK_ARCH_SYSTICK_TICKINT |
 					ULMK_ARCH_SYSTICK_CLKSOURCE;
+}
+
+void ulmk_arch_tick_ack(void)
+{
+	/* SysTick auto-reloads; COUNTFLAG clear is implicit on handler entry. */
 }
 
 /*

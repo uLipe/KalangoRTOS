@@ -35,6 +35,7 @@ void          ulmk_ep_recv_queue_remove(ulmk_thread_t *th);
  * The ulmk_kern_ep_* syscall handlers are thin wrappers around these.
  */
 int  ep_call_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg);
+int  ep_call_timeout_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, uint32_t timeout_ms);
 int  ep_recv_impl(ulmk_ep_t ep_id, ulmk_msg_t *msg, ulmk_tid_t *sender);
 int  ep_reply_impl(ulmk_tid_t sender_tid, const ulmk_msg_t *reply);
 int  ep_reply_recv_impl(ulmk_ep_t ep_id, ulmk_tid_t sender_tid,

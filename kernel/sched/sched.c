@@ -75,6 +75,9 @@ static void sched_switch_to(ulmk_thread_t *prev, ulmk_thread_t *next)
 	ulmk_arch_ctx_t    *from;
 	ulmk_arch_ctx_t    *to;
 
+	if (!next)
+		next = pc->idle;
+
 	ulmk_thread_ensure_ctx(next);
 
 	from = prev ? &prev->ctx : &pc->startup_ctx;
@@ -146,6 +149,11 @@ void ulmk_sched_start(void)
 #else
 	pc->needs_resched = false;
 #endif
+	/*
+	 * Do not arm the HW tick here: the first RFE into a virgin userspace
+	 * context races with STM0 on QEMU TriCore and can hang before the
+	 * first root instruction.  Arm on the first trap/syscall instead.
+	 */
 	ulmk_arch_mpu_switch(first->regions, first->region_count,
 			     sched_thread_prs(first));
 	ulmk_arch_ctx_switch(&pc->startup_ctx, &first->ctx);
@@ -251,12 +259,23 @@ void ulmk_sched_trap_dispatch(bool from_isr)
 	}
 
 	if (from_isr) {
+		/*
+		 * Arches that cannot switch from the trap (RISC-V) leave the
+		 * interrupted frame live and defer: switching here would resume
+		 * onto the trap epilogue with reduced privilege (INST_FAULT).
+		 */
+		if (ulmk_arch_sched_defer_to_thread()) {
+			pc->needs_resched = true;
+			return;
+		}
+
 		cur->state = UL_THREAD_STATE_READY;
 		if (sys_dnode_is_linked(&cur->sched_node))
 			sched_class->dequeue(cur);
 		sched_class->enqueue(cur);
 
 		if (ulmk_arch_sched_isr_preempt_deferred()) {
+			/* TriCore: stage the CSA handoff, switch on RFE. */
 			next = sched_class->pick_next();
 			ulmk_thread_ensure_ctx(next);
 
@@ -269,7 +288,9 @@ void ulmk_sched_trap_dispatch(bool from_isr)
 			return;
 		}
 
-		ulmk_sched_resched();
+		/* Handler-mode coroutine switch (ARM). */
+		next = sched_class->pick_next();
+		sched_switch_to(cur, next);
 		return;
 	}
 

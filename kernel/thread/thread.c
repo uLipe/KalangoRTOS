@@ -16,6 +16,7 @@
 #include <kernel/include/ulmk_mem_internal.h>
 #include <kernel/include/ulmk_ep_internal.h>
 #include <kernel/include/ulmk_notif_internal.h>
+#include <kernel/include/ulmk_timeout_internal.h>
 #include <kernel/syscall/syscall_router.h>
 #include <ulmk_arch.h>
 #include <kernel/include/list.h>
@@ -68,6 +69,9 @@ int ulmk_thread_init(ulmk_thread_t *th, const ulmk_thread_attr_t *attr, void *st
 	sys_dnode_init(&th->sched_node);
 	sys_dnode_init(&th->ipc_node);
 	sys_dnode_init(&th->reg_node);
+	sys_dnode_init(&th->timeout.node);
+	th->timeout.cb = NULL;
+	th->timeout.expires = 0u;
 
 	th->stack_base  = (uint8_t *)stack;
 	th->stack_size  = attr->stack_size;
@@ -210,6 +214,8 @@ void ulmk_thread_set_state(ulmk_thread_t *th, uint8_t state)
  */
 void ulmk_thread_free(ulmk_thread_t *th)
 {
+	ulmk_timeout_disarm(th);
+
 	if (sys_dnode_is_linked(&th->reg_node)) {
 		sys_dlist_remove(&th->reg_node);
 		sys_dnode_init(&th->reg_node);
@@ -380,6 +386,8 @@ uint32_t ulmk_kern_thread_kill(uint32_t tid)
 	if (!th || th->state == UL_THREAD_STATE_DEAD)
 		return (uint32_t)(int32_t)ULMK_ESRCH;
 
+	ulmk_timeout_disarm(th);
+
 	/*
 	 * Drop from IPC queues (send or recv share ipc_node) and clear any
 	 * notif waiter slot before the TCB disappears.
@@ -409,6 +417,7 @@ uint32_t ulmk_kern_thread_kill(uint32_t tid)
 				sys_dlist_remove(&peer->ipc_node);
 				sys_dnode_init(&peer->ipc_node);
 			}
+			ulmk_timeout_disarm(peer);
 			peer->block_status   = ULMK_ESRCH;
 			peer->blocked_reason = UL_BLOCKED_NONE;
 			peer->blocked_ep     = ULMK_EP_INVALID;

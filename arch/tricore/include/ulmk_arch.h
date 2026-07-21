@@ -117,6 +117,7 @@ void ulmk_arch_ctx_free(ulmk_arch_ctx_t *ctx);
 #define ULMK_SCHED_SWITCH_PREEMPT_ISR	1u
 
 bool ulmk_arch_sched_isr_preempt_deferred(void);
+bool ulmk_arch_sched_defer_to_thread(void);
 void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
 			    unsigned int flags);
 
@@ -222,6 +223,10 @@ void ulmk_board_cpu_endinit_set(void);
  */
 void ulmk_arch_init(ulmk_boot_info_t *info);
 
+/* Periodic kernel tick (STM0 CMP).  Called by kernel only. */
+void ulmk_arch_tick_init(uint32_t tick_hz);
+void ulmk_arch_tick_ack(void);
+
 /* =========================================================================
  * Arch-internal syscall entry (arch/tricore/arch.c)
  * vectors.S parks TIN + D4–D7 on the stack and passes that frame pointer;
@@ -269,6 +274,7 @@ void ulmk_printk_char_out(char c);
  */
 void ulmk_kern_irq_dispatch(uint8_t srpn);
 void ulmk_kern_ipi_resched(void);
+void ulmk_kern_timer_tick(void);
 #if ULMK_CONFIG_ENABLE_SMP
 void ulmk_kern_ipi_from_isr(void);
 #endif

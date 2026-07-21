@@ -15,6 +15,7 @@
 #include <ulmk/config.h>
 #include <ulmk_arch.h>
 #include <kernel/include/list.h>
+#include <kernel/include/ulmk_timer.h>
 
 struct ulmk_syscall_wcet_slot;
 
@@ -30,6 +31,7 @@ struct ulmk_syscall_wcet_slot;
 #define UL_BLOCKED_IPC_RECV      3  /* waiting for a caller */
 #define UL_BLOCKED_NOTIF         4  /* waiting for notification bits */
 #define UL_BLOCKED_IPC_OR_NOTIF  5  /* ulmk_ep_recv_or_notif — either */
+#define UL_BLOCKED_SLEEP         6
 
 typedef struct ulmk_thread {
 	ulmk_arch_ctx_t    ctx;
@@ -66,6 +68,7 @@ typedef struct ulmk_thread {
 	sys_dnode_t        sched_node;      /* run-queue linkage */
 	sys_dnode_t        ipc_node;        /* IPC send or recv queue linkage */
 	sys_dnode_t        reg_node;        /* global TCB registry linkage */
+	struct ulmk_timeout timeout;
 	/*
 	 * Bounce buffer — fallback when the peer has no userspace staging
 	 * pointer (recv_or_notif result, destroy paths, unit tests).  Hot

@@ -49,10 +49,15 @@ uint32_t ulmk_kern_heap_aligned_alloc(uint32_t align, uint32_t size);
 uint32_t ulmk_kern_yield(void);
 uint32_t ulmk_kern_exit(void);         /* does not return; marks thread dead */
 uint32_t ulmk_kern_thread_self(void);
+uint32_t ulmk_kern_sleep(uint32_t ms);
+uint32_t ulmk_kern_sleep_cancel(uint32_t tid);
+uint32_t ulmk_kern_tick_start(void);
 
 /* IPC endpoints */
 uint32_t ulmk_kern_ep_create(void);
 uint32_t ulmk_kern_ep_call(uint32_t ep, uint32_t msg_ptr);
+uint32_t ulmk_kern_ep_call_timeout(uint32_t ep, uint32_t msg_ptr,
+				   uint32_t ms);
 uint32_t ulmk_kern_ep_recv(uint32_t ep, uint32_t msg_ptr, uint32_t sender_ptr);
 uint32_t ulmk_kern_ep_reply(uint32_t sender_tid, uint32_t reply_ptr);
 uint32_t ulmk_kern_ep_reply_recv(uint32_t ep, uint32_t sender_tid,
@@ -66,6 +71,8 @@ uint32_t ulmk_kern_ep_destroy(uint32_t ep);
 uint32_t ulmk_kern_notif_create(void);
 uint32_t ulmk_kern_notif_signal(uint32_t notif, uint32_t bits);
 uint32_t ulmk_kern_notif_wait(uint32_t notif, uint32_t mask, uint32_t bits_ptr);
+uint32_t ulmk_kern_notif_wait_timeout(uint32_t notif, uint32_t mask,
+				      uint32_t bits_ptr, uint32_t ms);
 uint32_t ulmk_kern_notif_poll(uint32_t notif, uint32_t mask);
 uint32_t ulmk_kern_notif_destroy(uint32_t notif);
 

@@ -148,6 +148,30 @@ ulmk_thread_t *ulmk_thread_by_tid(ulmk_tid_t tid)
 	return th;
 }
 
+/* ── Timeout stubs (IPC unit does not exercise the wheel) ─────────────── */
+
+uint32_t ulmk_ms_to_ticks(uint32_t ms)
+{
+	if (ms > 250000u)
+		return 0u;
+	return ms ? ms : 1u;
+}
+
+int ulmk_timeout_arm(ulmk_thread_t *th, uint32_t ms,
+		     void (*cb)(struct ulmk_timeout *to))
+{
+	(void)ms;
+	(void)cb;
+	if (!th)
+		return ULMK_EINVAL;
+	return ULMK_OK;
+}
+
+void ulmk_timeout_disarm(ulmk_thread_t *th)
+{
+	(void)th;
+}
+
 /* ── Helpers ───────────────────────────────────────────────────────────── */
 
 static void reset_counters(void)

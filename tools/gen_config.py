@@ -30,6 +30,7 @@ KERNEL_DEFAULTS = {
     "ULMK_CONFIG_DEBUG_PRINTK":     1,    # ulmk_printk.c (0 = no-op)
     "ULMK_CONFIG_SYSCALL_WCET":     0,    # kernel cycle slot around syscalls
     "ULMK_CONFIG_ENABLE_SMP":       0,    # 1 = multi-CPU sched (needs NUM_CPU>1)
+    "ULMK_CONFIG_TICK_HZ":          1000, # kernel timing-wheel tick rate
 }
 
 # Inclusive range checks for numeric policy symbols.
@@ -37,6 +38,7 @@ KERNEL_RANGES = {
     "ULMK_CONFIG_MAX_IRQ_BINDINGS": (1, 256),
     "ULMK_CONFIG_SYSCALL_WCET":     (0, 1),
     "ULMK_CONFIG_ENABLE_SMP":       (0, 1),
+    "ULMK_CONFIG_TICK_HZ":          (1, 10000),
 }
 
 

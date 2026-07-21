@@ -40,6 +40,8 @@
 #define ULMK_BOARD_TIMER_RTC_MAP_SIZE	0x1000u
 #define ULMK_BOARD_TIMER_PLIC_IRQ	11u
 #define ULMK_BOARD_TIMER_HW_CLOCK_HZ	1000000000u
+/* CLINT mtime timebase (QEMU virt default) for kernel tick */
+#define ULMK_BOARD_TICK_CLOCK_HZ	10000000u
 
 #ifndef ULMK_ARCH_HAVE_FPU
 #define ULMK_ARCH_HAVE_FPU		0

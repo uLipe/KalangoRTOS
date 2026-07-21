@@ -372,6 +372,11 @@ bool ulmk_arch_sched_isr_preempt_deferred(void)
 	return true;
 }
 
+bool ulmk_arch_sched_defer_to_thread(void)
+{
+	return false;
+}
+
 void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
 			    unsigned int flags)
 {
@@ -952,6 +957,8 @@ bool ulmk_arch_mpu_addr_permitted(uintptr_t addr, size_t size, uint32_t perms)
 static uint32_t g_src_addr[256];
 /* Next available SRC allocation slot for ulmk_irq_bind() dynamic IRQs. */
 static uint8_t g_next_src_slot = 0xC1u;
+/* Set by ulmk_arch_tick_init — ISR must not steal TICK SRPN before arm. */
+static bool g_tick_armed;
 
 void ulmk_arch_irq_vectors_init(uintptr_t btv, uintptr_t biv, uintptr_t isp_top)
 {
@@ -1080,6 +1087,12 @@ void _arch_generic_isr_handler(void)
 		return;
 	}
 #endif
+
+	if (srpn == (uint8_t)ULMK_BOARD_IRQ_TICK) {
+		if (g_tick_armed)
+			ulmk_kern_timer_tick();
+		return;
+	}
 
 	ulmk_kern_irq_dispatch(srpn);
 
@@ -1408,6 +1421,155 @@ void ulmk_arch_init(ulmk_boot_info_t *info)
 		(uintptr_t)_trap_class0,
 		(uintptr_t)_ulmk_int_table,
 		(uintptr_t)_ulmk_isr_stack_top);
+}
+
+/* =========================================================================
+ * Kernel tick — STM0 compare-match (CMP0 → CPU0, CMP1 → CPU1)
+ * ========================================================================= */
+
+#ifndef ULMK_BOARD_STM0_BASE
+#error "board_config.h must define ULMK_BOARD_STM0_BASE for arch tick"
+#endif
+
+#define STM0_TIM0	(ULMK_BOARD_STM0_BASE + 0x010u)
+#define STM0_CMP0	(ULMK_BOARD_STM0_BASE + 0x030u)
+#define STM0_CMP1	(ULMK_BOARD_STM0_BASE + 0x034u)
+#define STM0_CMCON	(ULMK_BOARD_STM0_BASE + 0x038u)
+#define STM0_ICR	(ULMK_BOARD_STM0_BASE + 0x03Cu)
+#define STM0_ISCR	(ULMK_BOARD_STM0_BASE + 0x040u)
+
+/* STM_ICR: CMP0EN=0, CMP0IR=1, CMP0OS=2, CMP1EN=4, CMP1IR=5, CMP1OS=6 */
+#define STM0_ICR_CMP0EN		(1u << 0)
+#define STM0_ICR_CMP1EN		(1u << 4)
+#define STM0_ISCR_CMP0IRR	(1u << 0)
+#define STM0_ISCR_CMP1IRR	(1u << 1)
+
+static uint32_t g_tick_period_stm;
+
+static inline volatile uint32_t *stm0_reg(uint32_t addr)
+{
+	return (volatile uint32_t *)(uintptr_t)addr;
+}
+
+static volatile uint32_t *tick_src_reg(uint32_t cpu)
+{
+	if (cpu == 0u)
+		return stm0_reg(ULMK_BOARD_SRC_STM0_SR0);
+#if defined(ULMK_BOARD_SRC_STM0_SR1)
+	if (cpu == 1u)
+		return stm0_reg(ULMK_BOARD_SRC_STM0_SR1);
+#endif
+	return NULL;
+}
+
+static void tick_src_arm(uint32_t cpu)
+{
+	volatile uint32_t *src = tick_src_reg(cpu);
+	uint32_t           cfg;
+
+	if (!src)
+		return;
+
+	/*
+	 * Direct SRC programming (like IPI): do not use g_src_addr[SRPN] —
+	 * CPU0 and CPU1 share the tick SRPN with distinct SRC registers.
+	 */
+	cfg = (uint32_t)ULMK_BOARD_IRQ_TICK |
+	      ((uint32_t)cpu << SRC_TOS_SHIFT);
+	*src = cfg | SRC_CLRR_BIT;
+	*src = cfg | SRC_SRE_BIT;
+}
+
+void ulmk_arch_tick_init(uint32_t tick_hz)
+{
+	uint32_t cpu = ulmk_arch_cpu_id();
+	uint32_t now;
+	uint32_t cmp_addr;
+	uint32_t icr_en;
+	uint32_t iscr_bit;
+	uint32_t icr_keep;
+
+	if (tick_hz == 0u)
+		tick_hz = 1000u;
+
+	g_tick_period_stm = ULMK_BOARD_TICK_CLOCK_HZ / tick_hz;
+	if (g_tick_period_stm == 0u)
+		g_tick_period_stm = 1u;
+
+	if (cpu == 0u) {
+		/*
+		 * Absolute CMCON like the old userspace board_timer: MSIZE0=31
+		 * (full 32-bit compare).  Also enable CMP1 size for SMP.
+		 */
+		*stm0_reg(STM0_CMCON) = 0x1Fu | (0x1Fu << 16);
+		cmp_addr = STM0_CMP0;
+		icr_en   = STM0_ICR_CMP0EN;
+		iscr_bit = STM0_ISCR_CMP0IRR;
+	} else {
+#if defined(ULMK_BOARD_SRC_STM0_SR1)
+		cmp_addr = STM0_CMP1;
+		icr_en   = STM0_ICR_CMP1EN;
+		iscr_bit = STM0_ISCR_CMP1IRR;
+#else
+		return;
+#endif
+	}
+
+	tick_src_arm(cpu);
+
+	/*
+	 * Absolute ICR writes (not RMW): CMP0IR/CMP1IR are status bits;
+	 * preserving them across enable toggles confuses QEMU's STM model.
+	 * Keep the other compare's enable when present (SMP).
+	 */
+	icr_keep = *stm0_reg(STM0_ICR) &
+		   (STM0_ICR_CMP0EN | STM0_ICR_CMP1EN) & ~icr_en;
+	*stm0_reg(STM0_ICR) = icr_keep;
+	*stm0_reg(STM0_ISCR) = iscr_bit;
+	now = *stm0_reg(STM0_TIM0);
+	*stm0_reg(cmp_addr) = now + g_tick_period_stm;
+	*stm0_reg(STM0_ISCR) = iscr_bit;
+	*stm0_reg(STM0_ICR) = icr_keep | icr_en;
+	g_tick_armed = true;
+}
+
+void ulmk_arch_tick_ack(void)
+{
+	uint32_t           cpu = ulmk_arch_cpu_id();
+	volatile uint32_t *src = tick_src_reg(cpu);
+	uint32_t           cmp_addr;
+	uint32_t           icr_en;
+	uint32_t           iscr_bit;
+	uint32_t           icr_keep;
+	uint32_t           now;
+
+	if (cpu == 0u) {
+		cmp_addr = STM0_CMP0;
+		icr_en   = STM0_ICR_CMP0EN;
+		iscr_bit = STM0_ISCR_CMP0IRR;
+	} else {
+		cmp_addr = STM0_CMP1;
+		icr_en   = STM0_ICR_CMP1EN;
+		iscr_bit = STM0_ISCR_CMP1IRR;
+	}
+
+	icr_keep = *stm0_reg(STM0_ICR) &
+		   (STM0_ICR_CMP0EN | STM0_ICR_CMP1EN) & ~icr_en;
+	*stm0_reg(STM0_ICR) = icr_keep;
+	*stm0_reg(STM0_ISCR) = iscr_bit;
+	now = *stm0_reg(STM0_TIM0);
+	*stm0_reg(cmp_addr) = now + g_tick_period_stm;
+	*stm0_reg(STM0_ISCR) = iscr_bit;
+	*stm0_reg(STM0_ICR) = icr_keep | icr_en;
+
+	/*
+	 * Clear SRR only — keep SRPN/TOS/SRE.  A full word rewrite would
+	 * clobber a userspace bind_hw() that reuses STM0 SR0 with a non-tick
+	 * SRPN (silicon_irq_stress).  tick_src_arm() still programs the
+	 * canonical tick SRPN at init.
+	 */
+	if (src)
+		*src |= SRC_CLRR_BIT;
 }
 
 /* =========================================================================

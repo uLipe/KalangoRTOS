@@ -320,6 +320,17 @@ bool ulmk_arch_sched_isr_preempt_deferred(void)
 	return false;
 }
 
+/*
+ * RISC-V takes the periodic tick as a machine trap; switching context from
+ * inside _ulmk_trap_dispatch would resume the interrupted thread onto its
+ * own trap.S epilogue with MPP=U (INST_FAULT).  Defer the reschedule to
+ * thread context (syscall exit / idle drain) instead.
+ */
+bool ulmk_arch_sched_defer_to_thread(void)
+{
+	return true;
+}
+
 void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
 			    unsigned int flags)
 {
@@ -612,7 +623,13 @@ void _ulmk_trap_dispatch(struct riscv_trap_frame *frame)
 		ulmk_kern_sched_dispatch(false);
 		ret = ulmk_kern_syscall_ret_resolve(ret);
 		frame->regs[TF_A0 / 4u] = ret;
-		frame->regs[TF_MSTATUS / 4u] = mstatus | MSTATUS_MIE_BIT;
+		/*
+		 * Keep MIE clear until mret (MPIE → MIE).  Forcing MIE=1 here
+		 * lets a pending MTIP nest in the trap epilogue with
+		 * mepc=epilogue and MPP=U after a bad restore → INST_FAULT.
+		 */
+		frame->regs[TF_MSTATUS / 4u] =
+			(mstatus & ~MSTATUS_MIE_BIT) | MSTATUS_MPIE_BIT;
 		ulmk_kern_trap_mpu_restore();
 		return;
 	}
@@ -644,12 +661,12 @@ uint32_t ulmk_arch_atomic_cas(volatile uint32_t *ptr,
 			    uint32_t expected, uint32_t desired)
 {
 	uint32_t old;
+	ulmk_arch_irq_key_t key = ulmk_arch_cpu_irq_save();
 
-	__asm__ volatile("csrc mstatus, %0" :: "r"(MSTATUS_MIE_BIT) : "memory");
 	old = *ptr;
 	if (old == expected)
 		*ptr = desired;
-	__asm__ volatile("csrs mstatus, %0" :: "r"(MSTATUS_MIE_BIT) : "memory");
+	ulmk_arch_cpu_irq_restore(key);
 	return old;
 }
 
@@ -752,4 +769,60 @@ void ulmk_arch_init(ulmk_boot_info_t *info)
 	__asm__ volatile("csrs mie, %0" :: "r"(1u << 3));
 #endif
 	(void)user_mstatus_init;
+}
+
+/* =========================================================================
+ * Kernel tick — CLINT mtimecmp (per-hart)
+ * ========================================================================= */
+
+static uint64_t g_tick_period;
+
+static uint64_t clint_mtime_read(void)
+{
+	volatile uint32_t *mtime =
+		(volatile uint32_t *)(uintptr_t)ULMK_ARCH_CLINT_MTIME;
+	uint32_t hi, lo;
+
+	do {
+		hi = mtime[1];
+		lo = mtime[0];
+	} while (hi != mtime[1]);
+
+	return ((uint64_t)hi << 32) | lo;
+}
+
+static void clint_mtimecmp_write(uint32_t hart, uint64_t when)
+{
+	volatile uint32_t *cmp =
+		(volatile uint32_t *)(uintptr_t)ULMK_ARCH_CLINT_MTIMECMP(hart);
+
+	cmp[1] = 0xFFFFFFFFu;
+	cmp[0] = (uint32_t)when;
+	cmp[1] = (uint32_t)(when >> 32);
+}
+
+void ulmk_arch_tick_init(uint32_t tick_hz)
+{
+	uint32_t hart = ulmk_arch_cpu_id();
+	uint64_t now;
+
+	if (tick_hz == 0u)
+		tick_hz = 1000u;
+
+	g_tick_period = (uint64_t)ULMK_BOARD_TICK_CLOCK_HZ / (uint64_t)tick_hz;
+	if (g_tick_period == 0u)
+		g_tick_period = 1u;
+
+	now = clint_mtime_read();
+	clint_mtimecmp_write(hart, now + g_tick_period);
+	__asm__ volatile("csrs mie, %0" :: "r"(1u << 7));
+}
+
+void ulmk_arch_tick_ack(void)
+{
+	uint32_t hart = ulmk_arch_cpu_id();
+	uint64_t now = clint_mtime_read();
+	uint64_t next = now + g_tick_period;
+
+	clint_mtimecmp_write(hart, next);
 }

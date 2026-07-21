@@ -26,6 +26,7 @@ typedef int32_t ulmk_notif_t;
 #define ULMK_EDEADLK (-5)
 #define ULMK_ESRCH   (-6)
 #define ULMK_ETIMEOUT (-7)
+#define ULMK_ECANCELED (-8)
 
 #define ULMK_MSG_WORDS 6
 
