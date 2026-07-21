@@ -23,7 +23,7 @@
 8. [Notification API](#8-notification-api)
 9. [Memory API](#9-memory-api)
 10. [IRQ API](#10-irq-api)
-11. [Board Timer Service](#11-board-timer-service)
+11. [Timekeeping — Kernel Sleep and Board Timer](#11-timekeeping--kernel-sleep-and-board-timer)
 12. [Syscall Number Table](#12-syscall-number-table)
 13. [Capability Grant API](#13-capability-grant-api)
 14. [Boot Entry Point](#14-boot-entry-point)
@@ -597,34 +597,53 @@ fires.  Used by board services (timer, UART, etc.) that own a specific SRC.
 
 ---
 
-## 11. Board Timer Service
+## 11. Timekeeping — Kernel Sleep and Board Timer
 
-The kernel has **no** system timer or sleep syscall.  Timekeeping is board
-policy: a driver thread maps the SoC timer block, binds its compare-match IRQ
-via `ulmk_irq_bind_hw()`, and serves sleep requests over IPC.
+The kernel owns a hierarchical **timing wheel** (`kernel/time/timer_wheel.c`)
+driven by the arch periodic tick (`ulmk_arch_tick_init` / `ulmk_kern_timer_tick`).
+Userspace sleeps and timed IPC waits arm timeouts on that wheel.
 
-QEMU reference: `boards/qemu_tc3xx/board_timer.c` (STM0 + SRPN 1).
+### `ulmk_sleep_ms` / `ulmk_sleep_cancel` / `ulmk_tick_start`
 
-### `board_timer_start`
+```c
+int  ulmk_sleep_ms(uint32_t ms);
+int  ulmk_sleep_cancel(ulmk_tid_t tid);
+void ulmk_tick_start(void);
+```
+
+- `ulmk_sleep_ms` — block the calling thread for approximately `ms` milliseconds
+  (rounded up to the next tick at `ULMK_CONFIG_TICK_HZ`, typically 1 kHz).
+- `ulmk_sleep_cancel` — wake a sleeper with `ULMK_ECANCELED`.
+- `ulmk_tick_start` — arm the arch tick once (idempotent).  Called from
+  `board_timer_start()` during `board_services_init()`.
+
+IPC/notif also expose timeout variants (`ulmk_ep_call_timeout`,
+`ulmk_notif_wait_timeout`) that share the same wheel.
+
+**TriCore SMP:** STM0 has only one reliable compare on CPU0.  All harts arm
+timeouts on wheel 0 (`ulmk_arch_timer_wheel_cpu` → 0); secondaries are tickless
+and wake via IPI when a timeout expires.  RISC-V/ARM keep a per-CPU wheel with
+a local tick.
+
+### Board timer wrapper
+
+Boards no longer implement compare-match sleep servers.  `board_timer.c` is a
+thin wrapper:
 
 ```c
 ulmk_tid_t board_timer_start(const ulmk_boot_info_t *info);
+void       board_timer_sleep_us(uint32_t us);
 ```
 
-Spawn the timer server thread.  Called once from `board_services_init()`.
-Returns the server TID.
+`board_timer_start` maps any board-needed timer MMIO (e.g. TIM0 readback) and
+calls `ulmk_tick_start()`.  `board_timer_sleep_us` converts µs → ms and calls
+`ulmk_sleep_ms`.
 
-### `board_timer_sleep_us`
+### Board console
 
-```c
-void board_timer_sleep_us(uint32_t us);
-```
-
-Block the caller until approximately `us` microseconds have elapsed (IPC to
-the board timer server).  Available after `board_timer_start()`.
-
-Real boards provide their own `board_timer.c` or a weak stub in
-`stub/board_timer_stub.c`.
+`board_console_putc` / `puts` / `printf` go through an IPC **console server**
+so SMP output is line-atomic.  On TC275 the server sits on top of ASCLIN;
+on QEMU it owns the virt/UART MMIO.
 
 ## 12. Syscall Number Table
 
@@ -635,7 +654,7 @@ userspace wrappers and the kernel router.
  1–3   Memory (shared) (ULMK_SYS_MMAP, MUNMAP, MEM_GRANT)
  4–6   [reserved]      (former MALLOC/FREE/ALIGNED_ALLOC removed in slabAO model)
  7–8   Per-thread heap (HEAP_EXTEND, GET_THREAD_HEAP)
-10–14  Scheduling      (YIELD, EXIT, [12–14 reserved — former kernel timer syscalls])
+10–15  Scheduling/time (YIELD, EXIT, SLEEP, SLEEP_CANCEL, [14], TICK_START)
 20     Thread query    (THREAD_SELF)
 30–37  IPC endpoints   (EP_CREATE, CALL, RECV, REPLY, REPLY_RECV, GRANT,
                         RECV_OR_NOTIF, DESTROY)

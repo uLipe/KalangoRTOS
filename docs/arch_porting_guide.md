@@ -509,10 +509,13 @@ full kernel with their own source list.  To run them for the new arch:
 - Generic ISR stubs must call `ulmk_kern_irq_dispatch()` then
   `ulmk_kern_sched_dispatch(true)` **before** restoring context when a
   notification wakeup may have readied a higher-priority thread.
-- There is no kernel tick timer.  Board services bind device IRQs (e.g. STM0
-  compare-match) via `ulmk_irq_bind_hw()` and implement sleep/timekeeping in
-  userspace.
-- Timer clock constants (e.g. STM0 Hz) belong in board source, not kernel
+- Implement `ulmk_arch_tick_init` / `tick_ack` and call `ulmk_kern_timer_tick`
+  from the tick ISR.  Prefer a free-running compare (STM / CLINT / SysTick)
+  over busy-wait sleep.
+- If the SoC cannot give every CPU a reliable compare (TriCore STM0), keep a
+  single tick owner and return `0` from `ulmk_arch_timer_wheel_cpu()` so all
+  sleeps share that wheel; wake remotes with IPI.
+- Timer clock constants (e.g. STM0 Hz) belong in `board_config.h`, not kernel
   `config.cmake`.
 
 ### Linker script

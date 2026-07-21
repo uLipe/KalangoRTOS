@@ -756,18 +756,17 @@ ulmk_component_register(
 ```c
 #include <ulmk/microkernel.h>
 #include <board_services.h>
+#include <board_console.h>
 #include <gpio_driver.h>
-
-void board_timer_sleep_us(uint32_t us);
 
 static void blink_task(void *arg)
 {
     (void)arg;
     for (;;) {
         gpio_set(0, 1);
-        board_timer_sleep_us(500000u);  /* 500 ms */
+        (void)ulmk_sleep_ms(500u);  /* or board_timer_sleep_us(500000u) */
         gpio_set(0, 0);
-        board_timer_sleep_us(500000u);
+        (void)ulmk_sleep_ms(500u);
     }
 }
 

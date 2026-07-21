@@ -32,10 +32,14 @@ SoC base addresses live in `boards/<soc>/board_config.h` (`ULMK_BOARD_PLIC_BASE`
 timer RTC base, etc.).  `arch/riscv/arch_config.h` applies standard CLINT/PLIC
 offsets only.
 
-## Timer (board service)
+## Timer (kernel tick + board wrapper)
 
-The sleep server uses the QEMU **Goldfish RTC** (`ULMK_BOARD_TIMER_RTC_BASE` in
-`board_config.h`) as an MMIO compare timer. The compare-match IRQ is delivered through **PLIC** (IRQ 11), with `ulmk_notif_wait()` in the server thread — same pattern as STM0 on TriCore. CLINT `mtime`/`mtimecmp` is not used.
+The kernel timing wheel is driven by **CLINT `mtimecmp`** on each hart
+(`ulmk_arch_tick_init`).  `board_timer_sleep_us()` is a thin wrapper over
+`ulmk_sleep_ms()`.  Peripheral IRQs (UART, etc.) still use PLIC +
+`ulmk_notif_wait()` in driver servers.
+
+Goldfish RTC is no longer used for sleep.
 
 ## Build
 
