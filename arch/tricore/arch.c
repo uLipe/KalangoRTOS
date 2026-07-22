@@ -1439,9 +1439,9 @@ static uint32_t g_tick_period_stm;
 
 static uint32_t tick_tos(uint32_t cpu)
 {
-	/* TC27x TOS: 0=CPU0, 1=CPU1, 2=DMA, 3=CPU2 */
-	if (cpu >= 2u)
-		return 3u;
+	/* TC27x SRC.TOS: 0=CPU0, 1=CPU1, 2=CPU2, 3=DMA (iLLD IfxSrc_Tos). */
+	if (cpu > 2u)
+		return 0u;
 	return cpu;
 }
 

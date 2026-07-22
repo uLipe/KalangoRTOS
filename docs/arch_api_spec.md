@@ -621,7 +621,7 @@ port (`arch/tricore/`).  It is **not** part of the generic contract.
 
 Each core owns its STM module (`STM0`/`STM1`/`STM2` at `0xF0000000` /
 `0xF0000100` / `0xF0000200`) and arms CMP0 → `SRC_STMx_SR0` with TOS set to
-that CPU (TOS encoding: 0/1/3 for CPU0/1/2).  Sharing STM0 CMP0+CMP1 across
+that CPU (TOS encoding: 0/1/2 for CPU0/1/2; 3=DMA).  Sharing STM0 CMP0+CMP1 across
 cores raced on silicon; per-core STM avoids that.  `ulmk_arch_timer_wheel_cpu()`
 returns `cpu_id`.  Remote ready threads still get a GPSR IPI for prompt
 preemption.  QEMU TriCore builds remain UP (`NUM_CPU=1`); silicon SMP uses

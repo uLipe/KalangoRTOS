@@ -35,14 +35,13 @@ extern void _ulmk_cpu2_start(void);
 #endif
 
 /*
- * TC27x UM / iLLD: TOS is 2 bits [12:11] —
- *   0 = CPU0, 1 = CPU1, 2 = DMA, 3 = CPU2
- * Never encode cpu_id==2 as TOS=2.
+ * TC27x SRC.TOS (iLLD IfxSrc_Tos): 0=CPU0, 1=CPU1, 2=CPU2, 3=DMA.
+ * Mapping CPU2→3 sends GPSR/STM IRQs to DMA — CPU2 never vectors.
  */
 static uint32_t cpu_to_tos(uint32_t cpu)
 {
-	if (cpu >= 2u)
-		return 3u;
+	if (cpu > 2u)
+		return 0u;
 	return cpu;
 }
 
