@@ -162,6 +162,11 @@ Enter a low-power wait state until the next interrupt.  Called by the kernel
 idle thread.  Must return when an interrupt fires and is handled (i.e., after
 the ISR completes).
 
+**Hard rule:** idle must never call the scheduler (`ulmk_kern_sched_dispatch`,
+`ulmk_sched_*` switch paths, or equivalent).  Preemption happens only on
+ISR/syscall exit.  Arch IPI quirks must be fixed so the hardware interrupt
+vectors; do not poll a soft mailbox from idle.
+
 ### SMP — `ulmk_arch_cpu_id` / spinlocks / IPI / secondary
 
 ```c
@@ -193,7 +198,10 @@ enough under SMP).  With `ENABLE_SMP=0`, `spin_lock`/`unlock` are no-ops and
 | ARM | UP only — configure refuses `ENABLE_SMP` |
 
 Remote enqueue sets `ipi_pending` and `ulmk_sched_kick_pending()` sends the
-IPI.  Tickless secondaries (TriCore CPU1/CPU2) drain soft IPI from idle.
+IPI via GPSR SETR (+ `INT_SRB` TRIG on TC27x); the ISR exit calls
+`ulmk_kern_ipi_from_isr`.  Each TriCore core also arms its own STM CMP0 tick
+and timing wheel (`ulmk_arch_timer_wheel_cpu` → `cpu_id`).  Idle must not
+drain a soft mailbox or call the scheduler.
 
 ### `ulmk_arch_cpu_halt`
 
@@ -403,10 +411,10 @@ uint32_t ulmk_arch_timer_wheel_cpu(void);
   each secondary CPU entry on arches with a per-hart timer.
 - `tick_ack` — clear/re-arm the compare from the tick ISR path.
 - `timer_wheel_cpu` — index of the timing wheel used by `ulmk_timer_add` /
-  `ulmk_timer_tick` on this hart:
-  - **TriCore:** always `0` (STM0 CMP0 lives on CPU0 only; secondaries are
-    tickless and wake via IPI when wheel-0 timeouts expire).
-  - **RISC-V / ARM:** `ulmk_arch_cpu_id()` (local tick → per-CPU wheel).
+  `ulmk_timer_tick` on this hart.  All current ports return
+  `ulmk_arch_cpu_id()` (local tick → per-CPU wheel).  TriCore uses STM0/1/2
+  CMP0 + `SRC_STMx_SR0` per core; remote enqueue still uses GPSR IPI for a
+  prompt wake.
 
 ### `ulmk_arch_irq_src_register`
 
@@ -603,20 +611,21 @@ port (`arch/tricore/`).  It is **not** part of the generic contract.
 
 | File | Implements |
 |------|-----------|
-| `arch.c` | CPU control, MPU (DPR/CPR), IRQ (SRC), tick (STM0 CMP0), syscall/trap entry, `ulmk_arch_timer_wheel_cpu` |
-| `smp.c` | GPSR IPI, secondary bring-up (CPU1/CPU2), soft IPI mailbox |
+| `arch.c` | CPU control, MPU (DPR/CPR), IRQ (SRC), tick (per-core STM CMP0), syscall/trap entry, `ulmk_arch_timer_wheel_cpu` |
+| `smp.c` | GPSR IPI (SETR + SRB TRIG), secondary bring-up (CPU1/CPU2) |
 | `ctx_switch.S` | `ulmk_arch_ctx_switch` — SVLCX/RSLCX/PCXI swap |
 | `startup.S` | `_start` — CPU prologue only (interrupts off, stack, CSA pool, small-data), jumps to `ulmk_kern_start` |
 | `vectors.S` | Trap handlers, generic ISR stubs, syscall entry stub |
 
 ### Tick and SMP (TC275)
 
-STM0 exposes CMP0/CMP1 only; CMP1→SR1 is unreliable on silicon and CPU2 has
-no third compare.  Only CPU0 arms CMP0/SR0.  `ulmk_arch_timer_wheel_cpu()`
-always returns 0 so every hart's `ulmk_sleep_ms` / timed waits land on wheel 0.
-When a timeout wakes a remote thread, the tick path enqueues it and sends a
-GPSR IPI.  QEMU TriCore builds remain UP (`NUM_CPU=1`); silicon SMP uses
-`boards` / `ulmk_boards` with `ULMK_ARCH_NUM_CPU=3` and `--enable-smp`.
+Each core owns its STM module (`STM0`/`STM1`/`STM2` at `0xF0000000` /
+`0xF0000100` / `0xF0000200`) and arms CMP0 → `SRC_STMx_SR0` with TOS set to
+that CPU (TOS encoding: 0/1/3 for CPU0/1/2).  Sharing STM0 CMP0+CMP1 across
+cores raced on silicon; per-core STM avoids that.  `ulmk_arch_timer_wheel_cpu()`
+returns `cpu_id`.  Remote ready threads still get a GPSR IPI for prompt
+preemption.  QEMU TriCore builds remain UP (`NUM_CPU=1`); silicon SMP uses
+`ulmk_boards` with `ULMK_ARCH_NUM_CPU=3` and `--enable-smp`.
 
 ### `ulmk_arch_ctx_t` on TriCore
 

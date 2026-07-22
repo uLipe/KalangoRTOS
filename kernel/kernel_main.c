@@ -45,9 +45,8 @@ void ulmk_kern_ipi_from_isr(void)
 {
 	ulmk_sched_request_resched();
 	/*
-	 * Early IPI before sched_start publishes current: leave the soft
-	 * mailbox alone so idle can drain it.  Clearing here permanently
-	 * loses the kick (needs_resched may also be wiped by sched_start).
+	 * Early IPI before sched_start publishes current: arm needs_resched
+	 * only.  sched_start must not clear it on SMP (see sched.c).
 	 */
 	if (!ulmk_percpu()->current)
 		return;
@@ -62,15 +61,7 @@ void ulmk_kern_timer_tick(void)
 	ulmk_timer_tick();
 	if (!ulmk_percpu()->current)
 		return;
-	/*
-	 * Arches that cannot switch from the tick trap (RISC-V) only arm
-	 * needs_resched — drained on syscall exit / idle.  Handler-mode
-	 * (ARM) and deferred-CSA (TriCore) arches switch inline here.
-	 */
-	if (ulmk_arch_sched_defer_to_thread())
-		ulmk_sched_request_resched();
-	else
-		ulmk_kern_sched_dispatch(true);
+	ulmk_kern_sched_dispatch(true);
 }
 
 uint32_t ulmk_kern_tick_start(void)
@@ -214,16 +205,6 @@ static void idle_thread_entry(void *arg)
 		 * arrives and sleepers park forever.
 		 */
 		ulmk_arch_cpu_irq_enable();
-		/*
-		 * Only arches that defer the tick reschedule to thread context
-		 * (RISC-V) drain here.  On Handler-mode / deferred-CSA arches
-		 * the switch already happened in the ISR; draining from idle
-		 * Thread mode would ctx_switch with reduced privilege (ARM:
-		 * unprivileged fetch of kernel text → MemManage).
-		 */
-		if (ulmk_arch_sched_defer_to_thread() &&
-		    ulmk_percpu()->needs_resched)
-			ulmk_kern_sched_dispatch(false);
 		ulmk_arch_cpu_idle();
 	}
 }
@@ -271,9 +252,9 @@ void ulmk_kern_secondary_main(void)
 	/*
 	 * online + secondary_mark_ready happen inside ulmk_sched_start() only
 	 * after current is set — otherwise a remote IPI can run dispatch with
-	 * current==NULL (drops the kick) and clear the soft mailbox forever.
-	 * Arch idle entry must accept IPIs (RISC-V kernel trampoline enables
-	 * MIE; TriCore idle CSA has PIE=1 on RFE).
+	 * current==NULL and only arm needs_resched.  Arch idle entry must
+	 * accept IPIs (RISC-V kernel trampoline enables MIE; TriCore idle
+	 * CSA has PIE=1 on RFE) so the GPSR/CLINT ISR can schedule.
 	 */
 	ulmk_printk("ulmk: CPU%u sched_start\n", (unsigned)cpu);
 	(void)cpu;

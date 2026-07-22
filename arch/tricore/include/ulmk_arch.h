@@ -89,7 +89,6 @@ void              ulmk_arch_send_ipi(uint32_t cpu_id);
 void              ulmk_arch_ipi_clear_self(void);
 void              ulmk_arch_ipi_note_enter(void);
 void              ulmk_arch_ipi_pulse_self(void);
-bool              ulmk_arch_ipi_soft_take(void);
 void              ulmk_arch_secondary_mark_ready(void);
 void              ulmk_arch_secondary_init(void);
 void              ulmk_arch_start_secondary(uint32_t cpu_id, void (*entry)(void));
@@ -230,12 +229,9 @@ void ulmk_arch_tick_ack(void);
 /*
  * Index of the timing wheel used by timer_add/tick on this arch.
  *
- * TriCore SMP: STM0 has one reliable compare on CPU0 — every hart arms
- * wheel 0 so the CPU0 tick advances all sleeps (secondaries are tickless
- * and wake via IPI).  Matches the old board_timer model (all sleeps
- * serialized on CPU0) without a userspace timer server.
- *
- * RISC-V / ARM: per-hart local tick → return ulmk_arch_cpu_id().
+ * TriCore / RISC-V / ARM: per-hart local tick → return ulmk_arch_cpu_id().
+ * (Older TriCore SMP briefly pinned all sleeps to wheel 0 after STM0
+ * CMP1 races; per-core STM0/1/2 restores the normal model.)
  */
 uint32_t ulmk_arch_timer_wheel_cpu(void);
 

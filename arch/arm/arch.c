@@ -178,13 +178,8 @@ bool ulmk_arch_sched_isr_preempt_deferred(void)
 
 /*
  * Cortex-M exceptions run in Handler mode on MSP; the synchronous coroutine
- * switch is safe there.  No need to defer the reschedule to thread context.
+ * switch is safe there.
  */
-bool ulmk_arch_sched_defer_to_thread(void)
-{
-	return false;
-}
-
 void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
 			    unsigned int flags)
 {

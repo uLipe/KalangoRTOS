@@ -106,7 +106,8 @@ void riscv_clint_dispatch(uint32_t mcause)
 
 #if ULMK_CONFIG_ENABLE_SMP
 	/*
-	 * Reschedule IPI: clear this hart's MSIP; kernel marks needs_resched.
+	 * Reschedule IPI: clear this hart's MSIP; kernel requests resched and
+	 * trap-exit dispatch below switches if needed.
 	 * Bound SRPN soft IRQs (tests) still run below.
 	 */
 	if (is_soft) {

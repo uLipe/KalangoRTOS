@@ -25,13 +25,6 @@ static volatile uint32_t g_secondary_release[ULMK_ARCH_NUM_CPU];
 static volatile uint32_t g_secondary_armed[ULMK_ARCH_NUM_CPU];
 static void (*g_secondary_entry[ULMK_ARCH_NUM_CPU])(void);
 
-/*
- * Soft mailbox: TC275 can latch ICR.PIPN from a remote GPSR SETR without
- * ever taking the BIV slot.  Idle drains this counter (see arch_cpu_idle).
- * Kernel-space IE=0 also masks delivery until return to a thread context.
- */
-volatile uint32_t g_ulmk_ipi_soft[ULMK_ARCH_NUM_CPU];
-
 extern char _trap_class0[];
 extern char _ulmk_int_table[];
 extern char _ulmk_isr_stack_cpu1_top[];
@@ -40,6 +33,18 @@ extern void _ulmk_cpu1_start(void);
 extern char _ulmk_isr_stack_cpu2_top[];
 extern void _ulmk_cpu2_start(void);
 #endif
+
+/*
+ * TC27x UM / iLLD: TOS is 2 bits [12:11] —
+ *   0 = CPU0, 1 = CPU1, 2 = DMA, 3 = CPU2
+ * Never encode cpu_id==2 as TOS=2.
+ */
+static uint32_t cpu_to_tos(uint32_t cpu)
+{
+	if (cpu >= 2u)
+		return 3u;
+	return cpu;
+}
 
 static volatile uint32_t *ipi_src(uint32_t cpu)
 {
@@ -56,16 +61,51 @@ static volatile uint32_t *ipi_src(uint32_t cpu)
 	return NULL;
 }
 
-/*
- * Full SRC word for GPSR targeting @cpu.  Configuration bits only — callers
- * OR SETR / CLRR as needed.  Always rewrite the full config so a SETR write
- * cannot accidentally clear SRE/TOS (SRC write semantics).
- */
-static uint32_t ipi_src_word(uint32_t cpu)
+#if defined(ULMK_BOARD_INT_SRB0)
+static volatile uint32_t *ipi_srb(uint32_t cpu)
 {
-	return (uint32_t)ULMK_BOARD_IRQ_IPI |
-	       ((uint32_t)cpu << ULMK_ARCH_SRC_TOS_SHIFT) |
-	       (1u << ULMK_BOARD_SRC_SRE_BIT);
+	if (cpu == 0u)
+		return (volatile uint32_t *)(uintptr_t)ULMK_BOARD_INT_SRB0;
+#if defined(ULMK_BOARD_INT_SRB1)
+	if (cpu == 1u)
+		return (volatile uint32_t *)(uintptr_t)ULMK_BOARD_INT_SRB1;
+#endif
+#if defined(ULMK_BOARD_INT_SRB2)
+	if (cpu == 2u)
+		return (volatile uint32_t *)(uintptr_t)ULMK_BOARD_INT_SRB2;
+#endif
+	return NULL;
+}
+#endif
+
+/*
+ * RMW helpers — match iLLD IfxSrc_*: never absolute-write the SRC word.
+ * Absolute writes zero ECC[21:16]; ICU ECC check then faults the request
+ * (TC27x UM §16.7 — ECC over SRPN/TOS/SRE/SRN index).
+ */
+static void ipi_src_set_bits(volatile uint32_t *src, uint32_t bits)
+{
+	*src = *src | bits;
+}
+
+static void ipi_trigger(uint32_t cpu, volatile uint32_t *src)
+{
+	/*
+	 * TC27x UM §16.5: GPSRxy triggers ONLY via SRC.SETR or SRBx[y].
+	 * Pulse both — SETR is the iLLD path; SRB is the documented
+	 * software-broadcast path for the same GPSR group SR0 (TRIG0).
+	 */
+	ipi_src_set_bits(src, ULMK_ARCH_SRC_SETR_BIT);
+#if defined(ULMK_BOARD_INT_SRB0)
+	{
+		volatile uint32_t *srb = ipi_srb(cpu);
+
+		if (srb)
+			*srb = 1u;	/* TRIG0 → GPSRx SR0 */
+	}
+#else
+	(void)cpu;
+#endif
 }
 
 void ulmk_arch_smp_mark_ready(void)
@@ -85,9 +125,8 @@ void ulmk_arch_send_ipi(uint32_t cpu_id)
 	src = ipi_src(cpu_id);
 	if (!src)
 		return;
-	g_ulmk_ipi_soft[cpu_id]++;
 	__asm__ volatile("dsync" ::: "memory");
-	*src = ipi_src_word(cpu_id) | ULMK_ARCH_SRC_SETR_BIT;
+	ipi_trigger(cpu_id, src);
 }
 
 void ulmk_arch_ipi_pulse_self(void)
@@ -97,7 +136,7 @@ void ulmk_arch_ipi_pulse_self(void)
 
 	if (!src)
 		return;
-	*src = ipi_src_word(cpu) | ULMK_ARCH_SRC_SETR_BIT;
+	ipi_trigger(cpu, src);
 }
 
 void ulmk_arch_ipi_clear_self(void)
@@ -106,51 +145,34 @@ void ulmk_arch_ipi_clear_self(void)
 	volatile uint32_t *src = ipi_src(cpu);
 
 	if (src)
-		*src = ipi_src_word(cpu) | ULMK_ARCH_SRC_CLRR_BIT;
+		ipi_src_set_bits(src, ULMK_ARCH_SRC_CLRR_BIT);
 }
 
 void ulmk_arch_ipi_note_enter(void)
 {
-	uint32_t cpu = ulmk_arch_cpu_id();
-
-	if (cpu < (uint32_t)ULMK_ARCH_NUM_CPU)
-		g_ulmk_ipi_soft[cpu] = 0u;
 }
 
 /*
- * Returns true once if a soft IPI is pending for this CPU (mailbox).
- * Used by idle when GPSR SETR fails to vector.
- */
-bool ulmk_arch_ipi_soft_take(void)
-{
-	uint32_t cpu = ulmk_arch_cpu_id();
-	uint32_t n;
-
-	if (cpu >= (uint32_t)ULMK_ARCH_NUM_CPU)
-		return false;
-	n = g_ulmk_ipi_soft[cpu];
-	if (n == 0u)
-		return false;
-	g_ulmk_ipi_soft[cpu] = 0u;
-	__asm__ volatile("dsync" ::: "memory");
-	return true;
-}
-
-/*
- * Two-step SRC bring-up per Infineon: program SRPN/TOS with SRE=0, CLRR,
- * then enable SRE.  Avoids sticky PIPN from a SETR+SRE race on first arm.
+ * Two-step bring-up matching iLLD IfxSrc_init + IfxSrc_enable:
+ *   1) SRPN + TOS + CLRR (SRE still 0), preserve ECC
+ *   2) SRE = 1
+ * Avoids SETR+SRE race on first arm (sticky PIPN).
  */
 static void ipi_src_arm(uint32_t cpu)
 {
 	volatile uint32_t *src = ipi_src(cpu);
-	uint32_t           cfg;
+	uint32_t           v;
+	uint32_t           tos;
 
 	if (!src)
 		return;
-	cfg = (uint32_t)ULMK_BOARD_IRQ_IPI |
-	      ((uint32_t)cpu << ULMK_ARCH_SRC_TOS_SHIFT);
-	*src = cfg | ULMK_ARCH_SRC_CLRR_BIT;
-	*src = cfg | (1u << ULMK_BOARD_SRC_SRE_BIT);
+	tos = cpu_to_tos(cpu);
+	v = *src;
+	v &= ~0x1FFFu;	/* SRPN[7:0] + SRE + TOS[12:11] */
+	v |= (uint32_t)ULMK_BOARD_IRQ_IPI;
+	v |= tos << ULMK_ARCH_SRC_TOS_SHIFT;
+	*src = v | ULMK_ARCH_SRC_CLRR_BIT;
+	ipi_src_set_bits(src, 1u << ULMK_BOARD_SRC_SRE_BIT);
 }
 
 void ulmk_arch_secondary_init(void)
@@ -262,7 +284,6 @@ void ulmk_arch_send_ipi(uint32_t cpu_id) { (void)cpu_id; }
 void ulmk_arch_ipi_clear_self(void) {}
 void ulmk_arch_ipi_note_enter(void) {}
 void ulmk_arch_ipi_pulse_self(void) {}
-bool ulmk_arch_ipi_soft_take(void) { return false; }
 void ulmk_arch_secondary_init(void) {}
 void ulmk_arch_secondary_mark_ready(void) {}
 void ulmk_arch_start_secondary(uint32_t cpu_id, void (*entry)(void))

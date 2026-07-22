@@ -108,7 +108,6 @@ void ulmk_arch_ctx_free(ulmk_arch_ctx_t *ctx);
 #define ULMK_SCHED_SWITCH_PREEMPT_ISR	1u
 
 bool ulmk_arch_sched_isr_preempt_deferred(void);
-bool ulmk_arch_sched_defer_to_thread(void);
 void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
 			    unsigned int flags);
 

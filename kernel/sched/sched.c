@@ -6,7 +6,7 @@
  * Dispatches through ulmk_sched_class_t vtable; manages per-CPU current/idle.
  *
  * Context switches from syscall/IRQ hot paths happen only in
- * ulmk_sched_trap_dispatch() (deferred reschedule).
+ * ulmk_sched_trap_dispatch() at trap/ISR exit.
  *
  * IRQs are already masked for the whole kernel/ISR gateway on every arch;
  * this file does not nest irq_save/restore.  Cross-CPU shared state uses
@@ -133,8 +133,8 @@ void ulmk_sched_start(void)
 
 	/*
 	 * Publish current before online/armed.  A remote enqueue IPI that
-	 * lands with current==NULL is dropped by trap_dispatch; soft mailbox
-	 * recovery only works if idle already exists as current.
+	 * lands with current==NULL only arms needs_resched; sched_start
+	 * must keep that flag on SMP so the first trap/ISR exit can switch.
 	 */
 	pc->current  = first;
 	first->state = UL_THREAD_STATE_RUNNING;
@@ -259,16 +259,6 @@ void ulmk_sched_trap_dispatch(bool from_isr)
 	}
 
 	if (from_isr) {
-		/*
-		 * Arches that cannot switch from the trap (RISC-V) leave the
-		 * interrupted frame live and defer: switching here would resume
-		 * onto the trap epilogue with reduced privilege (INST_FAULT).
-		 */
-		if (ulmk_arch_sched_defer_to_thread()) {
-			pc->needs_resched = true;
-			return;
-		}
-
 		cur->state = UL_THREAD_STATE_READY;
 		if (sys_dnode_is_linked(&cur->sched_node))
 			sched_class->dequeue(cur);
@@ -288,7 +278,7 @@ void ulmk_sched_trap_dispatch(bool from_isr)
 			return;
 		}
 
-		/* Handler-mode coroutine switch (ARM). */
+		/* Coop coroutine switch (ARM Handler mode / RISC-V trap). */
 		next = sched_class->pick_next();
 		sched_switch_to(cur, next);
 		return;

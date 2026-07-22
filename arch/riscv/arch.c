@@ -320,17 +320,6 @@ bool ulmk_arch_sched_isr_preempt_deferred(void)
 	return false;
 }
 
-/*
- * RISC-V takes the periodic tick as a machine trap; switching context from
- * inside _ulmk_trap_dispatch would resume the interrupted thread onto its
- * own trap.S epilogue with MPP=U (INST_FAULT).  Defer the reschedule to
- * thread context (syscall exit / idle drain) instead.
- */
-bool ulmk_arch_sched_defer_to_thread(void)
-{
-	return true;
-}
-
 void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
 			    unsigned int flags)
 {

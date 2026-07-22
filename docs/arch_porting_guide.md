@@ -261,7 +261,7 @@ ulmk_arch_irq_key_t ulmk_arch_cpu_irq_save(void) { ... }
 void ulmk_arch_cpu_irq_restore(ulmk_arch_irq_key_t key) { ... }
 void ulmk_arch_cpu_irq_enable(void)  { ... }
 void ulmk_arch_cpu_irq_disable(void) { ... }
-void ulmk_arch_cpu_idle(void)  { ... }
+void ulmk_arch_cpu_idle(void)  { ... }  /* WAIT/WFI/NOP only — never schedule */
 void ulmk_arch_cpu_halt(void)  { for (;;) {} }
 uint32_t ulmk_arch_cpu_clz(uint32_t v) { return __builtin_clz(v); }
 
@@ -512,10 +512,10 @@ full kernel with their own source list.  To run them for the new arch:
 - Implement `ulmk_arch_tick_init` / `tick_ack` and call `ulmk_kern_timer_tick`
   from the tick ISR.  Prefer a free-running compare (STM / CLINT / SysTick)
   over busy-wait sleep.
-- If the SoC cannot give every CPU a reliable compare (TriCore STM0), keep a
-  single tick owner and return `0` from `ulmk_arch_timer_wheel_cpu()` so all
-  sleeps share that wheel; wake remotes with IPI.
-- Timer clock constants (e.g. STM0 Hz) belong in `board_config.h`, not kernel
+- Prefer one compare per CPU when the SoC exposes it (TriCore STM0/1/2).  Only
+  if that is impossible should a port pin the wheel to one tick owner and wake
+  remotes with IPI.  Idle must never run the scheduler or poll a soft mailbox.
+- Timer clock constants (e.g. STM Hz) belong in `board_config.h`, not kernel
   `config.cmake`.
 
 ### Linker script

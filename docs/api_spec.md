@@ -620,10 +620,9 @@ void ulmk_tick_start(void);
 IPC/notif also expose timeout variants (`ulmk_ep_call_timeout`,
 `ulmk_notif_wait_timeout`) that share the same wheel.
 
-**TriCore SMP:** STM0 has only one reliable compare on CPU0.  All harts arm
-timeouts on wheel 0 (`ulmk_arch_timer_wheel_cpu` → 0); secondaries are tickless
-and wake via IPI when a timeout expires.  RISC-V/ARM keep a per-CPU wheel with
-a local tick.
+**TriCore SMP:** each core arms its own STM CMP0 tick and timing wheel
+(`ulmk_arch_timer_wheel_cpu` → `cpu_id`).  Remote enqueue still uses GPSR IPI
+for prompt wake.  RISC-V/ARM likewise keep a per-CPU wheel with a local tick.
 
 ### Board timer wrapper
 

@@ -102,7 +102,7 @@ LDFLAGS := \
 	-Wl,--gc-sections \
 	-Wl,--no-warn-rwx-segments
 
-TIMEOUT_CMD := timeout --kill-after=5 $(QEMU_TIMEOUT)
+QEMU_RUNNER := python3 $(SUITE_DIR)/qemu_until_sentinels.py
 
 .PHONY: all run clean gen_config sdk
 
@@ -137,12 +137,20 @@ $(TARGET): sdk $(KERNEL_A) $(BOARD_A) $(LD) $(CASE_SRCS) $(COMMON)/sdk_test_util
 
 run: all
 	@echo "--- running $(TARGET) (ARCH=$(ARCH), timeout=$(QEMU_TIMEOUT)s) ---"
-	@$(TIMEOUT_CMD) $(QEMU) \
+	@set -- ; \
+	for S in $(SENTINELS) ; do \
+		set -- "$$@" --sentinel "$$S" ; \
+	done ; \
+	$(QEMU_RUNNER) \
+	    --timeout $(QEMU_TIMEOUT) \
+	    --log $(LOG) \
+	    --fail-sentinel $(FAIL_SENTINEL) \
+	    "$$@" \
+	    -- $(QEMU) \
 	    -machine $(MACHINE) \
 	    $(QEMU_EXTRA) \
 	    -kernel $(TARGET) \
-	    -nographic \
-	    </dev/null 2>&1 | tee $(LOG) ; \
+	    -nographic ; \
 	FAIL=0 ; \
 	for S in $(SENTINELS) ; do \
 	    if grep -q "$$S" $(LOG) ; then \

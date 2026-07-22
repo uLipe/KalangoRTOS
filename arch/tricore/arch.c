@@ -64,25 +64,15 @@ void ulmk_arch_cpu_irq_disable(void)
 
 void ulmk_arch_cpu_idle(void)
 {
-#if ULMK_CONFIG_ENABLE_SMP
 	/*
-	 * TC275: remote GPSR SETR can latch PIPN without taking the BIV slot.
-	 * Drain the software IPI mailbox (set by ulmk_arch_send_ipi) with the
-	 * same callbacks as the ISR — not a poll of needs_resched.
+	 * Idle never schedules — only waits for an interrupt.  On SMP, prefer
+	 * NOP over WAIT: GPSR/STM software paths do not always wake WAIT on
+	 * TC275 (IR→SCU idle wake).  Local STM tick + GPSR IPI still vector
+	 * with IE=1 between NOPs (caller does enable+isync first).
 	 */
-	if (ulmk_arch_ipi_soft_take()) {
-		ulmk_arch_ipi_clear_self();
-		ulmk_kern_ipi_resched();
-		ulmk_kern_sched_dispatch(false);
-		return;
-	}
+#if ULMK_CONFIG_ENABLE_SMP
 	__asm__ volatile("nop" ::: "memory");
 #elif ULMK_ARCH_IDLE_IS_WAIT
-	/*
-	 * WAIT suspends the pipeline until the next pending interrupt.
-	 * ICR.IE must be 1 before entering WAIT, which is the case for
-	 * any thread context (PIE=1 in the fabricated lower CSA).
-	 */
 	__asm__ volatile("wait" ::: "memory");
 #else
 	__asm__ volatile("nop" ::: "memory");
@@ -370,11 +360,6 @@ ulmk_arch_ctx_t *g_preempt_new_ctx[ULMK_PREEMPT_SLOTS];
 bool ulmk_arch_sched_isr_preempt_deferred(void)
 {
 	return true;
-}
-
-bool ulmk_arch_sched_defer_to_thread(void)
-{
-	return false;
 }
 
 void ulmk_arch_sched_switch(ulmk_arch_ctx_t *from, const ulmk_arch_ctx_t *to,
@@ -959,9 +944,7 @@ static uint32_t g_src_addr[256];
 static uint8_t g_next_src_slot = 0xC1u;
 /*
  * Per-CPU: set by ulmk_arch_tick_init.  ISR must not steal TICK SRPN before
- * arm.  TC27x STM0 has only CMP0/CMP1 and CMP1→SR1 is not reliable on
- * TC275; only CPU0 arms CMP0.  Secondaries are tickless — sleeps land on
- * wheel 0 (see ulmk_arch_timer_wheel_cpu).
+ * arm.  Each core uses its own STM (STM0/1/2) + SRC_STMx_SR0.
  */
 static bool g_tick_armed[ULMK_ARCH_NUM_CPU];
 
@@ -1431,60 +1414,93 @@ void ulmk_arch_init(ulmk_boot_info_t *info)
 }
 
 /* =========================================================================
- * Kernel tick — STM0 CMP0 → CPU0 only.
+ * Kernel tick — one STM CMP0 per core (TC27x: STM0/1/2).
  *
- * TC27x has CMP0/CMP1 only; CMP1→SR1 is unreliable on TC275 and there is no
- * third compare for CPU2.  Secondaries stay tickless: ulmk_arch_timer_wheel_cpu
- * forces every timeout onto wheel 0, and sleep/IPC wake uses IPI (same model
- * as the old board_timer server that serialized all sleeps on CPU0).
+ * Sharing STM0 CMP0+CMP1 across CPU0/CPU1 raced and was unreliable on TC275.
+ * Each core owns its STM module and SRC_STMx_SR0 instead.  Timing wheels are
+ * per-CPU again (ulmk_arch_timer_wheel_cpu → cpu_id).  Remote enqueue still
+ * uses GPSR IPI for prompt wake; the local tick is the scheduling heartbeat.
  * ========================================================================= */
 
 #ifndef ULMK_BOARD_STM0_BASE
 #error "board_config.h must define ULMK_BOARD_STM0_BASE for arch tick"
 #endif
 
-#define STM0_TIM0	(ULMK_BOARD_STM0_BASE + 0x010u)
-#define STM0_CMP0	(ULMK_BOARD_STM0_BASE + 0x030u)
-#define STM0_CMCON	(ULMK_BOARD_STM0_BASE + 0x038u)
-#define STM0_ICR	(ULMK_BOARD_STM0_BASE + 0x03Cu)
-#define STM0_ISCR	(ULMK_BOARD_STM0_BASE + 0x040u)
+#define STM_OFF_TIM0	0x010u
+#define STM_OFF_CMP0	0x030u
+#define STM_OFF_CMCON	0x038u
+#define STM_OFF_ICR	0x03Cu
+#define STM_OFF_ISCR	0x040u
 
-/* STM_ICR: CMP0EN=0, CMP0IR=1; CMP1 bits unused (do not arm CMP1). */
-#define STM0_ICR_CMP0EN		(1u << 0)
-#define STM0_ISCR_CMP0IRR	(1u << 0)
+#define STM_ICR_CMP0EN		(1u << 0)
+#define STM_ISCR_CMP0IRR	(1u << 0)
 
 static uint32_t g_tick_period_stm;
 
-static inline volatile uint32_t *stm0_reg(uint32_t addr)
+static uint32_t tick_tos(uint32_t cpu)
 {
-	return (volatile uint32_t *)(uintptr_t)addr;
+	/* TC27x TOS: 0=CPU0, 1=CPU1, 2=DMA, 3=CPU2 */
+	if (cpu >= 2u)
+		return 3u;
+	return cpu;
+}
+
+static uint32_t stm_base_for_cpu(uint32_t cpu)
+{
+	if (cpu == 0u)
+		return ULMK_BOARD_STM0_BASE;
+#if defined(ULMK_BOARD_STM1_BASE)
+	if (cpu == 1u)
+		return ULMK_BOARD_STM1_BASE;
+#endif
+#if defined(ULMK_BOARD_STM2_BASE)
+	if (cpu == 2u)
+		return ULMK_BOARD_STM2_BASE;
+#endif
+	return 0u;
+}
+
+static inline volatile uint32_t *stm_reg(uint32_t base, uint32_t off)
+{
+	return (volatile uint32_t *)(uintptr_t)(base + off);
 }
 
 static volatile uint32_t *tick_src_reg(uint32_t cpu)
 {
 	if (cpu == 0u)
-		return stm0_reg(ULMK_BOARD_SRC_STM0_SR0);
+		return (volatile uint32_t *)(uintptr_t)ULMK_BOARD_SRC_STM0_SR0;
+#if defined(ULMK_BOARD_SRC_STM1_SR0)
+	if (cpu == 1u)
+		return (volatile uint32_t *)(uintptr_t)ULMK_BOARD_SRC_STM1_SR0;
+#endif
+#if defined(ULMK_BOARD_SRC_STM2_SR0)
+	if (cpu == 2u)
+		return (volatile uint32_t *)(uintptr_t)ULMK_BOARD_SRC_STM2_SR0;
+#endif
 	return NULL;
 }
 
 static void tick_src_arm(uint32_t cpu)
 {
 	volatile uint32_t *src = tick_src_reg(cpu);
-	uint32_t           cfg;
+	uint32_t           v;
 
 	if (!src)
 		return;
 
-	/* Direct SRC programming (like IPI): do not use g_src_addr[SRPN]. */
-	cfg = (uint32_t)ULMK_BOARD_IRQ_TICK |
-	      ((uint32_t)cpu << SRC_TOS_SHIFT);
-	*src = cfg | SRC_CLRR_BIT;
-	*src = cfg | SRC_SRE_BIT;
+	/* iLLD-style RMW — preserve ECC[21:16]. */
+	v = *src;
+	v &= ~0x1FFFu;
+	v |= (uint32_t)ULMK_BOARD_IRQ_TICK;
+	v |= tick_tos(cpu) << SRC_TOS_SHIFT;
+	*src = v | SRC_CLRR_BIT;
+	*src = (*src) | SRC_SRE_BIT;
 }
 
 void ulmk_arch_tick_init(uint32_t tick_hz)
 {
 	uint32_t cpu = ulmk_arch_cpu_id();
+	uint32_t base;
 	uint32_t now;
 
 	if (tick_hz == 0u)
@@ -1494,59 +1510,56 @@ void ulmk_arch_tick_init(uint32_t tick_hz)
 	if (g_tick_period_stm == 0u)
 		g_tick_period_stm = 1u;
 
-	/*
-	 * secondary_main() also calls tick_init — must no-op there.  Arming
-	 * CMP1 from CPU1/CPU2 raced and broke the shared STM0 tick.
-	 */
-	if (cpu != 0u)
+	base = stm_base_for_cpu(cpu);
+	if (base == 0u || !tick_src_reg(cpu))
 		return;
 
-	*stm0_reg(STM0_CMCON) = 0x1Fu;
+	*stm_reg(base, STM_OFF_CMCON) = 0x1Fu;
 	tick_src_arm(cpu);
 
 	/*
 	 * Absolute ICR writes (not RMW): CMP0IR is a status bit; preserving
 	 * it across enable toggles confuses QEMU's STM model.
 	 */
-	*stm0_reg(STM0_ICR) = 0u;
-	*stm0_reg(STM0_ISCR) = STM0_ISCR_CMP0IRR;
-	now = *stm0_reg(STM0_TIM0);
-	*stm0_reg(STM0_CMP0) = now + g_tick_period_stm;
-	*stm0_reg(STM0_ISCR) = STM0_ISCR_CMP0IRR;
-	*stm0_reg(STM0_ICR) = STM0_ICR_CMP0EN;
-	g_tick_armed[0] = true;
+	*stm_reg(base, STM_OFF_ICR) = 0u;
+	*stm_reg(base, STM_OFF_ISCR) = STM_ISCR_CMP0IRR;
+	now = *stm_reg(base, STM_OFF_TIM0);
+	*stm_reg(base, STM_OFF_CMP0) = now + g_tick_period_stm;
+	*stm_reg(base, STM_OFF_ISCR) = STM_ISCR_CMP0IRR;
+	*stm_reg(base, STM_OFF_ICR) = STM_ICR_CMP0EN;
+	if (cpu < (uint32_t)ULMK_ARCH_NUM_CPU)
+		g_tick_armed[cpu] = true;
 }
 
 uint32_t ulmk_arch_timer_wheel_cpu(void)
 {
-	return 0u;
+	return ulmk_arch_cpu_id();
 }
 
 void ulmk_arch_tick_ack(void)
 {
-	volatile uint32_t *src;
+	uint32_t           cpu = ulmk_arch_cpu_id();
+	uint32_t           base = stm_base_for_cpu(cpu);
+	volatile uint32_t *src = tick_src_reg(cpu);
 	uint32_t           now;
 
-	if (ulmk_arch_cpu_id() != 0u)
+	if (base == 0u)
 		return;
 
-	src = tick_src_reg(0u);
-
-	*stm0_reg(STM0_ICR) = 0u;
-	*stm0_reg(STM0_ISCR) = STM0_ISCR_CMP0IRR;
-	now = *stm0_reg(STM0_TIM0);
-	*stm0_reg(STM0_CMP0) = now + g_tick_period_stm;
-	*stm0_reg(STM0_ISCR) = STM0_ISCR_CMP0IRR;
-	*stm0_reg(STM0_ICR) = STM0_ICR_CMP0EN;
+	*stm_reg(base, STM_OFF_ICR) = 0u;
+	*stm_reg(base, STM_OFF_ISCR) = STM_ISCR_CMP0IRR;
+	now = *stm_reg(base, STM_OFF_TIM0);
+	*stm_reg(base, STM_OFF_CMP0) = now + g_tick_period_stm;
+	*stm_reg(base, STM_OFF_ISCR) = STM_ISCR_CMP0IRR;
+	*stm_reg(base, STM_OFF_ICR) = STM_ICR_CMP0EN;
 
 	/*
 	 * Clear SRR only — keep SRPN/TOS/SRE.  A full word rewrite would
 	 * clobber a userspace bind_hw() that reuses STM0 SR0 with a non-tick
-	 * SRPN (silicon_irq_stress).  tick_src_arm() still programs the
-	 * canonical tick SRPN at init.
+	 * SRPN (silicon_irq_stress).
 	 */
 	if (src)
-		*src |= SRC_CLRR_BIT;
+		*src = (*src) | SRC_CLRR_BIT;
 }
 
 /* =========================================================================
