@@ -23,7 +23,7 @@ set -euo pipefail
 usage() {
 	echo "usage: $0 --toolchain FILE --chip-dir DIR --arch ARCH \\" >&2
 	echo "          --board-name NAME --build-dir DIR --out-dir DIR \\" >&2
-	echo "          [--clean] [--optimize-size] [--enable-smp]" >&2
+	echo "          [--clean] [--optimize-size] [--enable-smp] [--enable-irq-attach]" >&2
 	exit 2
 }
 
@@ -36,6 +36,7 @@ OUT_DIR=""
 CLEAN=0
 OPTIMIZE_SIZE=0
 ENABLE_SMP=0
+ENABLE_IRQ_ATTACH=0
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -48,6 +49,7 @@ while [ $# -gt 0 ]; do
 	--clean)      CLEAN=1;        shift;;
 	--optimize-size) OPTIMIZE_SIZE=1; shift;;
 	--enable-smp) ENABLE_SMP=1;   shift;;
+	--enable-irq-attach) ENABLE_IRQ_ATTACH=1; shift;;
 	*) echo "error: unknown argument '$1'" >&2; usage;;
 	esac
 done
@@ -63,6 +65,9 @@ export PATH="/opt/qemu-tricore/bin:/opt/tricore-gcc-bin:/opt/riscv-gcc-bin:/opt/
 TAG="${ARCH}_${BOARD_NAME}_gcc"
 if [ "$ENABLE_SMP" -eq 1 ]; then
 	TAG="${TAG}_smp"
+fi
+if [ "$ENABLE_IRQ_ATTACH" -eq 1 ]; then
+	TAG="${TAG}_irqattach"
 fi
 KERNEL_A="ulmk_kernel_${TAG}.a"
 BOARD_A="ulmk_board_${TAG}.a"
@@ -82,12 +87,17 @@ SMP_FLAG=""
 if [ "$ENABLE_SMP" -eq 1 ]; then
 	SMP_FLAG="-DULMK_CONFIG_ENABLE_SMP=1"
 fi
+IRQ_ATTACH_FLAG=""
+if [ "$ENABLE_IRQ_ATTACH" -eq 1 ]; then
+	IRQ_ATTACH_FLAG="-DULMK_CONFIG_IRQ_ATTACH=1"
+fi
 cmake -S "$WORKSPACE" -B "$BUILD_DIR" \
 	-DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
 	-DULMK_CHIP_DIR="$CHIP_DIR" \
 	-DULMK_SDK=ON \
 	${OPT_SIZE_FLAG} \
 	${SMP_FLAG} \
+	${IRQ_ATTACH_FLAG} \
 	-GNinja \
 	--no-warn-unused-cli
 

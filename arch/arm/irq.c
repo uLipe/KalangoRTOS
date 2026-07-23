@@ -134,6 +134,23 @@ void ulmk_arch_irq_src_trigger(uint8_t srpn)
 	REG32(ULMK_ARCH_NVIC_ISPR + line_word(line) * 4u) = line_bit(line);
 }
 
+bool ulmk_arch_irq_attach_call(ulmk_irq_attach_fn_t fn, void *data,
+			       const ulmk_arch_region_t *regions,
+			       uint8_t count)
+{
+	/*
+	 * Keep the kernel MPU map for the callback.  Switching to the owner
+	 * map from Handler mode is unsafe for nested SVC.  Isolation is the
+	 * in_irq_attach syscall gate (EPERM).
+	 */
+	(void)regions;
+	(void)count;
+
+	if (!fn)
+		return false;
+	return fn(data);
+}
+
 /* Reverse map for the shared external-IRQ entry stub. */
 uint8_t _arm_irq_line_to_srpn(uint32_t line)
 {

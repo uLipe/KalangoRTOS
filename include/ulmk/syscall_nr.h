@@ -65,6 +65,9 @@
 #define ULMK_SYS_IRQ_DISABLE         62  /* int ulmk_irq_disable(srpn)                */
 #define ULMK_SYS_IRQ_ACK             63  /* int ulmk_irq_ack(srpn)                    */
 #define ULMK_SYS_IRQ_BIND_HW         64  /* int ulmk_irq_bind_hw(srpn,notif,bit,src)  */
+#define ULMK_SYS_IRQ_ATTACH          65  /* ulmk_notif_t ulmk_irq_attach(srpn,fn,data) */
+#define ULMK_SYS_IRQ_ATTACH_HW       66  /* ulmk_notif_t ulmk_irq_attach_hw(...)      */
+#define ULMK_SYS_IRQ_DETACH          67  /* int ulmk_irq_detach(srpn)                 */
 
 /* ── Thread management (requires IO >= 1 / ULMK_PRIV_DRIVER) ─────── */
 #define ULMK_SYS_THREAD_SPAWN        70  /* ulmk_tid_t ulmk_thread_create(attr*)        */

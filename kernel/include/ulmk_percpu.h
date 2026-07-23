@@ -34,6 +34,14 @@ struct ulmk_percpu {
 	ulmk_arch_ctx_t     startup_ctx;
 	bool                needs_resched;
 	bool                online;
+	/*
+	 * Set while ulmk_arch_irq_attach_call() runs a userspace ISR
+	 * callback.  Syscalls return EPERM; class-0/1 faults kill the
+	 * attach owner instead of panicking the whole system.
+	 */
+	bool                in_irq_attach;
+	struct ulmk_thread *irq_attach_owner;
+	uint8_t             irq_attach_srpn;
 #if ULMK_CONFIG_ENABLE_SMP
 	/* Bitmask of remote CPUs that need a resched IPI (see sched). */
 	uint32_t            ipi_pending;

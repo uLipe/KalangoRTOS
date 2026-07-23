@@ -80,6 +80,10 @@ uint32_t ulmk_kern_notif_destroy(uint32_t notif);
 uint32_t ulmk_kern_irq_bind(uint32_t srpn, uint32_t notif, uint32_t bit);
 uint32_t ulmk_kern_irq_bind_hw(uint32_t srpn, uint32_t notif_id,
 			     uint32_t bit, uint32_t src_reg);
+uint32_t ulmk_kern_irq_attach(uint32_t srpn, uint32_t fn, uint32_t data);
+uint32_t ulmk_kern_irq_attach_hw(uint32_t srpn, uint32_t fn, uint32_t data,
+				 uint32_t src_reg);
+uint32_t ulmk_kern_irq_detach(uint32_t srpn);
 uint32_t ulmk_kern_irq_enable(uint32_t srpn);
 uint32_t ulmk_kern_irq_disable(uint32_t srpn);
 uint32_t ulmk_kern_irq_ack(uint32_t srpn);

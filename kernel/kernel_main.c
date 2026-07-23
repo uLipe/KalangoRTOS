@@ -171,6 +171,12 @@ void ulmk_kern_trap_recoverable(void)
 {
 	ulmk_thread_t *cur = ulmk_sched_current();
 
+	if (ulmk_irq_in_attach()) {
+		ulmk_kern_irq_attach_fault();
+		for (;;)
+			;
+	}
+
 	if (cur) {
 		ulmk_printk("TRAP: killing thread tid=%u\n",
 			  (unsigned)cur->tid);

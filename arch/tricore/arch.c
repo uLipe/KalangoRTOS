@@ -1093,6 +1093,26 @@ void _arch_generic_isr_handler(void)
 	ulmk_kern_sched_dispatch(true);
 }
 
+/*
+ * Userspace IRQ attach trampoline (TriCore).
+ *
+ * Call @fn at supervisor IO: dropping PSW.IO to User-1 would leave the
+ * trampoline unable to MTCR-restore afterwards (TIN1 privileged instruction).
+ * Isolation here is the per-CPU in_irq_attach gate (syscalls → EPERM).  Full
+ * PRS isolation needs a user-text trampoline that returns via RFE.
+ */
+bool ulmk_arch_irq_attach_call(ulmk_irq_attach_fn_t fn, void *data,
+			       const ulmk_arch_region_t *regions,
+			       uint8_t count)
+{
+	(void)regions;
+	(void)count;
+
+	if (!fn)
+		return false;
+	return fn(data);
+}
+
 /* =========================================================================
  * Atomic operations
  * ========================================================================= */
@@ -1342,7 +1362,13 @@ void ulmk_arch_trap_entry(uint8_t trap_class, uint8_t tin)
 
 	ulmk_arch_trap_dump(trap_class, tin);
 
-	if ((trap_class == 0u || trap_class == 1u) && !from_kernel) {
+	/*
+	 * Attach callbacks run on the ISR stack (PSW.IS=1) under the owner
+	 * map — treat class 0/1 as recoverable so the owner is killed instead
+	 * of panicking the whole system.
+	 */
+	if ((trap_class == 0u || trap_class == 1u) &&
+	    (ulmk_irq_in_attach() || !from_kernel)) {
 		ulmk_kern_trap_recoverable();
 	} else {
 		ulmk_kern_trap_panic();

@@ -473,16 +473,24 @@ notifications are heap-allocated, so they have no static-pool caps):
 |--------|---------|----------|
 | `ULMK_CONFIG_MAX_IRQ_BINDINGS` | 16 | `irq.c` SRPN → notif binding table |
 | `ULMK_CONFIG_DEBUG_PRINTK` | 1 | kernel `printk` (0 = compile to no-op) |
+| `ULMK_CONFIG_IRQ_ATTACH` | 0 | `ulmk_irq_attach` fast-path (1 = DANGEROUS; else `ULMK_ENOTSUP`) |
 
 ```bash
 cmake -B build -DULMK_CHIP_DIR=... \
       -DULMK_CONFIG_MAX_IRQ_BINDINGS=32 \
-      -DULMK_CONFIG_DEBUG_PRINTK=0
+      -DULMK_CONFIG_DEBUG_PRINTK=0 \
+      -DULMK_CONFIG_IRQ_ATTACH=1
 ```
 
-The same generator serves the integration-test Makefiles, so every build path
-produces identical headers.  A future DTS pipeline replaces the `board_config.h`
-snapshot step, feeding `platform.h` directly — kernel and arch code are unaffected.
+`ULMK_CONFIG_IRQ_ATTACH` is **off by default**.  Enabling it is an intentional
+kernel aperture: userspace ISR callbacks run on the interrupt path.  Some sample
+boards (e.g. `tc275_lite`) set the cache default to `1` for demos; override with
+`-DULMK_CONFIG_IRQ_ATTACH=0` if you do not want that surface.
+
+When enabled, the public wrappers are `ulmk_irq_attach` / `ulmk_irq_attach_hw` /
+`ulmk_irq_detach` (syscalls **65–67**).  Full contract, return encoding, and the
+anti-nested-syscall gate are in [`docs/api_spec.md`](api_spec.md) §10 and §12.
+Demo on TC275 Lite: `ulmk_boards/.../components/board_irq_attach_blinky`.
 
 ---
 

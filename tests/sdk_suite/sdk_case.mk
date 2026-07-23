@@ -69,6 +69,14 @@ BOARD_NAME := $(notdir $(BOARD))
 # Non-riscv boards: TAG_SUFFIX / SDK_SMP_FLAG empty
 TAG_SUFFIX   ?=
 SDK_SMP_FLAG ?=
+# Opt-in dangerous ISR userspace attach (separate SDK cache + kernel).
+IRQ_ATTACH ?= 0
+ifeq ($(IRQ_ATTACH),1)
+SDK_IRQ_ATTACH_FLAG := --enable-irq-attach
+TAG_SUFFIX := $(TAG_SUFFIX)_irqattach
+else
+SDK_IRQ_ATTACH_FLAG :=
+endif
 TAG        := $(ARCH)_$(BOARD_NAME)_gcc$(TAG_SUFFIX)
 TOOLCHAIN  := $(WS)/cmake/toolchain-$(ARCH)-gcc.cmake
 
@@ -123,7 +131,7 @@ sdk:
 			--board-name $(BOARD_NAME) \
 			--build-dir $(BUILD) \
 			--out-dir $(SDK) \
-			$(SDK_SMP_FLAG); \
+			$(SDK_SMP_FLAG) $(SDK_IRQ_ATTACH_FLAG); \
 	fi
 
 all: sdk $(TARGET)

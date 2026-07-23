@@ -80,6 +80,7 @@ execute_process(
         --set "ULMK_CONFIG_SYSCALL_WCET=${ULMK_CONFIG_SYSCALL_WCET}"
         --set "ULMK_CONFIG_ENABLE_SMP=${ULMK_CONFIG_ENABLE_SMP}"
         --set "ULMK_CONFIG_TICK_HZ=${ULMK_CONFIG_TICK_HZ}"
+        --set "ULMK_CONFIG_IRQ_ATTACH=${ULMK_CONFIG_IRQ_ATTACH}"
     RESULT_VARIABLE _ulmk_gen_rc)
 if(NOT _ulmk_gen_rc EQUAL 0)
     message(FATAL_ERROR "gen_config.py failed (rc=${_ulmk_gen_rc})")

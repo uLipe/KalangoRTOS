@@ -31,6 +31,7 @@ KERNEL_DEFAULTS = {
     "ULMK_CONFIG_SYSCALL_WCET":     0,    # kernel cycle slot around syscalls
     "ULMK_CONFIG_ENABLE_SMP":       0,    # 1 = multi-CPU sched (needs NUM_CPU>1)
     "ULMK_CONFIG_TICK_HZ":          1000, # kernel timing-wheel tick rate
+    "ULMK_CONFIG_IRQ_ATTACH":       0,    # 1 = DANGEROUS ISR userspace callbacks
 }
 
 # Inclusive range checks for numeric policy symbols.
@@ -39,6 +40,7 @@ KERNEL_RANGES = {
     "ULMK_CONFIG_SYSCALL_WCET":     (0, 1),
     "ULMK_CONFIG_ENABLE_SMP":       (0, 1),
     "ULMK_CONFIG_TICK_HZ":          (1, 10000),
+    "ULMK_CONFIG_IRQ_ATTACH":       (0, 1),
 }
 
 

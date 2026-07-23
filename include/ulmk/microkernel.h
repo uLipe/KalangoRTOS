@@ -48,6 +48,7 @@ typedef enum {
 #define ULMK_ESRCH	 -6
 #define ULMK_ETIMEOUT	 -7
 #define ULMK_ECANCELED	 -8
+#define ULMK_ENOTSUP	 -9
 
 /* =========================================================================
  * Opaque handles
@@ -150,10 +151,19 @@ typedef struct {
 #define ULMK_MMAP_PERIPH	(1u << 1)
 
 /* =========================================================================
- * IRQ handler type (for future ulmk_irq_* extensions)
+ * IRQ handler type — userspace attach callback (ISR fast-path)
  * ========================================================================= */
 
-typedef void (*ulmk_irq_handler_t)(void *arg);
+/**
+ * @brief ISR attach callback.
+ *
+ * Called from the kernel IRQ path with the registering thread's memory map
+ * active.  Must not invoke syscalls.  Return @c true to have the kernel
+ * acknowledge the IRQ and signal the attach-owned notification; return
+ * @c false if the callback already acknowledged/rearmed the source (no
+ * notification is signalled).
+ */
+typedef bool (*ulmk_irq_attach_fn_t)(void *data);
 
 /* =========================================================================
  * Include ABI macros and result types after type definitions above.
@@ -778,6 +788,64 @@ static inline int ulmk_irq_bind_hw(uint8_t srpn, ulmk_notif_t notif,
 {
 	uint32_t r;
 	ULMK_SYSCALL_4(ULMK_SYS_IRQ_BIND_HW, srpn, notif, bit, src_reg, r);
+	return (int)r;
+}
+
+/**
+ * @brief Attach a userspace ISR callback and obtain a waitable notification.
+ *
+ * Creates a notification object owned by the binding (bit 0).  When the IRQ
+ * fires the kernel invokes @p fn(@p data) under the registering thread's
+ * memory map (see docs — opt-in via @c ULMK_CONFIG_IRQ_ATTACH).
+ * If @p fn returns true the kernel acks the source and signals the notif
+ * (even with no waiter); if false the callback owns ack/rearm and no signal
+ * is raised.
+ *
+ * @return Notification handle on success; on error a small negative
+ *         @c ULMK_E* code cast to @c ulmk_notif_t (e.g. @c ULMK_ENOTSUP when
+ *         @c ULMK_CONFIG_IRQ_ATTACH=0).  Distinguish errors with
+ *         @c ((int32_t)n < 0 && (int32_t)n >= -16) — handles may be high
+ *         pointer values.
+ * @pre Caller runs at @c ULMK_PRIV_DRIVER and holds @c ULMK_CAP_IRQ.
+ * @note Conflicts with an existing bind/attach on the same @p srpn.
+ * @warning Enabling @c ULMK_CONFIG_IRQ_ATTACH opens a trusted ISR path into
+ *          userspace — the caller accepts that risk.
+ */
+static inline ulmk_notif_t ulmk_irq_attach(uint8_t srpn,
+					  ulmk_irq_attach_fn_t fn,
+					  void *data)
+{
+	uint32_t r;
+	ULMK_SYSCALL_3(ULMK_SYS_IRQ_ATTACH, srpn, fn, data, r);
+	return (ulmk_notif_t)r;
+}
+
+/**
+ * @brief Like @c ulmk_irq_attach but registers a fixed hardware SRC address.
+ */
+static inline ulmk_notif_t ulmk_irq_attach_hw(uint8_t srpn,
+					     ulmk_irq_attach_fn_t fn,
+					     void *data,
+					     uintptr_t src_reg)
+{
+	uint32_t r;
+	ULMK_SYSCALL_4(ULMK_SYS_IRQ_ATTACH_HW, srpn, fn, data, src_reg, r);
+	return (ulmk_notif_t)r;
+}
+
+/**
+ * @brief Tear down an attach (or leave bind-only bindings untouched).
+ *
+ * Disables the source, destroys an attach-owned notification, and frees the
+ * binding slot when it was created by attach/attach_hw.
+ *
+ * @return @c ULMK_OK, @c ULMK_EINVAL, or @c ULMK_ENOTSUP when
+ *         @c ULMK_CONFIG_IRQ_ATTACH=0.
+ */
+static inline int ulmk_irq_detach(uint8_t srpn)
+{
+	uint32_t r;
+	ULMK_SYSCALL_1(ULMK_SYS_IRQ_DETACH, srpn, r);
 	return (int)r;
 }
 

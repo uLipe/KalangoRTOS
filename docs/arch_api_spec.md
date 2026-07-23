@@ -423,7 +423,33 @@ void ulmk_arch_irq_src_register(uint8_t srpn, uint32_t src_reg_addr);
 ```
 
 Record the absolute address of the SRC register for `srpn` (TriCore).  Called
-from the kernel when userspace invokes `ulmk_irq_bind_hw()`.
+from the kernel when userspace invokes `ulmk_irq_bind_hw()` or
+`ulmk_irq_attach_hw()`.
+
+### `ulmk_arch_irq_attach_call`
+
+```c
+bool ulmk_arch_irq_attach_call(ulmk_irq_attach_fn_t fn, void *data,
+			       const ulmk_arch_region_t *regions,
+			       uint8_t count);
+```
+
+Arch trampoline for the opt-in `ulmk_irq_attach` fast-path
+(`ULMK_CONFIG_IRQ_ATTACH=1`).  Invoked from `ulmk_kern_irq_dispatch` when the
+binding has an `attach_fn`.
+
+Contract:
+
+- Caller has already set per-CPU `irq_attach_owner` / `irq_attach_srpn` and
+  `in_irq_attach = true` (syscalls → `ULMK_EPERM` while set).
+- Call `fn(data)` and return its `bool` (or `false` if a fault aborted the
+  call — kernel then runs `ulmk_kern_irq_attach_fault`).
+- `@regions` / `@count` are the owning thread's MPU map.  Current ports may
+  still run the callback under the kernel map (see `docs/api_spec.md` §10);
+  the arguments remain part of the ABI for a future user-text trampoline.
+
+Required on every arch when `ULMK_CONFIG_IRQ_ATTACH` is enabled in the build;
+may be a stub that returns `false` if the product never sets the config bit.
 
 ---
 
@@ -546,8 +572,11 @@ state must be extracted by the arch before calling.
 void ulmk_kern_irq_dispatch(uint8_t srpn);
 ```
 
-Route hardware interrupt `srpn` to its bound notification object.  Called from
-the generic ISR stub before returning from the interrupt.
+Route hardware interrupt `srpn` to its binding.  If the slot was created by
+`ulmk_irq_attach` / `attach_hw` (`ULMK_CONFIG_IRQ_ATTACH=1`), call
+`ulmk_arch_irq_attach_call` and optionally ack + `notif_signal`.  Otherwise
+signal the bound notification (classic `ulmk_irq_bind` path).  Called from the
+generic ISR stub before returning from the interrupt.
 
 ### `ulmk_kern_sched_dispatch`
 

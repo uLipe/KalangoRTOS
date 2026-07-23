@@ -12,6 +12,8 @@ set(ULMK_CONFIG_ENABLE_SMP       0  CACHE STRING
 	"Enable SMP (0=UP, 1=multi-CPU; requires ULMK_ARCH_NUM_CPU>1)")
 set(ULMK_CONFIG_TICK_HZ          1000 CACHE STRING
 	"Kernel timing-wheel tick rate in Hz (default 1000)")
+set(ULMK_CONFIG_IRQ_ATTACH       0  CACHE STRING
+	"Enable ulmk_irq_attach (0=off/ENOTSUP, 1=DANGEROUS ISR userspace callbacks)")
 
 if("${ULMK_CONFIG_ENABLE_SMP}" STREQUAL "1")
 	if("${ULMK_ARCH}" STREQUAL "arm")

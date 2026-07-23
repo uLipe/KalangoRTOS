@@ -168,6 +168,8 @@ typedef struct {
 | `ULMK_EDEADLK` | −5 | Would deadlock |
 | `ULMK_ESRCH` | −6 | Thread or object not found |
 | `ULMK_ETIMEOUT` | −7 | Timer deadline expired before operation completed |
+| `ULMK_ECANCELED` | −8 | Operation cancelled (e.g. sleep cancel) |
+| `ULMK_ENOTSUP` | −9 | Feature not compiled in (e.g. irq_attach off) |
 
 ---
 
@@ -196,7 +198,7 @@ privileged operations.
 |----------|-----|----------------|
 | `ULMK_CAP_SPAWN` | 0 | `ulmk_thread_create()` |
 | `ULMK_CAP_KILL` | 1 | `ulmk_thread_kill()` |
-| `ULMK_CAP_IRQ` | 2 | `ulmk_irq_bind()`, `ulmk_irq_enable()`, `ulmk_irq_disable()`, `ulmk_irq_ack()` |
+| `ULMK_CAP_IRQ` | 2 | `ulmk_irq_bind()`, `ulmk_irq_bind_hw()`, `ulmk_irq_attach()`, `ulmk_irq_attach_hw()`, `ulmk_irq_detach()`, `ulmk_irq_enable()`, `ulmk_irq_disable()`, `ulmk_irq_ack()` |
 | `ULMK_CAP_MAP_PERIPH` | 3 | `ulmk_mem_map()` with `ULMK_MMAP_PERIPH` |
 | `ULMK_CAP_GRANT_CAP` | 4 | `ulmk_cap_grant()` |
 | `ULMK_CAP_ALL` | 0xFF | All capabilities; initial value of the root thread |
@@ -558,6 +560,8 @@ fires, the kernel calls `ulmk_notif_signal(notif, 1u << bit)` from the ISR.
 
 At most `ULMK_CONFIG_MAX_IRQ_BINDINGS` bindings can be active simultaneously.
 
+**Syscall:** `ULMK_SYS_IRQ_BIND` (60).
+
 ---
 
 ### `ulmk_irq_enable` / `ulmk_irq_disable`
@@ -569,6 +573,8 @@ int ulmk_irq_disable(uint8_t srpn);
 
 Enable or disable the SRC for `srpn`.
 
+**Syscalls:** `ULMK_SYS_IRQ_ENABLE` (61), `ULMK_SYS_IRQ_DISABLE` (62).
+
 ---
 
 ### `ulmk_irq_ack`
@@ -579,6 +585,8 @@ int ulmk_irq_ack(uint8_t srpn);
 
 Clear the pending flag in the SRC for `srpn`.  Must be called after processing
 a level-triggered interrupt to prevent immediate re-entry.
+
+**Syscall:** `ULMK_SYS_IRQ_ACK` (63).
 
 ---
 
@@ -594,6 +602,60 @@ Associate a fixed hardware SRC register (TriCore: absolute address of the
 fires.  Used by board services (timer, UART, etc.) that own a specific SRC.
 
 **Requires:** `ULMK_CAP_IRQ` and `ULMK_PRIV_DRIVER`.
+**Syscall:** `ULMK_SYS_IRQ_BIND_HW` (64).
+
+---
+
+### `ulmk_irq_attach` / `ulmk_irq_attach_hw`
+
+```c
+typedef bool (*ulmk_irq_attach_fn_t)(void *data);
+
+ulmk_notif_t ulmk_irq_attach(uint8_t srpn, ulmk_irq_attach_fn_t fn, void *data);
+ulmk_notif_t ulmk_irq_attach_hw(uint8_t srpn, ulmk_irq_attach_fn_t fn,
+				void *data, uintptr_t src_reg_addr);
+int ulmk_irq_detach(uint8_t srpn);
+```
+
+Register a userspace ISR fast-path callback.  **Opt-in** via
+`ULMK_CONFIG_IRQ_ATTACH=1` (default **0**).  When the feature is compiled out,
+`attach` / `attach_hw` / `detach` return `ULMK_ENOTSUP` (as a negative word for
+the attach helpers).  Enabling this opens a trusted ISR path into userspace —
+product responsibility.
+
+On success a notification object owned by the binding is returned (bit 0); the
+caller may `ulmk_notif_wait` on it.  When the IRQ fires the kernel invokes
+`fn(data)` under the registering thread's memory map:
+
+- return `true` — kernel acknowledges the source and signals the notif (even
+  if no waiter is present);
+- return `false` — callback is responsible for ack/rearm via MMIO (syscalls
+  are rejected with `ULMK_EPERM` inside the callback); no notification.
+
+Conflicts with an existing bind/attach on the same `srpn`.  A fault inside
+the callback kills only the owning thread and tears the binding down.
+
+Syscalls nested from the callback return `ULMK_EPERM` (`in_irq_attach` gate).
+Arch trampolines currently run the callback under the kernel memory map
+(TriCore cannot drop `PSW.IO` without a user-text return path; RISC-V/ARM
+nested ecall/SVC from the IRQ path is unsafe under a user PMP/MPU switch).
+A future user-text trampoline can tighten PRS/MPU isolation further.
+
+**Requires:** `ULMK_CAP_IRQ` and `ULMK_PRIV_DRIVER`.
+**Requires:** `ULMK_CONFIG_IRQ_ATTACH=1`.
+
+**Syscalls:** `ULMK_SYS_IRQ_ATTACH` (65), `ULMK_SYS_IRQ_ATTACH_HW` (66),
+`ULMK_SYS_IRQ_DETACH` (67).
+
+Handle-or-error returns for attach: success is a notification handle (may be a
+high pointer).  Errors are small negative `ULMK_E*` values.  Detect with:
+
+```c
+if (n == ULMK_NOTIF_INVALID ||
+    ((int32_t)n < 0 && (int32_t)n >= -16)) {
+	/* ULMK_ENOTSUP when ULMK_CONFIG_IRQ_ATTACH=0, else EINVAL/… */
+}
+```
 
 ---
 
@@ -649,24 +711,78 @@ on QEMU it owns the virt/UART MMIO.
 Defined in `include/ulmk/syscall_nr.h`.  Single source of truth for both
 userspace wrappers and the kernel router.
 
-```
- 1–3   Memory (shared) (ULMK_SYS_MMAP, MUNMAP, MEM_GRANT)
- 4–6   [reserved]      (former MALLOC/FREE/ALIGNED_ALLOC removed in slabAO model)
- 7–8   Per-thread heap (HEAP_EXTEND, GET_THREAD_HEAP)
-10–15  Scheduling/time (YIELD, EXIT, SLEEP, SLEEP_CANCEL, [14], TICK_START)
-20     Thread query    (THREAD_SELF)
-30–37  IPC endpoints   (EP_CREATE, CALL, RECV, REPLY, REPLY_RECV, GRANT,
-                        RECV_OR_NOTIF, DESTROY)
-40–44  Notifications   (NOTIF_CREATE, SIGNAL, WAIT, POLL, DESTROY)
-60–64  IRQ             (IRQ_BIND, IRQ_ENABLE, IRQ_DISABLE, IRQ_ACK, IRQ_BIND_HW)
-70–75  Thread mgmt     (SPAWN, KILL, SUSPEND, RESUME, SET_PRIO, GET_PRIO)
-80–84  Process mgmt    (PROC_CREATE, DESTROY, ADD_REGION, GRANT_CAP, GRANT_IRQ)
-```
-
 Numbers are sparse on purpose — room for additions per group without
-renumbering.
+renumbering.  Router upper bound: `ULMK_SYS_MAX = 128`.
 
-Router upper bound: `ULMK_SYS_MAX = 128`.
+| Nr | Symbol | Privilege / cap | API |
+|----|--------|-----------------|-----|
+| 1 | `ULMK_SYS_MMAP` | any; `CAP_MAP_PERIPH` if `MMAP_PERIPH` | `ulmk_mem_map` |
+| 2 | `ULMK_SYS_MUNMAP` | any | `ulmk_mem_unmap` |
+| 3 | `ULMK_SYS_MEM_GRANT` | any | `ulmk_mem_grant` |
+| 4–6 | *(reserved)* | — | former malloc/free/aligned_alloc |
+| 7 | `ULMK_SYS_HEAP_EXTEND` | any | `ulmk_heap_extend` |
+| 8 | `ULMK_SYS_GET_THREAD_HEAP` | any | `ulmk_get_thread_heap` |
+| 10 | `ULMK_SYS_YIELD` | any | `ulmk_thread_yield` |
+| 11 | `ULMK_SYS_EXIT` | any | `ulmk_thread_exit` |
+| 12 | `ULMK_SYS_SLEEP` | any | `ulmk_sleep_ms` |
+| 13 | `ULMK_SYS_SLEEP_CANCEL` | any | `ulmk_sleep_cancel` |
+| 14 | `ULMK_SYS_EP_CALL_TIMEOUT` | any | `ulmk_ep_call_timeout` |
+| 15 | `ULMK_SYS_TICK_START` | any | `ulmk_tick_start` |
+| 20 | `ULMK_SYS_THREAD_SELF` | any | `ulmk_thread_self` |
+| 21 | `ULMK_SYS_CPU_ID` | any | `ulmk_cpu_id` |
+| 22 | `ULMK_SYS_WCET_BIND` | any | `ulmk_wcet_bind` |
+| 30 | `ULMK_SYS_EP_CREATE` | any | `ulmk_ep_create` |
+| 31 | `ULMK_SYS_EP_CALL` | any | `ulmk_ep_call` |
+| 32 | `ULMK_SYS_EP_RECV` | any | `ulmk_ep_recv` |
+| 33 | `ULMK_SYS_EP_REPLY` | any | `ulmk_ep_reply` |
+| 34 | `ULMK_SYS_EP_REPLY_RECV` | any | `ulmk_ep_reply_recv` |
+| 35 | `ULMK_SYS_EP_GRANT` | any | `ulmk_ep_grant` |
+| 36 | `ULMK_SYS_EP_RECV_OR_NOTIF` | any | `ulmk_ep_recv_or_notif` |
+| 37 | `ULMK_SYS_EP_DESTROY` | any | `ulmk_ep_destroy` |
+| 40 | `ULMK_SYS_NOTIF_CREATE` | any | `ulmk_notif_create` |
+| 41 | `ULMK_SYS_NOTIF_SIGNAL` | any | `ulmk_notif_signal` |
+| 42 | `ULMK_SYS_NOTIF_WAIT` | any | `ulmk_notif_wait` |
+| 43 | `ULMK_SYS_NOTIF_POLL` | any | `ulmk_notif_poll` |
+| 44 | `ULMK_SYS_NOTIF_DESTROY` | any | `ulmk_notif_destroy` |
+| 45 | `ULMK_SYS_NOTIF_WAIT_TIMEOUT` | any | `ulmk_notif_wait_timeout` |
+| 60 | `ULMK_SYS_IRQ_BIND` | DRIVER + `CAP_IRQ` | `ulmk_irq_bind` |
+| 61 | `ULMK_SYS_IRQ_ENABLE` | DRIVER | `ulmk_irq_enable` |
+| 62 | `ULMK_SYS_IRQ_DISABLE` | DRIVER | `ulmk_irq_disable` |
+| 63 | `ULMK_SYS_IRQ_ACK` | DRIVER | `ulmk_irq_ack` |
+| 64 | `ULMK_SYS_IRQ_BIND_HW` | DRIVER + `CAP_IRQ` | `ulmk_irq_bind_hw` |
+| 65 | `ULMK_SYS_IRQ_ATTACH` | DRIVER + `CAP_IRQ`; needs `ULMK_CONFIG_IRQ_ATTACH=1` | `ulmk_irq_attach` |
+| 66 | `ULMK_SYS_IRQ_ATTACH_HW` | DRIVER + `CAP_IRQ`; needs `ULMK_CONFIG_IRQ_ATTACH=1` | `ulmk_irq_attach_hw` |
+| 67 | `ULMK_SYS_IRQ_DETACH` | DRIVER + `CAP_IRQ`; needs `ULMK_CONFIG_IRQ_ATTACH=1` | `ulmk_irq_detach` |
+| 70 | `ULMK_SYS_THREAD_SPAWN` | DRIVER + `CAP_SPAWN` | `ulmk_thread_create` |
+| 71 | `ULMK_SYS_THREAD_KILL` | DRIVER + `CAP_KILL` | `ulmk_thread_kill` |
+| 72 | `ULMK_SYS_THREAD_SUSPEND` | DRIVER | `ulmk_thread_suspend` |
+| 73 | `ULMK_SYS_THREAD_RESUME` | DRIVER | `ulmk_thread_resume` |
+| 74 | `ULMK_SYS_THREAD_SET_PRIO` | DRIVER | `ulmk_thread_priority_set` |
+| 75 | `ULMK_SYS_THREAD_GET_PRIO` | DRIVER | `ulmk_thread_priority_get` |
+| 80 | `ULMK_SYS_PROC_CREATE` | DRIVER | *(reserved / process mgmt)* |
+| 81 | `ULMK_SYS_PROC_DESTROY` | DRIVER | *(reserved / process mgmt)* |
+| 82 | `ULMK_SYS_PROC_ADD_REGION` | DRIVER | *(reserved / process mgmt)* |
+| 83 | `ULMK_SYS_PROC_GRANT_CAP` | DRIVER + `CAP_GRANT_CAP` | `ulmk_cap_grant` |
+| 84 | `ULMK_SYS_PROC_GRANT_IRQ` | DRIVER | *(reserved)* |
+
+Group summary:
+
+```
+ 1–8   Memory / heap
+10–15  Scheduling / time / timed IPC
+20–22  Thread query / WCET
+30–37  IPC endpoints
+40–45  Notifications
+60–67  IRQ (IO ≥ 1)
+70–75  Thread management (IO ≥ 1)
+80–84  Process / capability (IO ≥ 1)
+```
+
+While `ulmk_irq_in_attach()` is true (userspace ISR callback running), the
+router rejects **all** nested syscalls with `ULMK_EPERM`.
+
+When `ULMK_CONFIG_IRQ_ATTACH=0`, syscalls 65–67 still exist in the ABI but
+return `ULMK_ENOTSUP` from the kernel handlers.
 
 ---
 

@@ -401,6 +401,14 @@ void _arm_fault_dispatch(uint32_t exc, uint32_t *frame, uint32_t exc_return)
 		return;
 	}
 
+	/* ISR attach callback fault — kill owner, keep the system up. */
+	if (ulmk_irq_in_attach() && (exc == 4u || exc == 5u || exc == 6u)) {
+		REG32(ULMK_ARCH_SCB_CFSR) = REG32(ULMK_ARCH_SCB_CFSR);
+		ulmk_kern_trap_recoverable();
+		for (;;)
+			;
+	}
+
 	dump_puts("FAULT exc=");
 	dump_hex8(exc);
 	if (frame) {

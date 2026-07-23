@@ -211,3 +211,20 @@ void ulmk_arch_irq_src_trigger(uint8_t srpn)
 #endif
 	(void)srpn;
 }
+
+bool ulmk_arch_irq_attach_call(ulmk_irq_attach_fn_t fn, void *data,
+			       const ulmk_arch_region_t *regions,
+			       uint8_t count)
+{
+	/*
+	 * Do not retarget PMP around the callback: a nested ecall from the
+	 * ISR path under a user PMP map raises ILLEGAL_INST on this port.
+	 * Isolation is the in_irq_attach syscall gate (EPERM).
+	 */
+	(void)regions;
+	(void)count;
+
+	if (!fn)
+		return false;
+	return fn(data);
+}

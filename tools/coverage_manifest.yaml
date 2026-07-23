@@ -83,7 +83,7 @@ areas:
 
   - id: irq.sw
     title: Software IRQ bind/enable/ack
-    cases: [sdk_suite/irq_sw, sdk_suite/abi_smoke]
+    cases: [sdk_suite/irq_sw, sdk_suite/irq_attach, sdk_suite/abi_smoke]
     tricore: covered
     riscv: covered
     arm: covered

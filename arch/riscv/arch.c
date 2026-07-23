@@ -725,7 +725,7 @@ void ulmk_arch_trap_entry(uint8_t trap_class, uint8_t tin)
 	dump_puts("\n");
 	ulmk_arch_trap_dump(trap_class, tin);
 
-	if (trap_class == 0u)
+	if (trap_class == 0u || ulmk_irq_in_attach())
 		ulmk_kern_trap_recoverable();
 	else
 		ulmk_kern_trap_panic();

@@ -450,6 +450,8 @@ so there are no static-pool size knobs for them.
 ├──────────────────────────────────┼──────────┼────────────────────────────────────┤
 │ ULMK_CONFIG_MAX_IRQ_BINDINGS       │ 16       │ irq.c static SRPN → notif table    │
 │ ULMK_CONFIG_DEBUG_PRINTK           │ 1        │ Kernel printk (0 = no-op)          │
+│ ULMK_CONFIG_IRQ_ATTACH             │ 0        │ ulmk_irq_attach (1=DANGEROUS ISR   │
+│                                    │          │ userspace callbacks; else ENOTSUP) │
 └──────────────────────────────────┴──────────┴────────────────────────────────────┘
 ```
 

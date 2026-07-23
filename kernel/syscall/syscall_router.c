@@ -19,6 +19,7 @@
 #include <kernel/syscall/syscall_router.h>
 #include <kernel/include/ulmk_sched.h>
 #include <kernel/include/ulmk_thread_internal.h>
+#include <kernel/include/ulmk_irq_internal.h>
 #include <kernel/include/ulmk_syscall_wcet_internal.h>
 
 /* Shorthand: fetch caller's privilege from the scheduler. */
@@ -48,6 +49,10 @@ uint32_t ulmk_syscall_router(uint32_t nr,
 {
 	if (nr == 0 || nr >= ULMK_SYS_MAX)
 		return (uint32_t)(int32_t)ULMK_EINVAL;
+
+	/* Attach callbacks must not nest into the syscall router. */
+	if (ulmk_irq_in_attach())
+		return (uint32_t)(int32_t)ULMK_EPERM;
 
 	switch (nr) {
 
@@ -168,6 +173,21 @@ uint32_t ulmk_syscall_router(uint32_t nr,
 		REQUIRE_DRIVER(a0);
 		REQUIRE_CAP(ULMK_CAP_IRQ);
 		return ulmk_kern_irq_bind_hw(a0, a1, a2, a3);
+
+	case ULMK_SYS_IRQ_ATTACH:
+		REQUIRE_DRIVER(a0);
+		REQUIRE_CAP(ULMK_CAP_IRQ);
+		return ulmk_kern_irq_attach(a0, a1, a2);
+
+	case ULMK_SYS_IRQ_ATTACH_HW:
+		REQUIRE_DRIVER(a0);
+		REQUIRE_CAP(ULMK_CAP_IRQ);
+		return ulmk_kern_irq_attach_hw(a0, a1, a2, a3);
+
+	case ULMK_SYS_IRQ_DETACH:
+		REQUIRE_DRIVER(a0);
+		REQUIRE_CAP(ULMK_CAP_IRQ);
+		return ulmk_kern_irq_detach(a0);
 
 	/* ── Thread management (requires IO >= 1 / ULMK_PRIV_DRIVER) ─── */
 	case ULMK_SYS_THREAD_SPAWN:

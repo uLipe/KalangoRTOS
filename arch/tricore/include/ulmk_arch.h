@@ -164,6 +164,16 @@ bool ulmk_arch_irq_src_is_pending(uint8_t srpn);
  */
 void ulmk_arch_irq_src_trigger(uint8_t srpn);
 
+/*
+ * Run a userspace IRQ attach callback under @regions (owner map).
+ * Caller must set per-CPU irq_attach_owner / irq_attach_srpn first.
+ * Sets in_irq_attach for the duration.  Returns the callback bool, or
+ * false if a fault aborted the call.
+ */
+bool ulmk_arch_irq_attach_call(ulmk_irq_attach_fn_t fn, void *data,
+			       const ulmk_arch_region_t *regions,
+			       uint8_t count);
+
 /* =========================================================================
  * Atomic operations (arch_api_spec.md §10)
  * ========================================================================= */
@@ -315,6 +325,12 @@ uint32_t ulmk_kern_trap_syscall(uint8_t tin, uint32_t args[4]);
  * a user/driver thread.  Contains no arch-specific code.
  */
 void ulmk_kern_trap_recoverable(void);
+
+/*
+ * ulmk_irq_in_attach — true while a userspace IRQ attach callback runs.
+ * Used by arch trap paths to prefer owner-kill over system panic.
+ */
+bool ulmk_irq_in_attach(void);
 
 /*
  * ulmk_kern_trap_panic — halt the system after an unrecoverable fault.

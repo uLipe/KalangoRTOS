@@ -129,6 +129,10 @@ void ulmk_arch_irq_src_ack(uint8_t srpn);
 bool ulmk_arch_irq_src_is_pending(uint8_t srpn);
 void ulmk_arch_irq_src_trigger(uint8_t srpn);
 
+bool ulmk_arch_irq_attach_call(ulmk_irq_attach_fn_t fn, void *data,
+			       const ulmk_arch_region_t *regions,
+			       uint8_t count);
+
 uint32_t ulmk_arch_atomic_cas(volatile uint32_t *ptr,
 			    uint32_t expected, uint32_t desired);
 uint32_t ulmk_arch_atomic_add(volatile uint32_t *ptr, uint32_t val);
@@ -166,6 +170,7 @@ uint32_t ulmk_kern_syscall_ret_resolve(uint32_t ret);
 uint32_t ulmk_kern_trap_syscall(uint8_t tin, uint32_t args[4]);
 void ulmk_kern_trap_recoverable(void);
 void ulmk_kern_trap_panic(void);
+bool ulmk_irq_in_attach(void);
 void ulmk_kern_trap_mpu_restore(void);
 void ulmk_kern_main(const ulmk_boot_info_t *info);
 

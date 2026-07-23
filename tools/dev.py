@@ -694,6 +694,9 @@ def _sdk_cache_vars(arch: str, make_extra: str, test_name: str = "") -> str:
     base = test_name.rsplit("/", 1)[-1] if test_name else ""
     if base.startswith("smp_") or base.startswith("smp4_"):
         tag += "_smp"
+    # irq_attach needs ULMK_CONFIG_IRQ_ATTACH=1 (default off).
+    if base == "irq_attach":
+        tag += "_irqattach"
     return f"SDK_CACHE=/workspace/tests/sdk_suite/_sdk_cache/{tag}"
 
 
